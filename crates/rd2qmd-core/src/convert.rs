@@ -155,7 +155,7 @@ impl Converter {
                     self.flush_paragraph(&mut current_para, &mut result);
                     self.section_depth += 1;
                     let depth = (self.section_depth + 1).min(6);
-                    result.push(Node::heading(depth, vec![Node::text(title.clone())]));
+                    result.push(Node::heading(depth, self.convert_inline_nodes(title)));
                     result.extend(self.convert_content(content));
                     self.section_depth -= 1;
                 }
@@ -163,7 +163,7 @@ impl Converter {
                     self.flush_paragraph(&mut current_para, &mut result);
                     self.section_depth += 1;
                     let depth = (self.section_depth + 1).min(6);
-                    result.push(Node::heading(depth, vec![Node::text(title.clone())]));
+                    result.push(Node::heading(depth, self.convert_inline_nodes(title)));
                     result.extend(self.convert_content(content));
                     self.section_depth -= 1;
                 }
@@ -403,6 +403,31 @@ impl Converter {
                 RdNode::Text(s) => result.push_str(s),
                 RdNode::Code(children) | RdNode::Emph(children) | RdNode::Strong(children) => {
                     result.push_str(&self.extract_text(children));
+                }
+                RdNode::Link {
+                    package,
+                    topic,
+                    text,
+                } => {
+                    // Extract display text from link
+                    if let Some(text_nodes) = text {
+                        result.push_str(&self.extract_text(text_nodes));
+                    } else if let Some(pkg) = package {
+                        result.push_str(&format!("{}::{}", pkg, topic));
+                    } else {
+                        result.push_str(topic);
+                    }
+                }
+                RdNode::Method { generic, class: _ } => {
+                    // S3 method: use generic function name
+                    result.push_str(generic);
+                }
+                RdNode::S4Method {
+                    generic,
+                    signature: _,
+                } => {
+                    // S4 method: use generic function name
+                    result.push_str(generic);
                 }
                 RdNode::Special(ch) => result.push_str(special_char_to_string(*ch)),
                 RdNode::LineBreak => result.push('\n'),

@@ -607,9 +607,7 @@ impl Parser {
     /// Parse \subsection{title}{content}
     fn parse_subsection(&mut self) -> ParseResult<Option<RdNode>> {
         self.skip_whitespace();
-        self.expect(&TokenKind::OpenBrace)?;
-        let title = self.parse_text_until_close_brace()?;
-        self.expect(&TokenKind::CloseBrace)?;
+        let title = self.parse_braced_content()?;
 
         self.skip_whitespace();
         let content = self.parse_braced_content()?;

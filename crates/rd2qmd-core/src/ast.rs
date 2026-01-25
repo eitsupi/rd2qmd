@@ -133,10 +133,10 @@ pub enum RdNode {
     Verbatim(String),
 
     /// Custom section with title
-    Section { title: String, content: Vec<RdNode> },
+    Section { title: Vec<RdNode>, content: Vec<RdNode> },
 
     /// Subsection within a section
-    Subsection { title: String, content: Vec<RdNode> },
+    Subsection { title: Vec<RdNode>, content: Vec<RdNode> },
 
     /// Itemized (bullet) list
     Itemize(Vec<RdNode>),
