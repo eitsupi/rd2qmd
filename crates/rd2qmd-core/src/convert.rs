@@ -88,10 +88,19 @@ impl Converter {
 
         // Special handling for specific sections
         match &section.tag {
-            SectionTag::Usage | SectionTag::Examples => {
-                // Code block
+            SectionTag::Usage => {
+                // Usage code block - not executable
                 let code = self.extract_text(&section.content);
                 nodes.push(Node::code(Some("r".to_string()), code.trim()));
+            }
+            SectionTag::Examples => {
+                // Examples code block - executable in Quarto
+                let code = self.extract_text(&section.content);
+                nodes.push(Node::code_with_meta(
+                    Some("r".to_string()),
+                    Some("executable".to_string()),
+                    code.trim(),
+                ));
             }
             SectionTag::Arguments => {
                 nodes.extend(self.convert_arguments(&section.content));

@@ -180,7 +180,9 @@ impl<'a> Writer<'a> {
         self.ensure_newline();
         self.output.push_str("```");
         if let Some(lang) = &c.lang {
-            if self.options.quarto_code_blocks && lang == "r" {
+            // Only use {r} for executable code blocks (Examples section)
+            let is_executable = c.meta.as_deref() == Some("executable");
+            if self.options.quarto_code_blocks && lang == "r" && is_executable {
                 self.output.push_str("{r}");
             } else {
                 self.output.push_str(lang);
@@ -442,13 +444,24 @@ mod tests {
 
     #[test]
     fn test_quarto_code_block() {
-        let root = Root::new(vec![Node::code(Some("r".to_string()), "x <- 1")]);
+        // Executable code block (Examples section) uses {r}
+        let root = Root::new(vec![Node::code_with_meta(
+            Some("r".to_string()),
+            Some("executable".to_string()),
+            "x <- 1",
+        )]);
         let opts = WriterOptions {
             quarto_code_blocks: true,
             ..Default::default()
         };
         let qmd = mdast_to_qmd(&root, &opts);
         assert!(qmd.contains("```{r}"));
+
+        // Non-executable code block (Usage section) uses plain r
+        let root2 = Root::new(vec![Node::code(Some("r".to_string()), "foo(x)")]);
+        let qmd2 = mdast_to_qmd(&root2, &opts);
+        assert!(qmd2.contains("```r"));
+        assert!(!qmd2.contains("```{r}"));
     }
 
     #[test]

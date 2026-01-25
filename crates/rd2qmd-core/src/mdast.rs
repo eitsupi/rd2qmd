@@ -218,6 +218,18 @@ impl Node {
         })
     }
 
+    pub fn code_with_meta(
+        lang: Option<String>,
+        meta: Option<String>,
+        value: impl Into<String>,
+    ) -> Self {
+        Node::Code(Code {
+            lang,
+            meta,
+            value: value.into(),
+        })
+    }
+
     pub fn inline_code(value: impl Into<String>) -> Self {
         Node::InlineCode(InlineCode {
             value: value.into(),
