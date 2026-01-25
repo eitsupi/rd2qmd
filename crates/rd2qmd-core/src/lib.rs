@@ -7,5 +7,7 @@
 //! - mdast to Quarto Markdown output
 
 pub mod ast;
+pub mod lexer;
 
 pub use ast::{RdDocument, RdNode, RdSection, SectionTag};
+pub use lexer::{Lexer, Token, TokenKind};
