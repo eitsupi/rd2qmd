@@ -18,6 +18,11 @@ pub struct ConverterOptions {
     /// Alias map: maps alias names to Rd file basenames (without extension)
     /// Used to resolve \link{alias} to the correct target file
     pub alias_map: Option<HashMap<String, String>>,
+    /// URL pattern for unresolved links (fallback to base R documentation)
+    /// Use `{topic}` as placeholder for the topic name.
+    /// Example: "https://rdrr.io/r/base/{topic}.html"
+    /// If None, unresolved links become inline code instead of hyperlinks
+    pub unresolved_link_url: Option<String>,
 }
 
 /// Convert an Rd document to mdast
@@ -291,15 +296,23 @@ impl Converter {
                     // Internal link with extension configured - create hyperlink
                     (None, Some(ext)) => {
                         // Resolve alias to target file using alias_map
-                        let target_file = self
+                        if let Some(target_file) = self
                             .options
                             .alias_map
                             .as_ref()
                             .and_then(|map| map.get(topic))
-                            .map(|s| s.as_str())
-                            .unwrap_or(topic);
-                        let url = format!("{}.{}", target_file, ext);
-                        Some(Node::link(url, vec![Node::inline_code(display_text)]))
+                        {
+                            // Found in local package - create relative link
+                            let url = format!("{}.{}", target_file, ext);
+                            Some(Node::link(url, vec![Node::inline_code(display_text)]))
+                        } else if let Some(pattern) = &self.options.unresolved_link_url {
+                            // Not found - use fallback URL pattern
+                            let url = pattern.replace("{topic}", topic);
+                            Some(Node::link(url, vec![Node::inline_code(display_text)]))
+                        } else {
+                            // No fallback configured - just inline code
+                            Some(Node::inline_code(display_text))
+                        }
                     }
                     // Internal link without extension - just inline code
                     (None, None) => Some(Node::inline_code(display_text)),
@@ -571,20 +584,22 @@ mod tests {
     }
 
     #[test]
-    fn test_internal_link_with_extension() {
+    fn test_internal_link_unresolved_becomes_inline_code() {
+        // When topic is not in alias_map and no fallback URL, it becomes inline code
         let doc = parse("\\title{T}\n\\description{See \\link{other_func}}").unwrap();
         let options = ConverterOptions {
             link_extension: Some("qmd".to_string()),
             alias_map: None,
+            unresolved_link_url: None,
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
 
-        // Find the paragraph with a link
-        let has_link = mdast.children.iter().any(|n| {
+        // Should be inline code, not a link
+        let has_inline_code = mdast.children.iter().any(|n| {
             if let Node::Paragraph(p) = n {
                 p.children.iter().any(|c| {
-                    if let Node::Link(l) = c {
-                        l.url == "other_func.qmd"
+                    if let Node::InlineCode(ic) = c {
+                        ic.value == "other_func"
                     } else {
                         false
                     }
@@ -593,7 +608,35 @@ mod tests {
                 false
             }
         });
-        assert!(has_link, "Expected internal link to be converted to hyperlink");
+        assert!(has_inline_code, "Expected unresolved link to become inline code");
+    }
+
+    #[test]
+    fn test_internal_link_with_fallback_url() {
+        // When topic is not in alias_map but fallback URL is set, use it
+        let doc = parse("\\title{T}\n\\description{See \\link{vector}}").unwrap();
+        let options = ConverterOptions {
+            link_extension: Some("qmd".to_string()),
+            alias_map: None,
+            unresolved_link_url: Some("https://rdrr.io/r/base/{topic}.html".to_string()),
+        };
+        let mdast = rd_to_mdast_with_options(&doc, &options);
+
+        // Should be a link to the fallback URL
+        let has_link = mdast.children.iter().any(|n| {
+            if let Node::Paragraph(p) = n {
+                p.children.iter().any(|c| {
+                    if let Node::Link(l) = c {
+                        l.url == "https://rdrr.io/r/base/vector.html"
+                    } else {
+                        false
+                    }
+                })
+            } else {
+                false
+            }
+        });
+        assert!(has_link, "Expected fallback URL to be used for unresolved link");
     }
 
     #[test]
@@ -628,6 +671,7 @@ mod tests {
         let options = ConverterOptions {
             link_extension: Some("qmd".to_string()),
             alias_map: None,
+            unresolved_link_url: None,
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
 
@@ -661,6 +705,7 @@ mod tests {
         let options = ConverterOptions {
             link_extension: Some("qmd".to_string()),
             alias_map: Some(alias_map),
+            unresolved_link_url: None,
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
 

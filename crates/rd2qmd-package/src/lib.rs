@@ -87,6 +87,11 @@ pub struct PackageConvertOptions {
     pub quarto_code_blocks: bool,
     /// Number of parallel jobs (None = use all CPUs)
     pub parallel_jobs: Option<usize>,
+    /// URL pattern for unresolved links (fallback to base R documentation)
+    /// Use `{topic}` as placeholder for the topic name.
+    /// Example: "https://rdrr.io/r/base/{topic}.html"
+    /// If None, unresolved links become inline code instead of hyperlinks
+    pub unresolved_link_url: Option<String>,
 }
 
 impl Default for PackageConvertOptions {
@@ -97,6 +102,7 @@ impl Default for PackageConvertOptions {
             frontmatter: true,
             quarto_code_blocks: true,
             parallel_jobs: None,
+            unresolved_link_url: None,
         }
     }
 }
@@ -178,6 +184,7 @@ fn convert_single_file(
         let converter_options = ConverterOptions {
             link_extension: Some(options.output_extension.clone()),
             alias_map: Some(package.alias_index.clone()),
+            unresolved_link_url: options.unresolved_link_url.clone(),
         };
 
         // Convert to mdast

@@ -46,6 +46,15 @@ struct Cli {
     #[arg(long, default_value = "true")]
     quarto_code_blocks: bool,
 
+    /// URL pattern for unresolved links (fallback for base R documentation)
+    /// Use {topic} as placeholder for the topic name.
+    #[arg(long, value_name = "URL_PATTERN", default_value = "https://rdrr.io/r/base/{topic}.html")]
+    unresolved_link_url: String,
+
+    /// Disable fallback URL for unresolved links
+    #[arg(long, conflicts_with = "unresolved_link_url")]
+    no_unresolved_link_url: bool,
+
     /// Verbose output
     #[arg(short, long)]
     verbose: bool,
@@ -59,6 +68,11 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     let use_frontmatter = cli.frontmatter && !cli.no_frontmatter;
+    let unresolved_link_url = if cli.no_unresolved_link_url {
+        None
+    } else {
+        Some(cli.unresolved_link_url.clone())
+    };
 
     if cli.input.is_file() {
         // Single file conversion (no alias resolution)
@@ -67,6 +81,7 @@ fn main() -> Result<()> {
             cli.output.as_deref(),
             use_frontmatter,
             cli.quarto_code_blocks,
+            unresolved_link_url.as_deref(),
             cli.verbose,
             cli.quiet,
         )?;
@@ -78,6 +93,7 @@ fn main() -> Result<()> {
             cli.recursive,
             use_frontmatter,
             cli.quarto_code_blocks,
+            unresolved_link_url,
             cli.verbose,
             cli.quiet,
             cli.jobs,
@@ -95,6 +111,7 @@ fn convert_single_file(
     output: Option<&Path>,
     use_frontmatter: bool,
     quarto_code_blocks: bool,
+    unresolved_link_url: Option<&str>,
     verbose: bool,
     quiet: bool,
 ) -> Result<()> {
@@ -114,7 +131,7 @@ fn convert_single_file(
     let content = fs::read_to_string(input)
         .with_context(|| format!("Failed to read: {}", input.display()))?;
 
-    let qmd = convert_rd_to_qmd(&content, use_frontmatter, quarto_code_blocks, None)?;
+    let qmd = convert_rd_to_qmd(&content, use_frontmatter, quarto_code_blocks, None, unresolved_link_url)?;
 
     if let Some(parent) = output_path.parent() {
         fs::create_dir_all(parent)
@@ -138,6 +155,7 @@ fn convert_directory(
     recursive: bool,
     use_frontmatter: bool,
     quarto_code_blocks: bool,
+    unresolved_link_url: Option<String>,
     verbose: bool,
     quiet: bool,
     jobs: Option<usize>,
@@ -171,6 +189,7 @@ fn convert_directory(
         frontmatter: use_frontmatter,
         quarto_code_blocks,
         parallel_jobs: jobs,
+        unresolved_link_url,
     };
 
     // Convert package
@@ -210,12 +229,14 @@ fn convert_rd_to_qmd(
     use_frontmatter: bool,
     quarto_code_blocks: bool,
     alias_map: Option<std::collections::HashMap<String, String>>,
+    unresolved_link_url: Option<&str>,
 ) -> Result<String> {
     let doc = parse(rd_content).map_err(|e| anyhow::anyhow!("Parse error: {}", e))?;
 
     let converter_options = ConverterOptions {
         link_extension: Some("qmd".to_string()),
         alias_map,
+        unresolved_link_url: unresolved_link_url.map(|s| s.to_string()),
     };
     let mdast = rd_to_mdast_with_options(&doc, &converter_options);
 
