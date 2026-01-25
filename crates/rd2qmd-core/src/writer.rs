@@ -72,8 +72,10 @@ impl<'a> Writer<'a> {
                 .push_str(&format!("title: \"{}\"\n", escape_yaml_string(title)));
         }
         if let Some(pagetitle) = &fm.pagetitle {
-            self.output
-                .push_str(&format!("pagetitle: \"{}\"\n", escape_yaml_string(pagetitle)));
+            self.output.push_str(&format!(
+                "pagetitle: \"{}\"\n",
+                escape_yaml_string(pagetitle)
+            ));
         }
         if let Some(format) = &fm.format {
             self.output.push_str(&format!("format: {}\n", format));

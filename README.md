@@ -1,6 +1,15 @@
 # rd2qmd
 
-Convert R documentation files (`.Rd`) to Quarto Markdown (`.qmd`) or standard Markdown (`.md`).
+A fast Rd-to-Quarto Markdown converter written in Rust, with intelligent link resolution.
+
+## Features
+
+- **Blazing fast**: Converts 228 ggplot2 docs in ~0.13s with parallel processing
+- **Smart link resolution**: Automatically resolves `\link{}` references to correct output files
+- **External package links**: Resolves cross-package links using pkgdown URL conventions (e.g., `\link[dplyr]{mutate}` → `https://dplyr.tidyverse.org/reference/mutate.html`)
+- **Quarto-ready**: Generates `.qmd` files with `{r}` executable code blocks and YAML frontmatter
+- **pkgdown-compatible metadata**: Adds `pagetitle` in pkgdown style (`"<title> — <name>"`) for SEO
+- **No R required**: Pure Rust binary with no runtime R dependency
 
 ## Installation
 
@@ -149,6 +158,10 @@ Run your own benchmark:
 git clone --depth 1 https://github.com/tidyverse/ggplot2 /tmp/ggplot2
 cargo run --release --example benchmark -- /tmp/ggplot2/man --r-lib-path $(Rscript -e 'cat(.libPaths()[1])')
 ```
+
+## Roadmap
+
+- Integration with [tree-sitter-qmd](https://github.com/quarto-dev/quarto-markdown) for syntax-aware Quarto document manipulation
 
 ## Related projects
 

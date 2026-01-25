@@ -14,7 +14,7 @@ pub mod parser;
 pub mod writer;
 
 pub use ast::{RdDocument, RdNode, RdSection, SectionTag};
-pub use convert::{rd_to_mdast, rd_to_mdast_with_options, ConverterOptions};
+pub use convert::{ConverterOptions, rd_to_mdast, rd_to_mdast_with_options};
 pub use lexer::{Lexer, Token, TokenKind};
 pub use mdast::{Node as MdNode, Root as MdRoot};
 pub use parser::{ParseError, Parser, parse};

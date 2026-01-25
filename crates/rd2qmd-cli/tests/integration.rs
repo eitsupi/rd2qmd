@@ -12,8 +12,7 @@ fn fixtures_dir() -> PathBuf {
 }
 
 fn rd2qmd_binary() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/debug/rd2qmd")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/debug/rd2qmd")
 }
 
 /// Run rd2qmd on a fixture file and return the output
@@ -23,7 +22,17 @@ fn convert_fixture(name: &str, args: &[&str]) -> String {
     let unique_id = COUNTER.fetch_add(1, Ordering::SeqCst);
     let pid = std::process::id();
     let ext = if args.contains(&"md") { "md" } else { "qmd" };
-    let output = std::env::temp_dir().join(format!("rd2qmd_test_{}_{}_{}_{}.{}", name, pid, unique_id, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos(), ext));
+    let output = std::env::temp_dir().join(format!(
+        "rd2qmd_test_{}_{}_{}_{}.{}",
+        name,
+        pid,
+        unique_id,
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos(),
+        ext
+    ));
 
     let mut cmd = Command::new(rd2qmd_binary());
     cmd.arg(&input).arg("-o").arg(&output);

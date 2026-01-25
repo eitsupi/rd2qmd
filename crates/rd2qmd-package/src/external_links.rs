@@ -106,11 +106,10 @@ impl PackageUrlResolver {
 
         // Check for local pkgdown.yml first
         let local_pkgdown = pkg_dir.join("pkgdown.yml");
-        if local_pkgdown.exists() {
-            if let Some(url) = self.parse_pkgdown_yml(&local_pkgdown) {
+        if local_pkgdown.exists()
+            && let Some(url) = self.parse_pkgdown_yml(&local_pkgdown) {
                 return Some(url);
             }
-        }
 
         // Read DESCRIPTION to get URL
         let desc_path = pkg_dir.join("DESCRIPTION");
@@ -155,16 +154,13 @@ impl PackageUrlResolver {
         let content = fs::read_to_string(desc_path).ok()?;
         let desc: RDescription = content.parse().ok()?;
 
-        let urls: Vec<String> = desc.url?
+        let urls: Vec<String> = desc
+            .url?
             .into_iter()
             .map(|entry| entry.url.to_string())
             .collect();
 
-        if urls.is_empty() {
-            None
-        } else {
-            Some(urls)
-        }
+        if urls.is_empty() { None } else { Some(urls) }
     }
 
     /// Parse a local pkgdown.yml file
@@ -180,12 +176,12 @@ impl PackageUrlResolver {
         // Check cache directory first
         if let Some(cache_dir) = &self.options.cache_dir {
             let cache_file = self.cache_path_for_url(cache_dir, &pkgdown_url);
-            if cache_file.exists() {
-                if let Ok(content) = fs::read_to_string(&cache_file) {
-                    return self.extract_reference_url_from_yaml(&content)
+            if cache_file.exists()
+                && let Ok(content) = fs::read_to_string(&cache_file) {
+                    return self
+                        .extract_reference_url_from_yaml(&content)
                         .or_else(|| Some(format!("{}/reference", base_url.trim_end_matches('/'))));
                 }
-            }
         }
 
         // Fetch from network
@@ -220,20 +216,17 @@ impl PackageUrlResolver {
         let doc = docs.first()?;
 
         // Try urls.reference first
-        if let Some(urls) = doc.as_mapping_get("urls") {
-            if let Some(reference) = urls.as_mapping_get("reference") {
-                if let Some(s) = reference.as_str() {
+        if let Some(urls) = doc.as_mapping_get("urls")
+            && let Some(reference) = urls.as_mapping_get("reference")
+                && let Some(s) = reference.as_str() {
                     return Some(s.to_string());
                 }
-            }
-        }
 
         // Try url field and construct reference path
-        if let Some(url_node) = doc.as_mapping_get("url") {
-            if let Some(url) = url_node.as_str() {
+        if let Some(url_node) = doc.as_mapping_get("url")
+            && let Some(url) = url_node.as_str() {
                 return Some(format!("{}/reference", url.trim_end_matches('/')));
             }
-        }
 
         None
     }
@@ -301,13 +294,9 @@ impl PackageUrlResolver {
     pub fn topic_url(&mut self, package: &str, topic: &str) -> Option<String> {
         if let Some(base_url) = self.resolve(package) {
             Some(format!("{}/{}.html", base_url.trim_end_matches('/'), topic))
-        } else if let Some(pattern) = &self.options.fallback_url {
-            Some(pattern
-                .replace("{package}", package)
-                .replace("{topic}", topic))
-        } else {
-            None
-        }
+        } else { self.options.fallback_url.as_ref().map(|pattern| pattern
+                    .replace("{package}", package)
+                    .replace("{topic}", topic)) }
     }
 }
 
@@ -319,13 +308,12 @@ pub fn collect_external_packages(package: &RdPackage) -> HashSet<String> {
     let mut packages = HashSet::new();
 
     for file in &package.files {
-        if let Ok(content) = fs::read_to_string(file) {
-            if let Ok(doc) = rd2qmd_core::parse(&content) {
+        if let Ok(content) = fs::read_to_string(file)
+            && let Ok(doc) = rd2qmd_core::parse(&content) {
                 for section in &doc.sections {
                     collect_packages_from_nodes(&section.content, &mut packages);
                 }
             }
-        }
     }
 
     packages
@@ -335,7 +323,11 @@ pub fn collect_external_packages(package: &RdPackage) -> HashSet<String> {
 fn collect_packages_from_nodes(nodes: &[RdNode], packages: &mut HashSet<String>) {
     for node in nodes {
         match node {
-            RdNode::Link { package: Some(pkg), text, .. } => {
+            RdNode::Link {
+                package: Some(pkg),
+                text,
+                ..
+            } => {
                 // The parser stores "pkg:topic" as the package name for \link[pkg:topic]{text}
                 // Extract just the package part (before the colon)
                 let pkg_name = pkg.split(':').next().unwrap_or(pkg);
@@ -345,7 +337,9 @@ fn collect_packages_from_nodes(nodes: &[RdNode], packages: &mut HashSet<String>)
                     collect_packages_from_nodes(text_nodes, packages);
                 }
             }
-            RdNode::Link { text: Some(text), .. } => {
+            RdNode::Link {
+                text: Some(text), ..
+            } => {
                 collect_packages_from_nodes(text, packages);
             }
             // Recurse into container nodes with Vec<RdNode>
@@ -386,7 +380,11 @@ fn collect_packages_from_nodes(nodes: &[RdNode], packages: &mut HashSet<String>)
                     }
                 }
             }
-            RdNode::IfElse { then_content, else_content, .. } => {
+            RdNode::IfElse {
+                then_content,
+                else_content,
+                ..
+            } => {
                 collect_packages_from_nodes(then_content, packages);
                 collect_packages_from_nodes(else_content, packages);
             }
@@ -467,7 +465,11 @@ Also \link[base]{paste} and \link{local_func}.
 
         // The parser stores "rlang:dyn-dots" as the package name for \link[rlang:dyn-dots]{...}
         // We extract just the package part (before the colon)
-        assert!(external.contains("rlang"), "Expected 'rlang' in {:?}", external);
+        assert!(
+            external.contains("rlang"),
+            "Expected 'rlang' in {:?}",
+            external
+        );
         assert!(external.contains("dplyr"));
         assert!(external.contains("base"));
         // local_func should not be included (no package specified)
@@ -485,7 +487,10 @@ Also \link[base]{paste} and \link{local_func}.
 
         // Package not found, should use fallback
         let url = resolver.topic_url("dplyr", "mutate");
-        assert_eq!(url, Some("https://rdrr.io/pkg/dplyr/man/mutate.html".to_string()));
+        assert_eq!(
+            url,
+            Some("https://rdrr.io/pkg/dplyr/man/mutate.html".to_string())
+        );
     }
 
     #[test]
@@ -513,7 +518,10 @@ URL: https://testpkg.example.com
 
         // Should construct URL from DESCRIPTION
         let url = resolver.resolve("testpkg");
-        assert_eq!(url, Some("https://testpkg.example.com/reference".to_string()));
+        assert_eq!(
+            url,
+            Some("https://testpkg.example.com/reference".to_string())
+        );
     }
 
     #[test]
@@ -534,15 +542,33 @@ URL: https://testpkg.example.com
 
         // All packages should have fallback URLs
         assert_eq!(result.urls.len(), 3);
-        assert_eq!(result.urls.get("dplyr"), Some(&"https://rdrr.io/pkg/dplyr/man".to_string()));
-        assert_eq!(result.urls.get("ggplot2"), Some(&"https://rdrr.io/pkg/ggplot2/man".to_string()));
-        assert_eq!(result.urls.get("tidyr"), Some(&"https://rdrr.io/pkg/tidyr/man".to_string()));
+        assert_eq!(
+            result.urls.get("dplyr"),
+            Some(&"https://rdrr.io/pkg/dplyr/man".to_string())
+        );
+        assert_eq!(
+            result.urls.get("ggplot2"),
+            Some(&"https://rdrr.io/pkg/ggplot2/man".to_string())
+        );
+        assert_eq!(
+            result.urls.get("tidyr"),
+            Some(&"https://rdrr.io/pkg/tidyr/man".to_string())
+        );
 
         // All should be marked as NotInstalled fallbacks
         assert_eq!(result.fallbacks.len(), 3);
-        assert_eq!(result.fallbacks.get("dplyr"), Some(&FallbackReason::NotInstalled));
-        assert_eq!(result.fallbacks.get("ggplot2"), Some(&FallbackReason::NotInstalled));
-        assert_eq!(result.fallbacks.get("tidyr"), Some(&FallbackReason::NotInstalled));
+        assert_eq!(
+            result.fallbacks.get("dplyr"),
+            Some(&FallbackReason::NotInstalled)
+        );
+        assert_eq!(
+            result.fallbacks.get("ggplot2"),
+            Some(&FallbackReason::NotInstalled)
+        );
+        assert_eq!(
+            result.fallbacks.get("tidyr"),
+            Some(&FallbackReason::NotInstalled)
+        );
     }
 
     #[test]
@@ -579,7 +605,13 @@ License: MIT
 
         // Check fallback reasons
         assert_eq!(result.fallbacks.len(), 2);
-        assert_eq!(result.fallbacks.get("installed_pkg"), Some(&FallbackReason::NoPkgdownSite));
-        assert_eq!(result.fallbacks.get("uninstalled_pkg"), Some(&FallbackReason::NotInstalled));
+        assert_eq!(
+            result.fallbacks.get("installed_pkg"),
+            Some(&FallbackReason::NoPkgdownSite)
+        );
+        assert_eq!(
+            result.fallbacks.get("uninstalled_pkg"),
+            Some(&FallbackReason::NotInstalled)
+        );
     }
 }

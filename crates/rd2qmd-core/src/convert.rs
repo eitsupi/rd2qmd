@@ -157,8 +157,8 @@ impl Converter {
         let mut items = Vec::new();
 
         for node in content {
-            if let RdNode::Item { label, content } = node {
-                if let Some(label_nodes) = label {
+            if let RdNode::Item { label, content } = node
+                && let Some(label_nodes) = label {
                     let term = self.convert_inline_nodes(label_nodes);
                     let desc = self.convert_content(content);
 
@@ -167,7 +167,6 @@ impl Converter {
                         children: desc,
                     }));
                 }
-            }
         }
 
         if items.is_empty() {
@@ -269,12 +268,11 @@ impl Converter {
             RdNode::Code(children) => {
                 // Check if \code contains a single \link - if so, preserve the link
                 // This handles patterns like \code{\link[=alias]{text}}
-                if children.len() == 1 {
-                    if let RdNode::Link { .. } = &children[0] {
+                if children.len() == 1
+                    && let RdNode::Link { .. } = &children[0] {
                         // Delegate to link conversion which already wraps text in inline code
                         return self.convert_inline_node(&children[0]);
                     }
-                }
                 let text = self.extract_text(children);
                 Some(Node::inline_code(text))
             }
@@ -318,11 +316,14 @@ impl Converter {
                         };
 
                         // Check if we have a URL for this external package
-                        if let Some(base_url) = self.options.external_package_urls
+                        if let Some(base_url) = self
+                            .options
+                            .external_package_urls
                             .as_ref()
                             .and_then(|map| map.get(pkg_name))
                         {
-                            let url = format!("{}/{}.html", base_url.trim_end_matches('/'), actual_topic);
+                            let url =
+                                format!("{}/{}.html", base_url.trim_end_matches('/'), actual_topic);
                             Some(Node::link(url, vec![Node::inline_code(display)]))
                         } else {
                             // No URL found - just inline code
@@ -807,8 +808,8 @@ fn normalize_whitespace(s: &str) -> String {
     }
 
     // Check for leading and trailing whitespace
-    let has_leading = s.chars().next().map_or(false, |c| c.is_whitespace());
-    let has_trailing = s.chars().next_back().map_or(false, |c| c.is_whitespace());
+    let has_leading = s.chars().next().is_some_and(|c| c.is_whitespace());
+    let has_trailing = s.chars().next_back().is_some_and(|c| c.is_whitespace());
 
     // Normalize internal whitespace (collapse multiple spaces to one)
     let normalized: String = s.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -949,7 +950,10 @@ mod tests {
                 false
             }
         });
-        assert!(has_inline_code, "Expected unresolved link to become inline code");
+        assert!(
+            has_inline_code,
+            "Expected unresolved link to become inline code"
+        );
     }
 
     #[test]
@@ -978,7 +982,10 @@ mod tests {
                 false
             }
         });
-        assert!(has_link, "Expected fallback URL to be used for unresolved link");
+        assert!(
+            has_link,
+            "Expected fallback URL to be used for unresolved link"
+        );
     }
 
     #[test]
@@ -1032,7 +1039,10 @@ mod tests {
                 false
             }
         });
-        assert!(has_inline_code, "Expected external link without URL to be inline code");
+        assert!(
+            has_inline_code,
+            "Expected external link without URL to be inline code"
+        );
     }
 
     #[test]
@@ -1042,7 +1052,10 @@ mod tests {
         let doc = parse("\\title{T}\n\\description{See \\link[dplyr]{filter}}").unwrap();
 
         let mut external_urls = HashMap::new();
-        external_urls.insert("dplyr".to_string(), "https://dplyr.tidyverse.org/reference".to_string());
+        external_urls.insert(
+            "dplyr".to_string(),
+            "https://dplyr.tidyverse.org/reference".to_string(),
+        );
 
         let options = ConverterOptions {
             link_extension: Some("qmd".to_string()),
@@ -1066,7 +1079,10 @@ mod tests {
                 false
             }
         });
-        assert!(has_link, "Expected external link with URL to become hyperlink");
+        assert!(
+            has_link,
+            "Expected external link with URL to become hyperlink"
+        );
     }
 
     #[test]
@@ -1077,7 +1093,10 @@ mod tests {
         let doc = parse("\\title{T}\n\\description{See \\link[rlang:abort]{abort}}").unwrap();
 
         let mut external_urls = HashMap::new();
-        external_urls.insert("rlang".to_string(), "https://rlang.r-lib.org/reference".to_string());
+        external_urls.insert(
+            "rlang".to_string(),
+            "https://rlang.r-lib.org/reference".to_string(),
+        );
 
         let options = ConverterOptions {
             link_extension: Some("qmd".to_string()),
@@ -1101,7 +1120,10 @@ mod tests {
                 false
             }
         });
-        assert!(has_link, "Expected external link with pkg:topic to resolve topic correctly");
+        assert!(
+            has_link,
+            "Expected external link with pkg:topic to resolve topic correctly"
+        );
     }
 
     #[test]
@@ -1160,9 +1182,17 @@ mod tests {
 
         for (i, node) in mdast.children.iter().enumerate() {
             if let Node::Heading(h) = node {
-                let text: String = h.children.iter().filter_map(|n| {
-                    if let Node::Text(t) = n { Some(t.value.as_str()) } else { None }
-                }).collect();
+                let text: String = h
+                    .children
+                    .iter()
+                    .filter_map(|n| {
+                        if let Node::Text(t) = n {
+                            Some(t.value.as_str())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
                 if text == "Custom Section" {
                     custom_pos = Some(i);
                 } else if text == "Examples" {
@@ -1184,11 +1214,16 @@ mod tests {
         use std::collections::HashMap;
 
         // Test \code{\link[=alias]{text}} pattern - link should be preserved
-        let doc =
-            parse("\\title{T}\n\\description{See \\code{\\link[=as_polars_series]{as_polars_series()}}}").unwrap();
+        let doc = parse(
+            "\\title{T}\n\\description{See \\code{\\link[=as_polars_series]{as_polars_series()}}}",
+        )
+        .unwrap();
 
         let mut alias_map = HashMap::new();
-        alias_map.insert("as_polars_series".to_string(), "as_polars_series".to_string());
+        alias_map.insert(
+            "as_polars_series".to_string(),
+            "as_polars_series".to_string(),
+        );
 
         let options = ConverterOptions {
             link_extension: Some("qmd".to_string()),
@@ -1246,7 +1281,10 @@ mod tests {
             }
         });
 
-        assert!(code_content.is_some(), "Expected a code block in usage section");
+        assert!(
+            code_content.is_some(),
+            "Expected a code block in usage section"
+        );
         let code = code_content.unwrap();
         assert!(
             code.contains("# S3 method for class 'data.frame'"),
@@ -1280,7 +1318,10 @@ mod tests {
             }
         });
 
-        assert!(code_content.is_some(), "Expected a code block in usage section");
+        assert!(
+            code_content.is_some(),
+            "Expected a code block in usage section"
+        );
         let code = code_content.unwrap();
         assert!(
             code.contains("# Default S3 method"),
@@ -1309,7 +1350,10 @@ mod tests {
             }
         });
 
-        assert!(code_content.is_some(), "Expected a code block in usage section");
+        assert!(
+            code_content.is_some(),
+            "Expected a code block in usage section"
+        );
         let code = code_content.unwrap();
         assert!(
             code.contains("# S4 method for signature 'MyClass'"),
@@ -1343,7 +1387,10 @@ mod tests {
             }
         });
 
-        assert!(code_content.is_some(), "Expected a code block in usage section");
+        assert!(
+            code_content.is_some(),
+            "Expected a code block in usage section"
+        );
         let code = code_content.unwrap();
         assert!(
             code.contains("# S4 method for signature 'OldClass,NewClass'"),
@@ -1376,7 +1423,10 @@ arrange(.data, ...)
             }
         });
 
-        assert!(code_content.is_some(), "Expected a code block in usage section");
+        assert!(
+            code_content.is_some(),
+            "Expected a code block in usage section"
+        );
         let code = code_content.unwrap();
 
         // Check regular function is present
@@ -1421,7 +1471,10 @@ arrange(.data, ...)
             }
         });
 
-        assert!(code_content.is_some(), "Expected a code block in usage section");
+        assert!(
+            code_content.is_some(),
+            "Expected a code block in usage section"
+        );
         let code = code_content.unwrap();
         assert!(
             code.contains("# S3 method for class 'tbl_df'"),
@@ -1450,7 +1503,10 @@ arrange(.data, ...)
             }
         });
 
-        assert!(code_content.is_some(), "Expected a code block in usage section");
+        assert!(
+            code_content.is_some(),
+            "Expected a code block in usage section"
+        );
         let code = code_content.unwrap();
         assert!(
             code.contains("# S3 method for class 'data.frame'"),
@@ -1497,10 +1553,26 @@ arrange(.data, ...)
         let code = code_content.unwrap();
 
         // Padded operators (with spaces)
-        assert!(code.contains("e1 + e2"), "Expected 'e1 + e2', got: {}", code);
-        assert!(code.contains("e1 - e2"), "Expected 'e1 - e2', got: {}", code);
-        assert!(code.contains("e1 * e2"), "Expected 'e1 * e2', got: {}", code);
-        assert!(code.contains("e1 / e2"), "Expected 'e1 / e2', got: {}", code);
+        assert!(
+            code.contains("e1 + e2"),
+            "Expected 'e1 + e2', got: {}",
+            code
+        );
+        assert!(
+            code.contains("e1 - e2"),
+            "Expected 'e1 - e2', got: {}",
+            code
+        );
+        assert!(
+            code.contains("e1 * e2"),
+            "Expected 'e1 * e2', got: {}",
+            code
+        );
+        assert!(
+            code.contains("e1 / e2"),
+            "Expected 'e1 / e2', got: {}",
+            code
+        );
 
         // Unpadded operator (no spaces around ^)
         assert!(code.contains("e1^e2"), "Expected 'e1^e2', got: {}", code);
@@ -1533,9 +1605,21 @@ arrange(.data, ...)
         assert!(code_content.is_some(), "Expected a code block");
         let code = code_content.unwrap();
 
-        assert!(code.contains("e1 %% e2"), "Expected 'e1 %% e2', got: {}", code);
-        assert!(code.contains("e1 %/% e2"), "Expected 'e1 %/% e2', got: {}", code);
-        assert!(code.contains("lhs %>% rhs"), "Expected 'lhs %>% rhs', got: {}", code);
+        assert!(
+            code.contains("e1 %% e2"),
+            "Expected 'e1 %% e2', got: {}",
+            code
+        );
+        assert!(
+            code.contains("e1 %/% e2"),
+            "Expected 'e1 %/% e2', got: {}",
+            code
+        );
+        assert!(
+            code.contains("lhs %>% rhs"),
+            "Expected 'lhs %>% rhs', got: {}",
+            code
+        );
     }
 
     #[test]
@@ -1565,7 +1649,11 @@ arrange(.data, ...)
         assert!(code_content.is_some(), "Expected a code block");
         let code = code_content.unwrap();
 
-        assert!(code.contains("x[i, j, drop = TRUE]"), "Expected 'x[i, j, drop = TRUE]', got: {}", code);
+        assert!(
+            code.contains("x[i, j, drop = TRUE]"),
+            "Expected 'x[i, j, drop = TRUE]', got: {}",
+            code
+        );
         assert!(code.contains("x[[i]]"), "Expected 'x[[i]]', got: {}", code);
         assert!(code.contains("x$name"), "Expected 'x$name', got: {}", code);
     }
@@ -1599,10 +1687,26 @@ arrange(.data, ...)
         assert!(code_content.is_some(), "Expected a code block");
         let code = code_content.unwrap();
 
-        assert!(code.contains("e1 < e2"), "Expected 'e1 < e2', got: {}", code);
-        assert!(code.contains("e1 > e2"), "Expected 'e1 > e2', got: {}", code);
-        assert!(code.contains("e1 == e2"), "Expected 'e1 == e2', got: {}", code);
-        assert!(code.contains("e1 != e2"), "Expected 'e1 != e2', got: {}", code);
+        assert!(
+            code.contains("e1 < e2"),
+            "Expected 'e1 < e2', got: {}",
+            code
+        );
+        assert!(
+            code.contains("e1 > e2"),
+            "Expected 'e1 > e2', got: {}",
+            code
+        );
+        assert!(
+            code.contains("e1 == e2"),
+            "Expected 'e1 == e2', got: {}",
+            code
+        );
+        assert!(
+            code.contains("e1 != e2"),
+            "Expected 'e1 != e2', got: {}",
+            code
+        );
     }
 
     #[test]
@@ -1628,8 +1732,16 @@ arrange(.data, ...)
         assert!(code_content.is_some(), "Expected a code block");
         let code = code_content.unwrap();
 
-        assert!(code.contains("# S4 method for signature 'MyClass,MyClass'"), "Expected S4 method comment, got: {}", code);
-        assert!(code.contains("e1 + e2"), "Expected 'e1 + e2', got: {}", code);
+        assert!(
+            code.contains("# S4 method for signature 'MyClass,MyClass'"),
+            "Expected S4 method comment, got: {}",
+            code
+        );
+        assert!(
+            code.contains("e1 + e2"),
+            "Expected 'e1 + e2', got: {}",
+            code
+        );
     }
 
     #[test]
@@ -1657,7 +1769,15 @@ arrange(.data, ...)
         assert!(code_content.is_some(), "Expected a code block");
         let code = code_content.unwrap();
 
-        assert!(code.contains("print(x, ...)"), "Expected 'print(x, ...)', got: {}", code);
-        assert!(code.contains("summary(object, ...)"), "Expected 'summary(object, ...)', got: {}", code);
+        assert!(
+            code.contains("print(x, ...)"),
+            "Expected 'print(x, ...)', got: {}",
+            code
+        );
+        assert!(
+            code.contains("summary(object, ...)"),
+            "Expected 'summary(object, ...)', got: {}",
+            code
+        );
     }
 }

@@ -48,11 +48,14 @@ fn main() -> Result<()> {
 
     // Load package
     println!("Loading .Rd files from {}...", args.man_dir.display());
-    let package = RdPackage::from_directory(&args.man_dir, false)
-        .context("Failed to load Rd files")?;
+    let package =
+        RdPackage::from_directory(&args.man_dir, false).context("Failed to load Rd files")?;
 
     println!("Found {} .Rd files", package.files.len());
-    println!("Built alias index with {} entries", package.alias_index.len());
+    println!(
+        "Built alias index with {} entries",
+        package.alias_index.len()
+    );
     println!();
 
     // Create temp output directory
@@ -68,7 +71,11 @@ fn main() -> Result<()> {
     for jobs in [1, 2, 4] {
         let times = run_benchmark(&package, &output_dir, jobs, None, args.iterations)?;
         let avg = average_duration(&times);
-        println!("{:<45} {:>7.2}s", format!("Jobs: {}", jobs), avg.as_secs_f64());
+        println!(
+            "{:<45} {:>7.2}s",
+            format!("Jobs: {}", jobs),
+            avg.as_secs_f64()
+        );
     }
     println!();
 
@@ -88,14 +95,15 @@ fn main() -> Result<()> {
         std::fs::create_dir_all(&cache_dir)?;
 
         let start = Instant::now();
-        let external_urls = resolve_external_urls(
-            &external_packages,
-            &args.r_lib_paths,
-            Some(&cache_dir),
-        )?;
+        let external_urls =
+            resolve_external_urls(&external_packages, &args.r_lib_paths, Some(&cache_dir))?;
         run_single_benchmark(&package, &output_dir, 1, Some(&external_urls))?;
         let cold_cache_time = start.elapsed();
-        println!("{:<45} {:>7.2}s (includes HTTP fetches)", "Jobs: 1 (cold cache)", cold_cache_time.as_secs_f64());
+        println!(
+            "{:<45} {:>7.2}s (includes HTTP fetches)",
+            "Jobs: 1 (cold cache)",
+            cold_cache_time.as_secs_f64()
+        );
         println!();
 
         // Warm cache benchmark (re-resolve URLs from cache + convert)
@@ -115,7 +123,11 @@ fn main() -> Result<()> {
                 args.iterations,
             )?;
             let avg = average_duration(&times);
-            println!("{:<45} {:>7.2}s", format!("Jobs: {}", jobs), avg.as_secs_f64());
+            println!(
+                "{:<45} {:>7.2}s",
+                format!("Jobs: {}", jobs),
+                avg.as_secs_f64()
+            );
         }
         println!();
     }

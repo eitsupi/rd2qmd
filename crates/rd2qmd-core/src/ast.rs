@@ -64,7 +64,7 @@ pub enum SectionTag {
 
 impl SectionTag {
     /// Parse a section tag from a string
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s.to_lowercase().as_str() {
             "name" => Self::Name,
             "title" => Self::Title,
@@ -133,10 +133,16 @@ pub enum RdNode {
     Verbatim(String),
 
     /// Custom section with title
-    Section { title: Vec<RdNode>, content: Vec<RdNode> },
+    Section {
+        title: Vec<RdNode>,
+        content: Vec<RdNode>,
+    },
 
     /// Subsection within a section
-    Subsection { title: Vec<RdNode>, content: Vec<RdNode> },
+    Subsection {
+        title: Vec<RdNode>,
+        content: Vec<RdNode>,
+    },
 
     /// Itemized (bullet) list
     Itemize(Vec<RdNode>),
@@ -363,11 +369,11 @@ mod tests {
 
     #[test]
     fn test_section_tag_from_str() {
-        assert_eq!(SectionTag::from_str("name"), SectionTag::Name);
-        assert_eq!(SectionTag::from_str("NAME"), SectionTag::Name);
-        assert_eq!(SectionTag::from_str("description"), SectionTag::Description);
+        assert_eq!(SectionTag::parse("name"), SectionTag::Name);
+        assert_eq!(SectionTag::parse("NAME"), SectionTag::Name);
+        assert_eq!(SectionTag::parse("description"), SectionTag::Description);
         assert_eq!(
-            SectionTag::from_str("custom"),
+            SectionTag::parse("custom"),
             SectionTag::Unknown("custom".to_string())
         );
     }

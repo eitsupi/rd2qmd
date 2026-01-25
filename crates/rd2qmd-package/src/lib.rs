@@ -16,17 +16,14 @@ pub mod external_links;
 
 #[cfg(feature = "external-links")]
 pub use external_links::{
-    FallbackReason, PackageResolveResult,
-    PackageUrlResolver, PackageUrlResolverOptions,
+    FallbackReason, PackageResolveResult, PackageUrlResolver, PackageUrlResolverOptions,
     collect_external_packages,
 };
 
 use rayon::prelude::*;
 use rd2qmd_core::{
-    parse, rd_to_mdast_with_options, mdast_to_qmd,
-    ConverterOptions, WriterOptions,
-    writer::Frontmatter,
-    SectionTag, RdNode,
+    ConverterOptions, RdNode, SectionTag, WriterOptions, mdast_to_qmd, parse,
+    rd_to_mdast_with_options, writer::Frontmatter,
 };
 use std::collections::HashMap;
 use std::fs;
@@ -144,7 +141,10 @@ pub struct ConvertResult {
 ///
 /// This function converts all Rd files in the package, using the alias index
 /// to resolve internal links correctly.
-pub fn convert_package(package: &RdPackage, options: &PackageConvertOptions) -> Result<ConvertResult> {
+pub fn convert_package(
+    package: &RdPackage,
+    options: &PackageConvertOptions,
+) -> Result<ConvertResult> {
     // Configure thread pool if specified
     if let Some(n) = options.parallel_jobs {
         rayon::ThreadPoolBuilder::new()
@@ -160,9 +160,7 @@ pub fn convert_package(package: &RdPackage, options: &PackageConvertOptions) -> 
     let results: Vec<_> = package
         .files
         .par_iter()
-        .map(|file| {
-            convert_single_file(file, package, options)
-        })
+        .map(|file| convert_single_file(file, package, options))
         .collect();
 
     // Collect results
@@ -250,7 +248,8 @@ fn convert_single_file(
 
         // Determine output path
         let relative = input.strip_prefix(&package.root).unwrap_or(input);
-        let output_path = options.output_dir
+        let output_path = options
+            .output_dir
             .join(relative)
             .with_extension(&options.output_extension);
 
@@ -277,11 +276,10 @@ fn collect_rd_files(dir: &Path, recursive: bool) -> Result<Vec<PathBuf>> {
         let path = entry.path();
 
         if path.is_file() {
-            if let Some(ext) = path.extension() {
-                if ext.eq_ignore_ascii_case("rd") {
+            if let Some(ext) = path.extension()
+                && ext.eq_ignore_ascii_case("rd") {
                     files.push(path);
                 }
-            }
         } else if path.is_dir() && recursive {
             files.extend(collect_rd_files(&path, recursive)?);
         }

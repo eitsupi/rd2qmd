@@ -77,7 +77,7 @@ impl Parser {
             return self.parse_custom_section();
         }
 
-        let tag = SectionTag::from_str(&name);
+        let tag = SectionTag::parse(&name);
 
         // Parse section content in braces
         self.skip_whitespace();
@@ -397,15 +397,14 @@ impl Parser {
                 // Look for \item
                 let pos = self.pos;
                 self.advance(); // consume backslash
-                if let TokenKind::Text(name) = self.peek_kind() {
-                    if name == "item" {
+                if let TokenKind::Text(name) = self.peek_kind()
+                    && name == "item" {
                         self.advance(); // consume "item"
                         if let Some(item) = self.parse_item()? {
                             items.push(item);
                         }
                         continue;
                     }
-                }
                 // Not an item, restore position
                 self.pos = pos;
             }
@@ -445,13 +444,11 @@ impl Parser {
             if self.check(&TokenKind::Backslash) {
                 // Peek ahead to check for \item
                 let next_pos = self.pos + 1;
-                if next_pos < self.tokens.len() {
-                    if let TokenKind::Text(name) = &self.tokens[next_pos].kind {
-                        if name == "item" {
+                if next_pos < self.tokens.len()
+                    && let TokenKind::Text(name) = &self.tokens[next_pos].kind
+                        && name == "item" {
                             break;
                         }
-                    }
-                }
             }
 
             match self.peek_kind() {
@@ -500,8 +497,8 @@ impl Parser {
             if self.check(&TokenKind::Backslash) {
                 let pos = self.pos;
                 self.advance();
-                if let TokenKind::Text(name) = self.peek_kind() {
-                    if name == "item" {
+                if let TokenKind::Text(name) = self.peek_kind()
+                    && name == "item" {
                         self.advance();
                         self.skip_whitespace();
                         // \item{term}{description}
@@ -512,7 +509,6 @@ impl Parser {
                         self.skip_whitespace_and_newlines();
                         continue;
                     }
-                }
                 self.pos = pos;
             }
             self.advance();
@@ -634,10 +630,9 @@ impl Parser {
         let topic_or_text = self.parse_braced_content()?;
 
         let (package, topic, text) = if let Some(opt) = opt_arg {
-            if opt.starts_with('=') {
+            if let Some(dest) = opt.strip_prefix('=') {
                 // \link[=dest]{text} form
-                let dest = opt[1..].to_string();
-                (None, dest, Some(topic_or_text))
+                (None, dest.to_string(), Some(topic_or_text))
             } else {
                 // \link[pkg]{topic} form
                 let topic = topic_or_text

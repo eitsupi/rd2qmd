@@ -11,8 +11,7 @@ use rd2qmd_package::{PackageConvertOptions, RdPackage, convert_package};
 
 #[cfg(feature = "external-links")]
 use rd2qmd_package::{
-    FallbackReason, PackageUrlResolver, PackageUrlResolverOptions,
-    collect_external_packages,
+    FallbackReason, PackageUrlResolver, PackageUrlResolverOptions, collect_external_packages,
 };
 
 /// Options for external package link resolution
@@ -81,7 +80,11 @@ struct Cli {
 
     /// URL pattern for unresolved links (fallback for base R documentation)
     /// Use {topic} as placeholder for the topic name.
-    #[arg(long, value_name = "URL_PATTERN", default_value = "https://rdrr.io/r/base/{topic}.html")]
+    #[arg(
+        long,
+        value_name = "URL_PATTERN",
+        default_value = "https://rdrr.io/r/base/{topic}.html"
+    )]
     unresolved_link_url: String,
 
     /// Disable fallback URL for unresolved links
@@ -106,7 +109,11 @@ struct Cli {
     /// Fallback URL pattern for external packages without pkgdown sites
     /// Use {package} and {topic} as placeholders
     #[cfg(feature = "external-links")]
-    #[arg(long, value_name = "URL_PATTERN", default_value = "https://rdrr.io/pkg/{package}/man/{topic}.html")]
+    #[arg(
+        long,
+        value_name = "URL_PATTERN",
+        default_value = "https://rdrr.io/pkg/{package}/man/{topic}.html"
+    )]
     external_package_fallback: String,
 
     /// Verbose output
@@ -134,7 +141,9 @@ fn main() -> Result<()> {
         OutputFormat::Qmd => "qmd",
         OutputFormat::Md => "md",
     };
-    let quarto_code_blocks = cli.quarto_code_blocks.unwrap_or(cli.format == OutputFormat::Qmd);
+    let quarto_code_blocks = cli
+        .quarto_code_blocks
+        .unwrap_or(cli.format == OutputFormat::Qmd);
 
     if cli.input.is_file() {
         // Single file conversion (no alias resolution)
@@ -215,7 +224,15 @@ fn convert_single_file(
     let content = fs::read_to_string(input)
         .with_context(|| format!("Failed to read: {}", input.display()))?;
 
-    let qmd = convert_rd_to_qmd(&content, output_extension, use_frontmatter, use_pagetitle, quarto_code_blocks, None, unresolved_link_url)?;
+    let qmd = convert_rd_to_qmd(
+        &content,
+        output_extension,
+        use_frontmatter,
+        use_pagetitle,
+        quarto_code_blocks,
+        None,
+        unresolved_link_url,
+    )?;
 
     if let Some(parent) = output_path.parent() {
         fs::create_dir_all(parent)
@@ -248,7 +265,9 @@ fn convert_directory(
     quiet: bool,
     jobs: Option<usize>,
 ) -> Result<()> {
-    let output_dir = output.map(|p| p.to_path_buf()).unwrap_or_else(|| input.to_path_buf());
+    let output_dir = output
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| input.to_path_buf());
 
     // Load package with alias index
     if verbose {
@@ -267,7 +286,10 @@ fn convert_directory(
 
     if verbose {
         eprintln!("Found {} .Rd files", package.files.len());
-        eprintln!("Built alias index with {} entries", package.alias_index.len());
+        eprintln!(
+            "Built alias index with {} entries",
+            package.alias_index.len()
+        );
     }
 
     // Resolve external package URLs if enabled
@@ -284,7 +306,11 @@ fn convert_directory(
             }
             let external_packages = collect_external_packages(&package);
             if verbose {
-                eprintln!("Found {} external packages: {:?}", external_packages.len(), external_packages);
+                eprintln!(
+                    "Found {} external packages: {:?}",
+                    external_packages.len(),
+                    external_packages
+                );
             }
 
             if external_packages.is_empty() {
@@ -307,11 +333,15 @@ fn convert_directory(
                 // Display fallback warnings
                 if !quiet && !resolve_result.fallbacks.is_empty() {
                     // Group fallbacks by reason
-                    let not_installed: Vec<_> = resolve_result.fallbacks.iter()
+                    let not_installed: Vec<_> = resolve_result
+                        .fallbacks
+                        .iter()
                         .filter(|(_, r)| **r == FallbackReason::NotInstalled)
                         .map(|(pkg, _)| pkg.as_str())
                         .collect();
-                    let no_pkgdown: Vec<_> = resolve_result.fallbacks.iter()
+                    let no_pkgdown: Vec<_> = resolve_result
+                        .fallbacks
+                        .iter()
                         .filter(|(_, r)| **r == FallbackReason::NoPkgdownSite)
                         .map(|(pkg, _)| pkg.as_str())
                         .collect();
@@ -319,10 +349,16 @@ fn convert_directory(
                     if verbose {
                         // Detailed warnings with package names
                         for pkg in &not_installed {
-                            eprintln!("Warning: package '{}' is not installed, using fallback URL", pkg);
+                            eprintln!(
+                                "Warning: package '{}' is not installed, using fallback URL",
+                                pkg
+                            );
                         }
                         for pkg in &no_pkgdown {
-                            eprintln!("Warning: package '{}' has no pkgdown site, using fallback URL", pkg);
+                            eprintln!(
+                                "Warning: package '{}' has no pkgdown site, using fallback URL",
+                                pkg
+                            );
                         }
                     } else {
                         // Summary warnings
@@ -372,8 +408,8 @@ fn convert_directory(
     };
 
     // Convert package
-    let result = convert_package(&package, &options)
-        .with_context(|| "Package conversion failed")?;
+    let result =
+        convert_package(&package, &options).with_context(|| "Package conversion failed")?;
 
     // Print output files
     if !quiet {
