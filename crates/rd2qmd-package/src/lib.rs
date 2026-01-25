@@ -109,6 +109,13 @@ pub struct PackageConvertOptions {
     /// Used for resolving `\link[pkg]{topic}` patterns to actual URLs.
     /// Example: {"dplyr" -> "https://dplyr.tidyverse.org/reference"}
     pub external_package_urls: Option<HashMap<String, String>>,
+    /// Make \dontrun{} example code executable (default: false)
+    /// Matches pkgdown semantics: \dontrun{} means "never run this code"
+    pub exec_dontrun: bool,
+    /// Make \donttest{} example code executable (default: true)
+    /// Matches pkgdown semantics: \donttest{} means "don't run during testing"
+    /// but the code should normally be executable
+    pub exec_donttest: bool,
 }
 
 impl Default for PackageConvertOptions {
@@ -122,6 +129,8 @@ impl Default for PackageConvertOptions {
             parallel_jobs: None,
             unresolved_link_url: None,
             external_package_urls: None,
+            exec_dontrun: false,
+            exec_donttest: true, // pkgdown-compatible: \donttest{} is executable by default
         }
     }
 }
@@ -206,6 +215,8 @@ fn convert_single_file(
             alias_map: Some(package.alias_index.clone()),
             unresolved_link_url: options.unresolved_link_url.clone(),
             external_package_urls: options.external_package_urls.clone(),
+            exec_dontrun: options.exec_dontrun,
+            exec_donttest: options.exec_donttest,
         };
 
         // Convert to mdast
@@ -277,9 +288,10 @@ fn collect_rd_files(dir: &Path, recursive: bool) -> Result<Vec<PathBuf>> {
 
         if path.is_file() {
             if let Some(ext) = path.extension()
-                && ext.eq_ignore_ascii_case("rd") {
-                    files.push(path);
-                }
+                && ext.eq_ignore_ascii_case("rd")
+            {
+                files.push(path);
+            }
         } else if path.is_dir() && recursive {
             files.extend(collect_rd_files(&path, recursive)?);
         }

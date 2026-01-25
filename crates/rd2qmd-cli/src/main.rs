@@ -123,6 +123,14 @@ struct Cli {
     /// Quiet mode - only show errors
     #[arg(short, long)]
     quiet: bool,
+
+    /// Make \dontrun{} example code executable ({r} blocks)
+    #[arg(long)]
+    exec_dontrun: bool,
+
+    /// Don't make \donttest{} example code executable (by default it is executable)
+    #[arg(long)]
+    no_exec_donttest: bool,
 }
 
 fn main() -> Result<()> {
@@ -155,6 +163,8 @@ fn main() -> Result<()> {
             use_pagetitle,
             quarto_code_blocks,
             unresolved_link_url.as_deref(),
+            cli.exec_dontrun,
+            !cli.no_exec_donttest,
             cli.verbose,
             cli.quiet,
         )?;
@@ -184,6 +194,8 @@ fn main() -> Result<()> {
             quarto_code_blocks,
             unresolved_link_url,
             external_link_options,
+            cli.exec_dontrun,
+            !cli.no_exec_donttest,
             cli.verbose,
             cli.quiet,
             cli.jobs,
@@ -205,6 +217,8 @@ fn convert_single_file(
     use_pagetitle: bool,
     quarto_code_blocks: bool,
     unresolved_link_url: Option<&str>,
+    exec_dontrun: bool,
+    exec_donttest: bool,
     verbose: bool,
     quiet: bool,
 ) -> Result<()> {
@@ -232,6 +246,8 @@ fn convert_single_file(
         quarto_code_blocks,
         None,
         unresolved_link_url,
+        exec_dontrun,
+        exec_donttest,
     )?;
 
     if let Some(parent) = output_path.parent() {
@@ -261,6 +277,8 @@ fn convert_directory(
     quarto_code_blocks: bool,
     unresolved_link_url: Option<String>,
     external_link_options: Option<ExternalLinkOptions>,
+    exec_dontrun: bool,
+    exec_donttest: bool,
     verbose: bool,
     quiet: bool,
     jobs: Option<usize>,
@@ -405,6 +423,8 @@ fn convert_directory(
         parallel_jobs: jobs,
         unresolved_link_url,
         external_package_urls,
+        exec_dontrun,
+        exec_donttest,
     };
 
     // Convert package
@@ -448,6 +468,8 @@ fn convert_rd_to_qmd(
     quarto_code_blocks: bool,
     alias_map: Option<std::collections::HashMap<String, String>>,
     unresolved_link_url: Option<&str>,
+    exec_dontrun: bool,
+    exec_donttest: bool,
 ) -> Result<String> {
     let doc = parse(rd_content).map_err(|e| anyhow::anyhow!("Parse error: {}", e))?;
 
@@ -456,6 +478,8 @@ fn convert_rd_to_qmd(
         alias_map,
         unresolved_link_url: unresolved_link_url.map(|s| s.to_string()),
         external_package_urls: None, // Single file mode doesn't resolve external packages
+        exec_dontrun,
+        exec_donttest,
     };
     let mdast = rd_to_mdast_with_options(&doc, &converter_options);
 

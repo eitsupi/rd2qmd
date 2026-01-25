@@ -93,6 +93,21 @@ These options require the `external-links` feature (enabled by default):
 
 You can get your R library paths by running `.libPaths()` in R:
 
+### Example control options
+
+These options control how `\dontrun{}` and `\donttest{}` example code is handled:
+
+| Option | Description |
+|--------|-------------|
+| `--exec-dontrun` | Make `\dontrun{}` code executable (`{r}` blocks) |
+| `--no-exec-donttest` | Make `\donttest{}` code non-executable (` ```r ` blocks) |
+
+Default behavior (pkgdown-compatible):
+- `\dontrun{}` → non-executable (` ```r `), because it means "never run this code"
+- `\donttest{}` → executable (`{r}`), because it means "don't run during testing" but should run normally
+
+Use `--exec-dontrun` to make `\dontrun{}` code executable, or `--no-exec-donttest` to make `\donttest{}` code non-executable.
+
 ```r
 .libPaths()
 #> [1] "/home/user/R/x86_64-pc-linux-gnu-library/4.4"
@@ -172,7 +187,9 @@ This project is built on:
 
 This project was inspired by:
 
-- [pkgdown](https://pkgdown.r-lib.org/) - The standard tool for building R package documentation websites. rd2qmd's external link resolution follows pkgdown's URL conventions.
+- [pkgdown](https://pkgdown.r-lib.org/) - The standard tool for building R package documentation websites. rd2qmd follows pkgdown's URL conventions for external links and its semantics for `\dontrun{}`/`\donttest{}` example handling.
+- [altdoc](https://altdoc.etiennebacher.com/) - A lightweight alternative to pkgdown supporting Quarto, Docsify, Docute, and MkDocs. Converts Rd to qmd via R's `tools::Rd2HTML()`.
+- [pkgsite](https://github.com/edgararuiz/pkgsite) - A Quarto-based R package documentation generator that converts Rd files to Quarto documents.
 - [downlit](https://downlit.r-lib.org/) - Syntax highlighting and automatic linking for R code, used by pkgdown.
 - [rd2md](https://github.com/coatless-rpkg/rd2md) - A Python-based Rd to Markdown converter.
 - [rd2markdown](https://github.com/Genentech/rd2markdown) - An R package for Rd to Markdown conversion.

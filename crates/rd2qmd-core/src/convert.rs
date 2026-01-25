@@ -10,7 +10,7 @@ use crate::mdast::{
 use std::collections::HashMap;
 
 /// Options for Rd to mdast conversion
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct ConverterOptions {
     /// File extension for internal links (e.g., "qmd", "md", "html")
     /// If None, internal links become inline code instead of hyperlinks
@@ -28,6 +28,26 @@ pub struct ConverterOptions {
     /// Example: "dplyr" -> "https://dplyr.tidyverse.org/reference"
     /// The full URL is constructed as "{base_url}/{topic}.html"
     pub external_package_urls: Option<HashMap<String, String>>,
+    /// Make \dontrun{} example code executable (default: false, shown as non-executable)
+    /// This matches pkgdown's semantics: \dontrun{} means "never run this code"
+    pub exec_dontrun: bool,
+    /// Make \donttest{} example code executable (default: true, shown as executable)
+    /// This matches pkgdown's semantics: \donttest{} means "don't run during testing"
+    /// but the code should normally be executable
+    pub exec_donttest: bool,
+}
+
+impl Default for ConverterOptions {
+    fn default() -> Self {
+        Self {
+            link_extension: None,
+            alias_map: None,
+            unresolved_link_url: None,
+            external_package_urls: None,
+            exec_dontrun: false,
+            exec_donttest: true, // pkgdown-compatible: \donttest{} is executable by default
+        }
+    }
 }
 
 /// Convert an Rd document to mdast
@@ -134,13 +154,8 @@ impl Converter {
                 nodes.push(Node::code(Some("r".to_string()), code.trim()));
             }
             SectionTag::Examples => {
-                // Examples code block - executable in Quarto
-                let code = self.extract_text(&section.content);
-                nodes.push(Node::code_with_meta(
-                    Some("r".to_string()),
-                    Some("executable".to_string()),
-                    code.trim(),
-                ));
+                // Examples section - may contain regular code, \dontrun{}, and \donttest{}
+                nodes.extend(self.convert_examples(&section.content));
             }
             SectionTag::Arguments => {
                 nodes.extend(self.convert_arguments(&section.content));
@@ -153,20 +168,102 @@ impl Converter {
         nodes
     }
 
+    /// Convert examples section content, handling \dontrun{} and \donttest{} based on mode
+    fn convert_examples(&self, content: &[RdNode]) -> Vec<Node> {
+        let mut result = Vec::new();
+        let mut current_code = String::new();
+        let mut has_executable = false;
+
+        // Helper to flush accumulated code as a code block
+        let flush_code = |code: &mut String, result: &mut Vec<Node>, executable: bool| {
+            let trimmed = code.trim();
+            if !trimmed.is_empty() {
+                if executable {
+                    result.push(Node::code_with_meta(
+                        Some("r".to_string()),
+                        Some("executable".to_string()),
+                        trimmed,
+                    ));
+                } else {
+                    result.push(Node::code(Some("r".to_string()), trimmed));
+                }
+            }
+            code.clear();
+        };
+
+        for node in content {
+            match node {
+                RdNode::DontRun(children) => {
+                    // Flush any accumulated regular code first
+                    flush_code(&mut current_code, &mut result, true);
+                    has_executable = false;
+
+                    let code = self.extract_text(children);
+                    let trimmed = code.trim();
+                    if !trimmed.is_empty() {
+                        if self.options.exec_dontrun {
+                            result.push(Node::code_with_meta(
+                                Some("r".to_string()),
+                                Some("executable".to_string()),
+                                trimmed,
+                            ));
+                        } else {
+                            result.push(Node::code(Some("r".to_string()), trimmed));
+                        }
+                    }
+                }
+                RdNode::DontTest(children) => {
+                    // Flush any accumulated regular code first
+                    flush_code(&mut current_code, &mut result, true);
+                    has_executable = false;
+
+                    let code = self.extract_text(children);
+                    let trimmed = code.trim();
+                    if !trimmed.is_empty() {
+                        if self.options.exec_donttest {
+                            result.push(Node::code_with_meta(
+                                Some("r".to_string()),
+                                Some("executable".to_string()),
+                                trimmed,
+                            ));
+                        } else {
+                            result.push(Node::code(Some("r".to_string()), trimmed));
+                        }
+                    }
+                }
+                _ => {
+                    // Regular content - accumulate
+                    has_executable = true;
+                    current_code.push_str(&self.extract_text(std::slice::from_ref(node)));
+                }
+            }
+        }
+
+        // Flush remaining code
+        if has_executable {
+            flush_code(&mut current_code, &mut result, true);
+        } else if !current_code.trim().is_empty() {
+            flush_code(&mut current_code, &mut result, false);
+        }
+
+        result
+    }
+
     fn convert_arguments(&mut self, content: &[RdNode]) -> Vec<Node> {
         let mut items = Vec::new();
 
         for node in content {
             if let RdNode::Item { label, content } = node
-                && let Some(label_nodes) = label {
-                    let term = self.convert_inline_nodes(label_nodes);
-                    let desc = self.convert_content(content);
+                && let Some(label_nodes) = label
+            {
+                let term = self.convert_inline_nodes(label_nodes);
+                let desc = self.convert_content(content);
 
-                    items.push(Node::DefinitionTerm(DefinitionTerm { children: term }));
-                    items.push(Node::DefinitionDescription(DefinitionDescription {
-                        children: desc,
-                    }));
-                }
+                items.push(Node::DefinitionTerm(DefinitionTerm { children: term }));
+                items.push(Node::DefinitionDescription(DefinitionDescription {
+                    children: desc,
+                }));
+            }
         }
 
         if items.is_empty() {
@@ -269,10 +366,11 @@ impl Converter {
                 // Check if \code contains a single \link - if so, preserve the link
                 // This handles patterns like \code{\link[=alias]{text}}
                 if children.len() == 1
-                    && let RdNode::Link { .. } = &children[0] {
-                        // Delegate to link conversion which already wraps text in inline code
-                        return self.convert_inline_node(&children[0]);
-                    }
+                    && let RdNode::Link { .. } = &children[0]
+                {
+                    // Delegate to link conversion which already wraps text in inline code
+                    return self.convert_inline_node(&children[0]);
+                }
                 let text = self.extract_text(children);
                 Some(Node::inline_code(text))
             }
@@ -933,6 +1031,8 @@ mod tests {
             alias_map: None,
             unresolved_link_url: None,
             external_package_urls: None,
+            exec_dontrun: false,
+            exec_donttest: false,
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
 
@@ -965,6 +1065,8 @@ mod tests {
             alias_map: None,
             unresolved_link_url: Some("https://rdrr.io/r/base/{topic}.html".to_string()),
             external_package_urls: None,
+            exec_dontrun: false,
+            exec_donttest: false,
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
 
@@ -1022,6 +1124,8 @@ mod tests {
             alias_map: None,
             unresolved_link_url: None,
             external_package_urls: None,
+            exec_dontrun: false,
+            exec_donttest: false,
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
 
@@ -1062,6 +1166,8 @@ mod tests {
             alias_map: None,
             unresolved_link_url: None,
             external_package_urls: Some(external_urls),
+            exec_dontrun: false,
+            exec_donttest: false,
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
 
@@ -1103,6 +1209,8 @@ mod tests {
             alias_map: None,
             unresolved_link_url: None,
             external_package_urls: Some(external_urls),
+            exec_dontrun: false,
+            exec_donttest: false,
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
 
@@ -1141,6 +1249,8 @@ mod tests {
             alias_map: Some(alias_map),
             unresolved_link_url: None,
             external_package_urls: None,
+            exec_dontrun: false,
+            exec_donttest: false,
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
 
@@ -1230,6 +1340,8 @@ mod tests {
             alias_map: Some(alias_map),
             unresolved_link_url: None,
             external_package_urls: None,
+            exec_dontrun: false,
+            exec_donttest: false,
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
 
@@ -1778,6 +1890,185 @@ arrange(.data, ...)
             code.contains("summary(object, ...)"),
             "Expected 'summary(object, ...)', got: {}",
             code
+        );
+    }
+
+    #[test]
+    fn test_dontrun_default_not_executable() {
+        // By default, dontrun code is shown but not executable
+        let rd = r#"
+\name{test}
+\title{Test}
+\examples{
+regular_code()
+\dontrun{
+  slow_code()
+}
+}
+"#;
+        let doc = parse(rd).unwrap();
+        let options = ConverterOptions::default();
+        let mdast = rd_to_mdast_with_options(&doc, &options);
+
+        // Should have two code blocks
+        let code_blocks: Vec<_> = mdast
+            .children
+            .iter()
+            .filter_map(|n| {
+                if let Node::Code(c) = n {
+                    Some(c.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // First block should be executable (meta = "executable")
+        assert!(code_blocks.len() >= 2, "Expected at least 2 code blocks");
+        assert_eq!(
+            code_blocks[0].meta.as_deref(),
+            Some("executable"),
+            "First block should be executable"
+        );
+        // Second block (dontrun) should NOT be executable
+        assert_ne!(
+            code_blocks[1].meta.as_deref(),
+            Some("executable"),
+            "Dontrun block should not be executable by default"
+        );
+        assert!(
+            code_blocks[1].value.contains("slow_code()"),
+            "Dontrun block should contain slow_code()"
+        );
+    }
+
+    #[test]
+    fn test_exec_dontrun_makes_executable() {
+        // With exec_dontrun=true, dontrun code becomes executable
+        let rd = r#"
+\name{test}
+\title{Test}
+\examples{
+\dontrun{
+  slow_code()
+}
+}
+"#;
+        let doc = parse(rd).unwrap();
+        let options = ConverterOptions {
+            exec_dontrun: true,
+            ..Default::default()
+        };
+        let mdast = rd_to_mdast_with_options(&doc, &options);
+
+        // Should have one executable code block
+        let code_blocks: Vec<_> = mdast
+            .children
+            .iter()
+            .filter_map(|n| {
+                if let Node::Code(c) = n {
+                    Some(c.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        assert!(!code_blocks.is_empty(), "Expected at least one code block");
+        assert_eq!(
+            code_blocks[0].meta.as_deref(),
+            Some("executable"),
+            "Dontrun block with exec_dontrun=true should be executable"
+        );
+        assert!(
+            code_blocks[0].value.contains("slow_code()"),
+            "Block should contain slow_code()"
+        );
+    }
+
+    #[test]
+    fn test_donttest_default_executable() {
+        // By default (pkgdown-compatible), donttest code IS executable
+        // because \donttest{} means "don't run during testing" but should run normally
+        let rd = r#"
+\name{test}
+\title{Test}
+\examples{
+\donttest{
+  test_code()
+}
+}
+"#;
+        let doc = parse(rd).unwrap();
+        let options = ConverterOptions::default();
+        let mdast = rd_to_mdast_with_options(&doc, &options);
+
+        // Should have one executable code block
+        let code_blocks: Vec<_> = mdast
+            .children
+            .iter()
+            .filter_map(|n| {
+                if let Node::Code(c) = n {
+                    Some(c.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        assert!(!code_blocks.is_empty(), "Expected at least one code block");
+        assert_eq!(
+            code_blocks[0].meta.as_deref(),
+            Some("executable"),
+            "Donttest block should be executable by default (pkgdown semantics)"
+        );
+        assert!(
+            code_blocks[0].value.contains("test_code()"),
+            "Block should contain test_code()"
+        );
+    }
+
+    #[test]
+    fn test_no_exec_donttest_makes_not_executable() {
+        // With exec_donttest=false, donttest code is shown but not executable
+        let rd = r#"
+\name{test}
+\title{Test}
+\examples{
+\donttest{
+  test_code()
+}
+}
+"#;
+        let doc = parse(rd).unwrap();
+        let options = ConverterOptions {
+            exec_donttest: false,
+            ..Default::default()
+        };
+        let mdast = rd_to_mdast_with_options(&doc, &options);
+
+        // Should have one non-executable code block
+        let code_blocks: Vec<_> = mdast
+            .children
+            .iter()
+            .filter_map(|n| {
+                if let Node::Code(c) = n {
+                    Some(c.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        assert!(!code_blocks.is_empty(), "Expected at least one code block");
+        assert_ne!(
+            code_blocks[0].meta.as_deref(),
+            Some("executable"),
+            "Donttest block with exec_donttest=false should NOT be executable"
+        );
+        assert!(
+            code_blocks[0].value.contains("test_code()"),
+            "Block should contain test_code()"
         );
     }
 }

@@ -259,6 +259,10 @@ impl Parser {
             // Figure
             "figure" => self.parse_figure(opt_arg),
 
+            // Example control macros
+            "dontrun" => self.parse_inline_nodes().map(|n| Some(RdNode::DontRun(n))),
+            "donttest" => self.parse_inline_nodes().map(|n| Some(RdNode::DontTest(n))),
+
             // Unknown macro - store generically
             _ => self.parse_generic_macro(&name),
         }
@@ -398,13 +402,14 @@ impl Parser {
                 let pos = self.pos;
                 self.advance(); // consume backslash
                 if let TokenKind::Text(name) = self.peek_kind()
-                    && name == "item" {
-                        self.advance(); // consume "item"
-                        if let Some(item) = self.parse_item()? {
-                            items.push(item);
-                        }
-                        continue;
+                    && name == "item"
+                {
+                    self.advance(); // consume "item"
+                    if let Some(item) = self.parse_item()? {
+                        items.push(item);
                     }
+                    continue;
+                }
                 // Not an item, restore position
                 self.pos = pos;
             }
@@ -446,9 +451,10 @@ impl Parser {
                 let next_pos = self.pos + 1;
                 if next_pos < self.tokens.len()
                     && let TokenKind::Text(name) = &self.tokens[next_pos].kind
-                        && name == "item" {
-                            break;
-                        }
+                    && name == "item"
+                {
+                    break;
+                }
             }
 
             match self.peek_kind() {
@@ -498,17 +504,18 @@ impl Parser {
                 let pos = self.pos;
                 self.advance();
                 if let TokenKind::Text(name) = self.peek_kind()
-                    && name == "item" {
-                        self.advance();
-                        self.skip_whitespace();
-                        // \item{term}{description}
-                        let term = self.parse_braced_content()?;
-                        self.skip_whitespace();
-                        let description = self.parse_braced_content()?;
-                        items.push(DescribeItem { term, description });
-                        self.skip_whitespace_and_newlines();
-                        continue;
-                    }
+                    && name == "item"
+                {
+                    self.advance();
+                    self.skip_whitespace();
+                    // \item{term}{description}
+                    let term = self.parse_braced_content()?;
+                    self.skip_whitespace();
+                    let description = self.parse_braced_content()?;
+                    items.push(DescribeItem { term, description });
+                    self.skip_whitespace_and_newlines();
+                    continue;
+                }
                 self.pos = pos;
             }
             self.advance();

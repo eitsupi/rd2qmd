@@ -107,9 +107,10 @@ impl PackageUrlResolver {
         // Check for local pkgdown.yml first
         let local_pkgdown = pkg_dir.join("pkgdown.yml");
         if local_pkgdown.exists()
-            && let Some(url) = self.parse_pkgdown_yml(&local_pkgdown) {
-                return Some(url);
-            }
+            && let Some(url) = self.parse_pkgdown_yml(&local_pkgdown)
+        {
+            return Some(url);
+        }
 
         // Read DESCRIPTION to get URL
         let desc_path = pkg_dir.join("DESCRIPTION");
@@ -177,11 +178,12 @@ impl PackageUrlResolver {
         if let Some(cache_dir) = &self.options.cache_dir {
             let cache_file = self.cache_path_for_url(cache_dir, &pkgdown_url);
             if cache_file.exists()
-                && let Ok(content) = fs::read_to_string(&cache_file) {
-                    return self
-                        .extract_reference_url_from_yaml(&content)
-                        .or_else(|| Some(format!("{}/reference", base_url.trim_end_matches('/'))));
-                }
+                && let Ok(content) = fs::read_to_string(&cache_file)
+            {
+                return self
+                    .extract_reference_url_from_yaml(&content)
+                    .or_else(|| Some(format!("{}/reference", base_url.trim_end_matches('/'))));
+            }
         }
 
         // Fetch from network
@@ -218,15 +220,17 @@ impl PackageUrlResolver {
         // Try urls.reference first
         if let Some(urls) = doc.as_mapping_get("urls")
             && let Some(reference) = urls.as_mapping_get("reference")
-                && let Some(s) = reference.as_str() {
-                    return Some(s.to_string());
-                }
+            && let Some(s) = reference.as_str()
+        {
+            return Some(s.to_string());
+        }
 
         // Try url field and construct reference path
         if let Some(url_node) = doc.as_mapping_get("url")
-            && let Some(url) = url_node.as_str() {
-                return Some(format!("{}/reference", url.trim_end_matches('/')));
-            }
+            && let Some(url) = url_node.as_str()
+        {
+            return Some(format!("{}/reference", url.trim_end_matches('/')));
+        }
 
         None
     }
@@ -294,9 +298,13 @@ impl PackageUrlResolver {
     pub fn topic_url(&mut self, package: &str, topic: &str) -> Option<String> {
         if let Some(base_url) = self.resolve(package) {
             Some(format!("{}/{}.html", base_url.trim_end_matches('/'), topic))
-        } else { self.options.fallback_url.as_ref().map(|pattern| pattern
+        } else {
+            self.options.fallback_url.as_ref().map(|pattern| {
+                pattern
                     .replace("{package}", package)
-                    .replace("{topic}", topic)) }
+                    .replace("{topic}", topic)
+            })
+        }
     }
 }
 
@@ -309,11 +317,12 @@ pub fn collect_external_packages(package: &RdPackage) -> HashSet<String> {
 
     for file in &package.files {
         if let Ok(content) = fs::read_to_string(file)
-            && let Ok(doc) = rd2qmd_core::parse(&content) {
-                for section in &doc.sections {
-                    collect_packages_from_nodes(&section.content, &mut packages);
-                }
+            && let Ok(doc) = rd2qmd_core::parse(&content)
+        {
+            for section in &doc.sections {
+                collect_packages_from_nodes(&section.content, &mut packages);
             }
+        }
     }
 
     packages

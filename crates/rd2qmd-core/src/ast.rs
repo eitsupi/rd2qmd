@@ -299,6 +299,14 @@ pub enum RdNode {
 
     /// Command line command (\command{})
     Command(String),
+
+    /// Don't run this code (\dontrun{})
+    /// Used in examples to mark code that should not be executed
+    DontRun(Vec<RdNode>),
+
+    /// Don't test this code (\donttest{})
+    /// Used in examples to mark code that should not be tested automatically
+    DontTest(Vec<RdNode>),
 }
 
 /// Description list item
