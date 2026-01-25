@@ -262,6 +262,14 @@ impl Converter {
         match node {
             RdNode::Text(s) => Some(Node::text(normalize_whitespace(s))),
             RdNode::Code(children) => {
+                // Check if \code contains a single \link - if so, preserve the link
+                // This handles patterns like \code{\link[=alias]{text}}
+                if children.len() == 1 {
+                    if let RdNode::Link { .. } = &children[0] {
+                        // Delegate to link conversion which already wraps text in inline code
+                        return self.convert_inline_node(&children[0]);
+                    }
+                }
                 let text = self.extract_text(children);
                 Some(Node::inline_code(text))
             }
@@ -763,6 +771,51 @@ mod tests {
         assert!(
             custom_pos.unwrap() < examples_pos.unwrap(),
             "Custom sections should come before Examples"
+        );
+    }
+
+    #[test]
+    fn test_code_wrapping_link_preserves_link() {
+        use std::collections::HashMap;
+
+        // Test \code{\link[=alias]{text}} pattern - link should be preserved
+        let doc =
+            parse("\\title{T}\n\\description{See \\code{\\link[=as_polars_series]{as_polars_series()}}}").unwrap();
+
+        let mut alias_map = HashMap::new();
+        alias_map.insert("as_polars_series".to_string(), "as_polars_series".to_string());
+
+        let options = ConverterOptions {
+            link_extension: Some("qmd".to_string()),
+            alias_map: Some(alias_map),
+            unresolved_link_url: None,
+        };
+        let mdast = rd_to_mdast_with_options(&doc, &options);
+
+        // Should have a link with inline code as link text
+        let has_link_with_code = mdast.children.iter().any(|n| {
+            if let Node::Paragraph(p) = n {
+                p.children.iter().any(|c| {
+                    if let Node::Link(l) = c {
+                        l.url == "as_polars_series.qmd"
+                            && l.children.iter().any(|child| {
+                                if let Node::InlineCode(ic) = child {
+                                    ic.value == "as_polars_series()"
+                                } else {
+                                    false
+                                }
+                            })
+                    } else {
+                        false
+                    }
+                })
+            } else {
+                false
+            }
+        });
+        assert!(
+            has_link_with_code,
+            "Expected \\code{{\\link[=alias]{{text}}}} to produce a link with inline code text"
         );
     }
 }
