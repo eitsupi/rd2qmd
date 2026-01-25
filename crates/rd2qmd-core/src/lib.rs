@@ -6,16 +6,6 @@
 //! - Rd AST to mdast conversion
 //! - mdast to Quarto Markdown output
 
-pub fn hello() -> &'static str {
-    "rd2qmd-core"
-}
+pub mod ast;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_hello() {
-        assert_eq!(hello(), "rd2qmd-core");
-    }
-}
+pub use ast::{RdDocument, RdNode, RdSection, SectionTag};

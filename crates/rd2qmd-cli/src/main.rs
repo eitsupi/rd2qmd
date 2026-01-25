@@ -22,7 +22,7 @@ struct Cli {
 
 fn main() {
     let cli = Cli::parse();
-    println!("rd2qmd: {}", rd2qmd_core::hello());
+    println!("rd2qmd v{}", env!("CARGO_PKG_VERSION"));
     println!("Input: {}", cli.input);
     if let Some(output) = &cli.output {
         println!("Output: {}", output);
