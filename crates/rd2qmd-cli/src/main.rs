@@ -23,6 +23,16 @@ struct ExternalLinkOptions {
     fallback_url: Option<String>,
 }
 
+/// Output format for markdown conversion
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, clap::ValueEnum)]
+enum OutputFormat {
+    /// Quarto Markdown (.qmd) - uses {r} code blocks for examples
+    #[default]
+    Qmd,
+    /// Standard Markdown (.md) - uses plain r code blocks
+    Md,
+}
+
 #[derive(Parser, Debug)]
 #[command(name = "rd2qmd")]
 #[command(about = "Convert Rd files to Quarto Markdown")]
@@ -30,6 +40,7 @@ struct ExternalLinkOptions {
 #[command(after_help = "Examples:
   rd2qmd file.Rd                    # Convert single file to file.qmd
   rd2qmd file.Rd -o output.qmd      # Convert to specific output file
+  rd2qmd file.Rd -f md              # Convert to standard Markdown (.md)
   rd2qmd man/ -o docs/              # Convert directory (with alias resolution)
   rd2qmd man/ -o docs/ -j4          # Use 4 parallel jobs")]
 struct Cli {
@@ -39,6 +50,10 @@ struct Cli {
     /// Output file or directory
     #[arg(short, long)]
     output: Option<PathBuf>,
+
+    /// Output format: qmd (Quarto) or md (standard Markdown)
+    #[arg(short, long, value_enum, default_value_t = OutputFormat::Qmd)]
+    format: OutputFormat,
 
     /// Number of parallel jobs (defaults to number of CPUs)
     #[arg(short, long)]
@@ -56,9 +71,9 @@ struct Cli {
     #[arg(long, conflicts_with = "frontmatter")]
     no_frontmatter: bool,
 
-    /// Use Quarto {r} code blocks instead of r
-    #[arg(long, default_value = "true")]
-    quarto_code_blocks: bool,
+    /// Use Quarto {r} code blocks instead of r (auto-set based on format)
+    #[arg(long)]
+    quarto_code_blocks: Option<bool>,
 
     /// URL pattern for unresolved links (fallback for base R documentation)
     /// Use {topic} as placeholder for the topic name.
@@ -109,13 +124,21 @@ fn main() -> Result<()> {
         Some(cli.unresolved_link_url.clone())
     };
 
+    // Determine output extension and quarto_code_blocks based on format
+    let output_extension = match cli.format {
+        OutputFormat::Qmd => "qmd",
+        OutputFormat::Md => "md",
+    };
+    let quarto_code_blocks = cli.quarto_code_blocks.unwrap_or(cli.format == OutputFormat::Qmd);
+
     if cli.input.is_file() {
         // Single file conversion (no alias resolution)
         convert_single_file(
             &cli.input,
             cli.output.as_deref(),
+            output_extension,
             use_frontmatter,
-            cli.quarto_code_blocks,
+            quarto_code_blocks,
             unresolved_link_url.as_deref(),
             cli.verbose,
             cli.quiet,
@@ -139,9 +162,10 @@ fn main() -> Result<()> {
         convert_directory(
             &cli.input,
             cli.output.as_deref(),
+            output_extension,
             cli.recursive,
             use_frontmatter,
-            cli.quarto_code_blocks,
+            quarto_code_blocks,
             unresolved_link_url,
             external_link_options,
             cli.verbose,
@@ -155,10 +179,11 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// Convert a single Rd file to QMD (without alias resolution)
+/// Convert a single Rd file (without alias resolution)
 fn convert_single_file(
     input: &Path,
     output: Option<&Path>,
+    output_extension: &str,
     use_frontmatter: bool,
     quarto_code_blocks: bool,
     unresolved_link_url: Option<&str>,
@@ -167,7 +192,7 @@ fn convert_single_file(
 ) -> Result<()> {
     let output_path = match output {
         Some(p) => p.to_path_buf(),
-        None => input.with_extension("qmd"),
+        None => input.with_extension(output_extension),
     };
 
     if verbose {
@@ -181,7 +206,7 @@ fn convert_single_file(
     let content = fs::read_to_string(input)
         .with_context(|| format!("Failed to read: {}", input.display()))?;
 
-    let qmd = convert_rd_to_qmd(&content, use_frontmatter, quarto_code_blocks, None, unresolved_link_url)?;
+    let qmd = convert_rd_to_qmd(&content, output_extension, use_frontmatter, quarto_code_blocks, None, unresolved_link_url)?;
 
     if let Some(parent) = output_path.parent() {
         fs::create_dir_all(parent)
@@ -203,6 +228,7 @@ fn convert_single_file(
 fn convert_directory(
     input: &Path,
     output: Option<&Path>,
+    output_extension: &str,
     recursive: bool,
     use_frontmatter: bool,
     quarto_code_blocks: bool,
@@ -326,7 +352,7 @@ fn convert_directory(
     // Configure conversion options
     let options = PackageConvertOptions {
         output_dir,
-        output_extension: "qmd".to_string(),
+        output_extension: output_extension.to_string(),
         frontmatter: use_frontmatter,
         quarto_code_blocks,
         parallel_jobs: jobs,
@@ -368,6 +394,7 @@ fn convert_directory(
 /// Core conversion function for single file
 fn convert_rd_to_qmd(
     rd_content: &str,
+    output_extension: &str,
     use_frontmatter: bool,
     quarto_code_blocks: bool,
     alias_map: Option<std::collections::HashMap<String, String>>,
@@ -376,7 +403,7 @@ fn convert_rd_to_qmd(
     let doc = parse(rd_content).map_err(|e| anyhow::anyhow!("Parse error: {}", e))?;
 
     let converter_options = ConverterOptions {
-        link_extension: Some("qmd".to_string()),
+        link_extension: Some(output_extension.to_string()),
         alias_map,
         unresolved_link_url: unresolved_link_url.map(|s| s.to_string()),
         external_package_urls: None, // Single file mode doesn't resolve external packages
