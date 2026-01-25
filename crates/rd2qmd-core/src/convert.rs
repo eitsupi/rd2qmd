@@ -56,18 +56,20 @@ impl Converter {
             children.push(Node::heading(1, vec![Node::text(title_text.trim())]));
         }
 
-        // Process sections in a logical order
+        // Process sections in pkgdown order (Examples always last)
         let section_order = [
             SectionTag::Description,
             SectionTag::Usage,
             SectionTag::Arguments,
             SectionTag::Value,
             SectionTag::Details,
+            SectionTag::Format,
+            SectionTag::Source,
             SectionTag::Note,
-            SectionTag::SeeAlso,
-            SectionTag::Examples,
             SectionTag::References,
             SectionTag::Author,
+            SectionTag::SeeAlso,
+            SectionTag::Examples, // Always last, matching pkgdown
         ];
 
         for tag in &section_order {
