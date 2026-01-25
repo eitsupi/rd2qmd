@@ -217,6 +217,7 @@ fn convert_single_file(
             external_package_urls: options.external_package_urls.clone(),
             exec_dontrun: options.exec_dontrun,
             exec_donttest: options.exec_donttest,
+            quarto_code_blocks: options.quarto_code_blocks,
         };
 
         // Convert to mdast

@@ -86,6 +86,24 @@ fn test_formatting() {
 }
 
 #[test]
+fn test_example_control() {
+    let output = convert_fixture("example_control", &[]);
+    insta::assert_snapshot!("example_control_qmd", output);
+}
+
+#[test]
+fn test_examplesif() {
+    let output = convert_fixture("examplesif", &[]);
+    insta::assert_snapshot!("examplesif_qmd", output);
+}
+
+#[test]
+fn test_examplesif_md() {
+    let output = convert_fixture("examplesif", &["-f", "md"]);
+    insta::assert_snapshot!("examplesif_md", output);
+}
+
+#[test]
 fn test_directory_conversion() {
     let fixtures = fixtures_dir();
     let output_dir = std::env::temp_dir().join("rd2qmd_test_dir");

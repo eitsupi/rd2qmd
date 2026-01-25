@@ -480,6 +480,7 @@ fn convert_rd_to_qmd(
         external_package_urls: None, // Single file mode doesn't resolve external packages
         exec_dontrun,
         exec_donttest,
+        quarto_code_blocks,
     };
     let mdast = rd_to_mdast_with_options(&doc, &converter_options);
 

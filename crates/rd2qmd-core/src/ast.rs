@@ -307,6 +307,11 @@ pub enum RdNode {
     /// Don't test this code (\donttest{})
     /// Used in examples to mark code that should not be tested automatically
     DontTest(Vec<RdNode>),
+
+    /// Don't show this code (\dontshow{})
+    /// Used in examples to mark code that is executed but not displayed
+    /// Also handles \testonly{} as an alias
+    DontShow(Vec<RdNode>),
 }
 
 /// Description list item

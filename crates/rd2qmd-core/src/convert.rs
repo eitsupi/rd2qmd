@@ -35,6 +35,10 @@ pub struct ConverterOptions {
     /// This matches pkgdown's semantics: \donttest{} means "don't run during testing"
     /// but the code should normally be executable
     pub exec_donttest: bool,
+    /// Use Quarto {r} code blocks (affects \dontshow{} handling)
+    /// When true, \dontshow{} content is output with #| include: false
+    /// When false, \dontshow{} content is skipped entirely
+    pub quarto_code_blocks: bool,
 }
 
 impl Default for ConverterOptions {
@@ -46,6 +50,7 @@ impl Default for ConverterOptions {
             external_package_urls: None,
             exec_dontrun: false,
             exec_donttest: true, // pkgdown-compatible: \donttest{} is executable by default
+            quarto_code_blocks: true,
         }
     }
 }
@@ -229,6 +234,54 @@ impl Converter {
                         } else {
                             result.push(Node::code(Some("r".to_string()), trimmed));
                         }
+                    }
+                }
+                RdNode::DontShow(children) => {
+                    // \dontshow{} has two usage patterns:
+                    // 1. Complete code (setup, etc.) - hide but execute
+                    // 2. Wrapper pattern for @examplesIf - skip entirely
+                    //
+                    // Wrapper pattern detection (structural):
+                    // - Start wrapper: has unclosed `{` (more `{` than `}`)
+                    // - End wrapper: starts with `}` (closing a brace opened elsewhere)
+                    //
+                    // NOTE: This brace-counting detection is a simple heuristic.
+                    // Future improvement: Consider using tree-sitter for R code
+                    // completeness evaluation to more robustly detect wrapper patterns
+                    // (e.g., detecting syntactically incomplete expressions).
+                    let code = self.extract_text(children);
+                    let trimmed = code.trim();
+
+                    // Count braces to detect incomplete code
+                    let open_braces = trimmed.chars().filter(|&c| c == '{').count();
+                    let close_braces = trimmed.chars().filter(|&c| c == '}').count();
+
+                    // Start wrapper: more `{` than `}` (unclosed brace)
+                    let is_start_wrapper = open_braces > close_braces;
+                    // End wrapper: starts with `}` (closing something opened elsewhere)
+                    let is_end_wrapper = trimmed.starts_with('}');
+
+                    if is_start_wrapper || is_end_wrapper {
+                        // Wrapper pattern - skip entirely
+                        // The inner code (between start and end wrappers) will be
+                        // output as regular executable code
+                    } else if !trimmed.is_empty() {
+                        // Complete code - hide but execute
+                        // Flush any accumulated regular code first
+                        flush_code(&mut current_code, &mut result, true);
+                        has_executable = false;
+
+                        // For qmd format, use #| include: false to hide but execute
+                        // For md format, just skip (no execution anyway)
+                        if self.options.quarto_code_blocks {
+                            let code_with_directive = format!("#| include: false\n{}", trimmed);
+                            result.push(Node::code_with_meta(
+                                Some("r".to_string()),
+                                Some("executable".to_string()),
+                                code_with_directive,
+                            ));
+                        }
+                        // For non-Quarto formats, skip entirely (code won't be executed anyway)
                     }
                 }
                 _ => {
@@ -1033,6 +1086,7 @@ mod tests {
             external_package_urls: None,
             exec_dontrun: false,
             exec_donttest: false,
+            quarto_code_blocks: true,
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
 
@@ -1067,6 +1121,7 @@ mod tests {
             external_package_urls: None,
             exec_dontrun: false,
             exec_donttest: false,
+            quarto_code_blocks: true,
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
 
@@ -1126,6 +1181,7 @@ mod tests {
             external_package_urls: None,
             exec_dontrun: false,
             exec_donttest: false,
+            quarto_code_blocks: true,
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
 
@@ -1168,6 +1224,7 @@ mod tests {
             external_package_urls: Some(external_urls),
             exec_dontrun: false,
             exec_donttest: false,
+            quarto_code_blocks: true,
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
 
@@ -1211,6 +1268,7 @@ mod tests {
             external_package_urls: Some(external_urls),
             exec_dontrun: false,
             exec_donttest: false,
+            quarto_code_blocks: true,
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
 
@@ -1251,6 +1309,7 @@ mod tests {
             external_package_urls: None,
             exec_dontrun: false,
             exec_donttest: false,
+            quarto_code_blocks: true,
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
 
@@ -1342,6 +1401,7 @@ mod tests {
             external_package_urls: None,
             exec_dontrun: false,
             exec_donttest: false,
+            quarto_code_blocks: true,
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
 

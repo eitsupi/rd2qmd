@@ -1,0 +1,47 @@
+---
+source: crates/rd2qmd-cli/tests/integration.rs
+expression: output
+---
+---
+title: "Test @examplesIf pattern"
+pagetitle: "Test @examplesIf pattern — examplesif"
+---
+
+# Test @examplesIf pattern
+
+## Description
+
+ Test file for roxygen2's @examplesIf pattern which uses `\dontshow` wrappers. 
+
+## Examples
+
+```{r}
+# Initialize variable
+x <- 0
+
+# @examplesIf FALSE - code wrapped but not executed
+
+x <- 1
+
+
+# x should still be 0 here
+print(paste("After FALSE block:", x))
+
+# @examplesIf TRUE - code wrapped and executed
+
+x <- 2
+
+
+# x should be 2 here
+print(paste("After TRUE block:", x))
+
+# @examplesIf with require() - typical usage pattern
+
+# This code runs only if stats package is available
+fit <- lm(mpg ~ wt, data = mtcars)
+summary(fit)
+
+
+# Final value
+print(paste("Final x:", x))
+```

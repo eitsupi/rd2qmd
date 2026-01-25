@@ -1,8 +1,10 @@
 ---
 source: crates/rd2qmd-cli/tests/integration.rs
-assertion_line: 93
+assertion_line: 133
 expression: files
 ---
+- example_control.qmd
+- examplesif.qmd
 - formatting.qmd
 - simple.qmd
 - with_links.qmd

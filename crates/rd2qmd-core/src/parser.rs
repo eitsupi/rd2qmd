@@ -262,6 +262,9 @@ impl Parser {
             // Example control macros
             "dontrun" => self.parse_inline_nodes().map(|n| Some(RdNode::DontRun(n))),
             "donttest" => self.parse_inline_nodes().map(|n| Some(RdNode::DontTest(n))),
+            "dontshow" | "testonly" => {
+                self.parse_inline_nodes().map(|n| Some(RdNode::DontShow(n)))
+            }
 
             // Unknown macro - store generically
             _ => self.parse_generic_macro(&name),
@@ -956,5 +959,51 @@ test(x, y = TRUE)
 "#;
         let doc = parse(source).unwrap();
         assert!(doc.sections.len() >= 5);
+    }
+
+    #[test]
+    fn test_dontshow_with_escaped_braces() {
+        // Test that \{ inside \dontshow becomes Text("{")
+        let doc = parse(r#"\examples{\dontshow{if (FALSE) \{ # test}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        assert_eq!(content.len(), 1, "Expected exactly one node");
+        if let RdNode::DontShow(children) = &content[0] {
+            // The content should include the escaped brace as text
+            let has_text_with_brace = children.iter().any(|n| {
+                if let RdNode::Text(s) = n {
+                    s.contains('{')
+                } else {
+                    false
+                }
+            });
+            assert!(
+                has_text_with_brace,
+                "Expected Text node containing '{{' from \\{{"
+            );
+        } else {
+            panic!("Expected DontShow node, got {:?}", content[0]);
+        }
+    }
+
+    #[test]
+    fn test_dontshow_end_wrapper() {
+        // Test that \} inside \dontshow becomes Text("}")
+        let doc = parse(r#"\examples{\dontshow{\}) # test}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        assert_eq!(content.len(), 1, "Expected exactly one node");
+        if let RdNode::DontShow(children) = &content[0] {
+            // The first child should be Text starting with }
+            if let Some(RdNode::Text(s)) = children.first() {
+                assert!(
+                    s.starts_with('}'),
+                    "Expected text starting with '}}', got '{}'",
+                    s
+                );
+            } else {
+                panic!("Expected first child to be Text, got {:?}", children);
+            }
+        } else {
+            panic!("Expected DontShow node, got {:?}", content[0]);
+        }
     }
 }
