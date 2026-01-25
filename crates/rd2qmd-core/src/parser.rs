@@ -791,10 +791,18 @@ impl Parser {
         let file = self.parse_text_until_close_brace()?;
         self.expect(&TokenKind::CloseBrace)?;
 
-        Ok(Some(RdNode::Figure {
-            file,
-            options: opt_arg,
-        }))
+        // Check for optional second brace argument (options)
+        self.skip_whitespace();
+        let options = if self.check(&TokenKind::OpenBrace) {
+            self.advance(); // consume {
+            let opts = self.parse_text_until_close_brace()?;
+            self.expect(&TokenKind::CloseBrace)?;
+            Some(opts)
+        } else {
+            opt_arg // Fallback to bracket arg if provided
+        };
+
+        Ok(Some(RdNode::Figure { file, options }))
     }
 
     /// Parse unknown macro generically

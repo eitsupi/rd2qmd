@@ -657,11 +657,17 @@ impl Converter {
             RdNode::Out(html) => Some(Node::Html(crate::mdast::Html {
                 value: html.clone(),
             })),
-            RdNode::Figure { file, options: _ } => Some(Node::Image(crate::mdast::Image {
-                url: file.clone(),
-                title: None,
-                alt: file.clone(),
-            })),
+            RdNode::Figure { file, options } => {
+                let alt = options
+                    .as_ref()
+                    .and_then(|opts| Self::extract_figure_alt(opts))
+                    .unwrap_or_else(|| file.clone());
+                Some(Node::Image(crate::mdast::Image {
+                    url: file.clone(),
+                    title: None,
+                    alt,
+                }))
+            }
             RdNode::Method { generic, class: _ } => Some(Node::text(format!("{}()", generic))),
             RdNode::S4Method {
                 generic,
@@ -741,6 +747,26 @@ impl Converter {
             align,
             children: table_rows,
         })
+    }
+
+    /// Extract alt text from figure options string
+    /// Handles formats like "options: alt='[Deprecated]'" or "alt='text'"
+    fn extract_figure_alt(options: &str) -> Option<String> {
+        // Try single quotes: alt='...'
+        if let Some(start) = options.find("alt='") {
+            let after_quote = &options[start + 5..];
+            if let Some(end) = after_quote.find('\'') {
+                return Some(after_quote[..end].to_string());
+            }
+        }
+        // Try double quotes: alt="..."
+        if let Some(start) = options.find("alt=\"") {
+            let after_quote = &options[start + 5..];
+            if let Some(end) = after_quote.find('"') {
+                return Some(after_quote[..end].to_string());
+            }
+        }
+        None
     }
 
     fn extract_text(&self, nodes: &[RdNode]) -> String {
