@@ -57,6 +57,7 @@ impl Converter {
         }
 
         // Process sections in pkgdown order (Examples always last)
+        // Standard sections come first in a fixed order
         let section_order = [
             SectionTag::Description,
             SectionTag::Usage,
@@ -69,7 +70,7 @@ impl Converter {
             SectionTag::References,
             SectionTag::Author,
             SectionTag::SeeAlso,
-            SectionTag::Examples, // Always last, matching pkgdown
+            // Examples handled separately at the end
         ];
 
         for tag in &section_order {
@@ -78,12 +79,17 @@ impl Converter {
             }
         }
 
-        // Handle custom sections
+        // Handle custom sections (before Examples, in original Rd order)
         for section in &doc.sections {
             if let SectionTag::Section(title) = &section.tag {
                 children.push(Node::heading(2, vec![Node::text(title.clone())]));
                 children.extend(self.convert_content(&section.content));
             }
+        }
+
+        // Examples always last (pkgdown convention)
+        if let Some(section) = doc.get_section(&SectionTag::Examples) {
+            children.extend(self.convert_section(section));
         }
 
         Root::new(children)
@@ -675,6 +681,43 @@ mod tests {
         assert!(
             has_resolved_link,
             "Expected alias 'DataFrame' to resolve to 'pl__DataFrame.qmd'"
+        );
+    }
+
+    #[test]
+    fn test_examples_comes_last() {
+        // Custom sections should come before Examples (pkgdown convention)
+        let rd = r#"
+\title{Test}
+\description{A test}
+\examples{code()}
+\section{Custom Section}{Some custom content}
+"#;
+        let doc = parse(rd).unwrap();
+        let mdast = rd_to_mdast(&doc);
+
+        // Find positions of "Custom Section" and "Examples" headings
+        let mut custom_pos = None;
+        let mut examples_pos = None;
+
+        for (i, node) in mdast.children.iter().enumerate() {
+            if let Node::Heading(h) = node {
+                let text: String = h.children.iter().filter_map(|n| {
+                    if let Node::Text(t) = n { Some(t.value.as_str()) } else { None }
+                }).collect();
+                if text == "Custom Section" {
+                    custom_pos = Some(i);
+                } else if text == "Examples" {
+                    examples_pos = Some(i);
+                }
+            }
+        }
+
+        assert!(custom_pos.is_some(), "Custom Section heading not found");
+        assert!(examples_pos.is_some(), "Examples heading not found");
+        assert!(
+            custom_pos.unwrap() < examples_pos.unwrap(),
+            "Custom sections should come before Examples"
         );
     }
 }
