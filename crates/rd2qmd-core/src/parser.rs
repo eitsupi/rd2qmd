@@ -429,7 +429,9 @@ impl Parser {
         }
     }
 
-    /// Parse \item - content until next \item or closing brace
+    /// Parse \item - handles two patterns:
+    /// 1. \item{label}{content} - used in \arguments and \describe
+    /// 2. \item content... or \item{label} content... - used in \itemize/\enumerate
     fn parse_item(&mut self) -> ParseResult<Option<RdNode>> {
         self.skip_whitespace();
 
@@ -440,7 +442,15 @@ impl Parser {
             None
         };
 
-        // Parse content until next \item or }
+        // For \arguments pattern: \item{label}{content}
+        // If we have a label and another brace follows, parse it as the content
+        self.skip_whitespace();
+        if label.is_some() && self.check(&TokenKind::OpenBrace) {
+            let content = self.parse_braced_content()?;
+            return Ok(Some(RdNode::Item { label, content }));
+        }
+
+        // Parse content until next \item or } (for \itemize/\enumerate)
         let mut content = Vec::new();
         let mut current_text = String::new();
 

@@ -1,6 +1,5 @@
 ---
 source: crates/rd2qmd-cli/tests/integration.rs
-assertion_line: 64
 expression: output
 ---
 ---
@@ -21,8 +20,10 @@ simple(x, y = 1)
 
 ## Arguments
 
-x
-:   The first argument.
+| Argument | Description |
+|:---|:---|
+| `x` | The first argument. |
+| `y` | The second argument, defaults to 1. |
 
 ## Value
 

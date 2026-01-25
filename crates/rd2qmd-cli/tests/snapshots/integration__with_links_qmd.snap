@@ -1,6 +1,5 @@
 ---
 source: crates/rd2qmd-cli/tests/integration.rs
-assertion_line: 64
 expression: output
 ---
 ---
@@ -22,8 +21,9 @@ with_links(data)
 
 ## Arguments
 
-data
-:   A data frame. See `base::data.frame`.
+| Argument | Description |
+|:---|:---|
+| `data` | A data frame. See `base::data.frame`. |
 
 ## See Also
 

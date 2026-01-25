@@ -302,28 +302,109 @@ impl Converter {
         result
     }
 
+    // TODO: Consider implementing HTML table support for complex argument descriptions
+    // containing nested lists. See beads task rd2md-68z for investigation notes.
+    // GFM tables cannot contain block elements (lists, multiple paragraphs).
+    // Current workaround: use <br> for line breaks, flatten nested lists with bullet markers.
     fn convert_arguments(&mut self, content: &[RdNode]) -> Vec<Node> {
-        let mut items = Vec::new();
+        // Build header row
+        let header_row = Node::TableRow(TableRow {
+            children: vec![
+                Node::TableCell(TableCell {
+                    children: vec![Node::text("Argument")],
+                }),
+                Node::TableCell(TableCell {
+                    children: vec![Node::text("Description")],
+                }),
+            ],
+        });
+
+        let mut rows = vec![header_row];
 
         for node in content {
             if let RdNode::Item { label, content } = node
                 && let Some(label_nodes) = label
             {
-                let term = self.convert_inline_nodes(label_nodes);
-                let desc = self.convert_content(content);
+                // Argument name as inline code
+                let term_text = self.extract_text(label_nodes);
+                let arg_cell = Node::TableCell(TableCell {
+                    children: vec![Node::inline_code(term_text.trim())],
+                });
 
-                items.push(Node::DefinitionTerm(DefinitionTerm { children: term }));
-                items.push(Node::DefinitionDescription(DefinitionDescription {
-                    children: desc,
+                // Convert description to flat inline content for GFM table cell
+                let desc_content = self.flatten_for_table_cell(content);
+                let desc_cell = Node::TableCell(TableCell {
+                    children: desc_content,
+                });
+
+                rows.push(Node::TableRow(TableRow {
+                    children: vec![arg_cell, desc_cell],
                 }));
             }
         }
 
-        if items.is_empty() {
+        if rows.len() <= 1 {
+            // Only header, no data rows - fall back to regular content
             self.convert_content(content)
         } else {
-            vec![Node::DefinitionList(DefinitionList { children: items })]
+            vec![Node::Table(Table {
+                align: vec![Some(Align::Left), Some(Align::Left)],
+                children: rows,
+            })]
         }
+    }
+
+    /// Flatten block content to inline nodes for GFM table cells.
+    /// Uses <br> for paragraph breaks and flattens lists with bullet markers.
+    fn flatten_for_table_cell(&mut self, content: &[RdNode]) -> Vec<Node> {
+        let block_nodes = self.convert_content(content);
+        let mut result = Vec::new();
+
+        for (i, node) in block_nodes.iter().enumerate() {
+            if i > 0 && !result.is_empty() {
+                // Add line break between blocks
+                result.push(Node::Html(crate::mdast::Html {
+                    value: " <br>".to_string(),
+                }));
+            }
+
+            match node {
+                Node::Paragraph(p) => {
+                    result.extend(p.children.clone());
+                }
+                Node::List(l) => {
+                    // Flatten list items with bullet markers
+                    for (j, item) in l.children.iter().enumerate() {
+                        if j > 0 || !result.is_empty() {
+                            result.push(Node::Html(crate::mdast::Html {
+                                value: " <br>".to_string(),
+                            }));
+                        }
+                        if let Node::ListItem(li) = item {
+                            // Add bullet marker
+                            let marker = if l.ordered {
+                                format!("{}. ", j + 1)
+                            } else {
+                                "- ".to_string()
+                            };
+                            result.push(Node::text(marker));
+                            // Add item content (first paragraph only for simplicity)
+                            for item_child in &li.children {
+                                if let Node::Paragraph(p) = item_child {
+                                    result.extend(p.children.clone());
+                                    break; // Only first paragraph
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    // Other block elements - skip for table cells
+                }
+            }
+        }
+
+        result
     }
 
     fn convert_content(&mut self, nodes: &[RdNode]) -> Vec<Node> {

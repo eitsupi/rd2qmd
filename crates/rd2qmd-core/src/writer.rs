@@ -32,8 +32,6 @@ pub fn mdast_to_qmd(root: &Root, options: &WriterOptions) -> String {
 struct Writer<'a> {
     options: &'a WriterOptions,
     output: String,
-    /// Current indentation level
-    indent: usize,
     /// Whether we're at the start of a line
     at_line_start: bool,
 }
@@ -43,7 +41,6 @@ impl<'a> Writer<'a> {
         Self {
             options,
             output: String::new(),
-            indent: 0,
             at_line_start: true,
         }
     }
@@ -148,33 +145,58 @@ impl<'a> Writer<'a> {
     }
 
     fn write_list(&mut self, l: &crate::mdast::List) {
+        self.write_list_at_indent(l, 0);
+    }
+
+    fn write_list_at_indent(&mut self, l: &crate::mdast::List, base_indent: usize) {
         self.ensure_newline();
         let mut num = l.start.unwrap_or(1);
         for child in &l.children {
             if let Node::ListItem(li) = child {
+                // Write indent for this list item
+                for _ in 0..base_indent {
+                    self.output.push(' ');
+                }
                 if l.ordered {
                     self.output.push_str(&format!("{}. ", num));
                     num += 1;
                 } else {
                     self.output.push_str("- ");
                 }
-                self.indent += 2;
+
+                let item_indent = base_indent + 2;
                 for (i, item_child) in li.children.iter().enumerate() {
-                    if i > 0 {
-                        self.write_indent();
-                    }
-                    // Inline content for list items
                     match item_child {
                         Node::Paragraph(p) => {
+                            if i > 0 {
+                                // Subsequent paragraphs need indent
+                                self.output.push('\n');
+                                for _ in 0..item_indent {
+                                    self.output.push(' ');
+                                }
+                            }
                             for c in &p.children {
                                 self.write_node(c);
                             }
                         }
-                        _ => self.write_node(item_child),
+                        Node::List(nested) => {
+                            // Nested list - write with increased indent
+                            self.output.push('\n');
+                            self.write_list_at_indent(nested, item_indent);
+                            continue; // Skip the newline at the end since nested list handles it
+                        }
+                        _ => {
+                            if i > 0 {
+                                self.output.push('\n');
+                                for _ in 0..item_indent {
+                                    self.output.push(' ');
+                                }
+                            }
+                            self.write_node(item_child);
+                        }
                     }
                 }
                 self.output.push('\n');
-                self.indent -= 2;
             }
         }
         self.at_line_start = true;
@@ -290,18 +312,67 @@ impl<'a> Writer<'a> {
                 i += 1;
                 while i < dl.children.len() {
                     if let Node::DefinitionDescription(dd) = &dl.children[i] {
-                        self.output.push_str(":   ");
-                        for child in &dd.children {
-                            match child {
-                                Node::Paragraph(p) => {
-                                    for c in &p.children {
-                                        self.write_node(c);
+                        // Check if description contains block elements
+                        let has_block_elements = dd.children.iter().any(|c| {
+                            matches!(
+                                c,
+                                Node::List(_)
+                                    | Node::Code(_)
+                                    | Node::Table(_)
+                                    | Node::Blockquote(_)
+                            )
+                        });
+
+                        if has_block_elements {
+                            // Block elements need special handling with indentation
+                            // Pandoc definition lists require blank line before nested blocks
+                            // All content after first paragraph must be indented by 4 spaces
+                            self.output.push_str(":   ");
+                            let mut after_first = false;
+                            for child in &dd.children {
+                                match child {
+                                    Node::Paragraph(p) => {
+                                        if after_first {
+                                            // Subsequent paragraphs need indentation
+                                            self.output.push_str("    ");
+                                        }
+                                        for c in &p.children {
+                                            self.write_node(c);
+                                        }
+                                        self.output.push_str("\n\n");
+                                        after_first = true;
+                                    }
+                                    Node::List(l) => {
+                                        // List items indented by 4 spaces
+                                        self.write_indented_list(l, 4);
+                                        self.output.push('\n');
+                                        after_first = true;
+                                    }
+                                    _ => {
+                                        if after_first {
+                                            self.output.push_str("    ");
+                                        }
+                                        self.write_node(child);
+                                        self.output.push('\n');
+                                        after_first = true;
                                     }
                                 }
-                                _ => self.write_node(child),
                             }
+                        } else {
+                            // Simple inline content
+                            self.output.push_str(":   ");
+                            for child in &dd.children {
+                                match child {
+                                    Node::Paragraph(p) => {
+                                        for c in &p.children {
+                                            self.write_node(c);
+                                        }
+                                    }
+                                    _ => self.write_node(child),
+                                }
+                            }
+                            self.output.push('\n');
                         }
-                        self.output.push('\n');
                         i += 1;
                     } else {
                         break;
@@ -314,6 +385,36 @@ impl<'a> Writer<'a> {
         }
 
         self.at_line_start = true;
+    }
+
+    fn write_indented_list(&mut self, l: &crate::mdast::List, indent: usize) {
+        let indent_str = " ".repeat(indent);
+        let mut num = l.start.unwrap_or(1);
+        for child in &l.children {
+            if let Node::ListItem(li) = child {
+                self.output.push_str(&indent_str);
+                if l.ordered {
+                    self.output.push_str(&format!("{}. ", num));
+                    num += 1;
+                } else {
+                    self.output.push_str("- ");
+                }
+                for (i, item_child) in li.children.iter().enumerate() {
+                    if i > 0 {
+                        self.output.push_str(&" ".repeat(indent + 2));
+                    }
+                    match item_child {
+                        Node::Paragraph(p) => {
+                            for c in &p.children {
+                                self.write_node(c);
+                            }
+                        }
+                        _ => self.write_node(item_child),
+                    }
+                }
+                self.output.push('\n');
+            }
+        }
     }
 
     fn write_emphasis(&mut self, e: &crate::mdast::Emphasis) {
@@ -418,11 +519,6 @@ impl<'a> Writer<'a> {
         }
     }
 
-    fn write_indent(&mut self) {
-        for _ in 0..self.indent {
-            self.output.push(' ');
-        }
-    }
 }
 
 fn escape_yaml_string(s: &str) -> String {
