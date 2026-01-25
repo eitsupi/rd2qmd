@@ -16,6 +16,7 @@ pub mod external_links;
 
 #[cfg(feature = "external-links")]
 pub use external_links::{
+    FallbackReason, PackageResolveResult,
     PackageUrlResolver, PackageUrlResolverOptions,
     collect_external_packages,
 };

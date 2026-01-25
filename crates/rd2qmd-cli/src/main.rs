@@ -10,7 +10,10 @@ use rd2qmd_core::{ConverterOptions, WriterOptions, mdast_to_qmd, parse, rd_to_md
 use rd2qmd_package::{PackageConvertOptions, RdPackage, convert_package};
 
 #[cfg(feature = "external-links")]
-use rd2qmd_package::{PackageUrlResolver, PackageUrlResolverOptions, collect_external_packages};
+use rd2qmd_package::{
+    FallbackReason, PackageUrlResolver, PackageUrlResolverOptions,
+    collect_external_packages,
+};
 
 /// Options for external package link resolution
 #[derive(Debug, Clone)]
@@ -260,14 +263,54 @@ fn convert_directory(
                     fallback_url: opts.fallback_url,
                     enable_http: true,
                 });
-                let urls = resolver.resolve_packages(&external_packages);
+                let resolve_result = resolver.resolve_packages(&external_packages);
                 if verbose {
-                    eprintln!("Resolved {} package URLs", urls.len());
+                    eprintln!("Resolved {} package URLs", resolve_result.urls.len());
                 }
-                if urls.is_empty() {
+
+                // Display fallback warnings
+                if !quiet && !resolve_result.fallbacks.is_empty() {
+                    // Group fallbacks by reason
+                    let not_installed: Vec<_> = resolve_result.fallbacks.iter()
+                        .filter(|(_, r)| **r == FallbackReason::NotInstalled)
+                        .map(|(pkg, _)| pkg.as_str())
+                        .collect();
+                    let no_pkgdown: Vec<_> = resolve_result.fallbacks.iter()
+                        .filter(|(_, r)| **r == FallbackReason::NoPkgdownSite)
+                        .map(|(pkg, _)| pkg.as_str())
+                        .collect();
+
+                    if verbose {
+                        // Detailed warnings with package names
+                        for pkg in &not_installed {
+                            eprintln!("Warning: package '{}' is not installed, using fallback URL", pkg);
+                        }
+                        for pkg in &no_pkgdown {
+                            eprintln!("Warning: package '{}' has no pkgdown site, using fallback URL", pkg);
+                        }
+                    } else {
+                        // Summary warnings
+                        if !not_installed.is_empty() {
+                            eprintln!(
+                                "Warning: {} package(s) not installed, using fallback URLs: {}",
+                                not_installed.len(),
+                                not_installed.join(", ")
+                            );
+                        }
+                        if !no_pkgdown.is_empty() {
+                            eprintln!(
+                                "Warning: {} package(s) have no pkgdown site, using fallback URLs: {}",
+                                no_pkgdown.len(),
+                                no_pkgdown.join(", ")
+                            );
+                        }
+                    }
+                }
+
+                if resolve_result.urls.is_empty() {
                     None
                 } else {
-                    Some(urls)
+                    Some(resolve_result.urls)
                 }
             }
         }

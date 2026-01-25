@@ -20,6 +20,24 @@ use std::path::{Path, PathBuf};
 use crate::RdPackage;
 use rd2qmd_core::RdNode;
 
+/// Reason why a fallback URL was used for a package
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FallbackReason {
+    /// Package is not installed in any of the library paths
+    NotInstalled,
+    /// Package is installed but no pkgdown site could be found
+    NoPkgdownSite,
+}
+
+/// Result of resolving external package URLs
+#[derive(Debug, Clone, Default)]
+pub struct PackageResolveResult {
+    /// Map of package name to resolved reference URL
+    pub urls: HashMap<String, String>,
+    /// Packages that used fallback URLs, with the reason
+    pub fallbacks: HashMap<String, FallbackReason>,
+}
+
 /// Options for package URL resolution
 #[derive(Debug, Clone)]
 pub struct PackageUrlResolverOptions {
@@ -238,16 +256,20 @@ impl PackageUrlResolver {
 
     /// Build a URL map for external packages
     ///
-    /// Takes a set of package names and returns a map of package -> reference URL.
-    /// For packages that cannot be resolved via lib paths, uses the fallback URL pattern.
-    pub fn resolve_packages(&mut self, packages: &HashSet<String>) -> HashMap<String, String> {
-        let mut result = HashMap::new();
+    /// Takes a set of package names and returns a map of package -> reference URL,
+    /// along with information about which packages used fallback URLs.
+    pub fn resolve_packages(&mut self, packages: &HashSet<String>) -> PackageResolveResult {
+        let mut result = PackageResolveResult::default();
 
         for package in packages {
+            // Check if package is installed first
+            let is_installed = self.find_package_dir(package).is_some();
+
             if let Some(url) = self.resolve(package) {
-                result.insert(package.clone(), url);
+                result.urls.insert(package.clone(), url);
+                // Note: If resolve() succeeded, the package was installed and had a pkgdown site
             } else if let Some(pattern) = &self.options.fallback_url {
-                // Use fallback URL pattern for uninstalled packages
+                // Use fallback URL pattern
                 // Extract base URL by removing {topic}.html part
                 // e.g., "https://rdrr.io/pkg/{package}/man/{topic}.html"
                 //    -> "https://rdrr.io/pkg/dplyr/man"
@@ -257,7 +279,15 @@ impl PackageUrlResolver {
                     .replace("{topic}", "")
                     .trim_end_matches('/')
                     .to_string();
-                result.insert(package.clone(), base_url);
+                result.urls.insert(package.clone(), base_url);
+
+                // Track the fallback reason
+                let reason = if is_installed {
+                    FallbackReason::NoPkgdownSite
+                } else {
+                    FallbackReason::NotInstalled
+                };
+                result.fallbacks.insert(package.clone(), reason);
             }
         }
 
@@ -500,12 +530,56 @@ URL: https://testpkg.example.com
             .map(|s| s.to_string())
             .collect();
 
-        let urls = resolver.resolve_packages(&packages);
+        let result = resolver.resolve_packages(&packages);
 
         // All packages should have fallback URLs
-        assert_eq!(urls.len(), 3);
-        assert_eq!(urls.get("dplyr"), Some(&"https://rdrr.io/pkg/dplyr/man".to_string()));
-        assert_eq!(urls.get("ggplot2"), Some(&"https://rdrr.io/pkg/ggplot2/man".to_string()));
-        assert_eq!(urls.get("tidyr"), Some(&"https://rdrr.io/pkg/tidyr/man".to_string()));
+        assert_eq!(result.urls.len(), 3);
+        assert_eq!(result.urls.get("dplyr"), Some(&"https://rdrr.io/pkg/dplyr/man".to_string()));
+        assert_eq!(result.urls.get("ggplot2"), Some(&"https://rdrr.io/pkg/ggplot2/man".to_string()));
+        assert_eq!(result.urls.get("tidyr"), Some(&"https://rdrr.io/pkg/tidyr/man".to_string()));
+
+        // All should be marked as NotInstalled fallbacks
+        assert_eq!(result.fallbacks.len(), 3);
+        assert_eq!(result.fallbacks.get("dplyr"), Some(&FallbackReason::NotInstalled));
+        assert_eq!(result.fallbacks.get("ggplot2"), Some(&FallbackReason::NotInstalled));
+        assert_eq!(result.fallbacks.get("tidyr"), Some(&FallbackReason::NotInstalled));
+    }
+
+    #[test]
+    fn test_resolve_packages_with_mixed_results() {
+        let dir = tempdir().unwrap();
+        let pkg_dir = dir.path().join("installed_pkg");
+        fs::create_dir_all(&pkg_dir).unwrap();
+
+        // Create a package WITHOUT pkgdown site (no URL in DESCRIPTION)
+        let desc = r#"Package: installed_pkg
+Title: Installed Package
+Version: 1.0.0
+Description: A test package without pkgdown.
+License: MIT
+"#;
+        fs::write(pkg_dir.join("DESCRIPTION"), desc).unwrap();
+
+        let mut resolver = PackageUrlResolver::new(PackageUrlResolverOptions {
+            lib_paths: vec![dir.path().to_path_buf()],
+            cache_dir: None,
+            fallback_url: Some("https://rdrr.io/pkg/{package}/man/{topic}.html".to_string()),
+            enable_http: false,
+        });
+
+        let packages: HashSet<String> = ["installed_pkg", "uninstalled_pkg"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+
+        let result = resolver.resolve_packages(&packages);
+
+        // Both should have URLs (fallback)
+        assert_eq!(result.urls.len(), 2);
+
+        // Check fallback reasons
+        assert_eq!(result.fallbacks.len(), 2);
+        assert_eq!(result.fallbacks.get("installed_pkg"), Some(&FallbackReason::NoPkgdownSite));
+        assert_eq!(result.fallbacks.get("uninstalled_pkg"), Some(&FallbackReason::NotInstalled));
     }
 }
