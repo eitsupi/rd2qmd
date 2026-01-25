@@ -746,13 +746,13 @@ dependencies = [
 [[package]]
 name = "r-description"
 version = "0.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f97b1f65f8b0a2687d665c2d16e866f69c5c2f0486ccf905b776badacb3ebb53"
 dependencies = [
  "deb822-derive",
  "deb822-fast",
  "deb822-lossless",
  "rowan",
- "serde",
- "serde_json",
  "url",
 ]
 

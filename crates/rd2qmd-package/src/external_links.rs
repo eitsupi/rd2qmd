@@ -8,8 +8,8 @@
 //! 4. Caching results for performance
 //!
 //! The URL resolution logic is based on downlit's implementation:
-//! <https://github.com/r-lib/downlit>
-//! See refs/downlit/R/metadata.R and refs/downlit/R/link.R for the original R code.
+//! - <https://github.com/r-lib/downlit/blob/main/R/metadata.R>
+//! - <https://github.com/r-lib/downlit/blob/main/R/link.R>
 
 use r_description::RDescription;
 use saphyr::{LoadableYamlNode, Yaml};
