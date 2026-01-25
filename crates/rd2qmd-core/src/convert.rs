@@ -802,7 +802,32 @@ fn special_char_to_string(ch: SpecialChar) -> &'static str {
 }
 
 fn normalize_whitespace(s: &str) -> String {
-    s.split_whitespace().collect::<Vec<_>>().join(" ")
+    if s.is_empty() {
+        return String::new();
+    }
+
+    // Check for leading and trailing whitespace
+    let has_leading = s.chars().next().map_or(false, |c| c.is_whitespace());
+    let has_trailing = s.chars().next_back().map_or(false, |c| c.is_whitespace());
+
+    // Normalize internal whitespace (collapse multiple spaces to one)
+    let normalized: String = s.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    if normalized.is_empty() {
+        // Input was all whitespace - return a single space
+        return " ".to_string();
+    }
+
+    // Restore leading/trailing spaces
+    let mut result = String::new();
+    if has_leading {
+        result.push(' ');
+    }
+    result.push_str(&normalized);
+    if has_trailing {
+        result.push(' ');
+    }
+    result
 }
 
 #[cfg(test)]
@@ -843,6 +868,51 @@ mod tests {
             }
         });
         assert!(has_inline_code);
+    }
+
+    #[test]
+    fn test_normalize_whitespace() {
+        // Preserves leading and trailing whitespace
+        assert_eq!(normalize_whitespace(" foo"), " foo");
+        assert_eq!(normalize_whitespace("foo "), "foo ");
+        assert_eq!(normalize_whitespace(" foo "), " foo ");
+        // Collapses internal whitespace
+        assert_eq!(normalize_whitespace("foo  bar"), "foo bar");
+        assert_eq!(normalize_whitespace(" foo  bar "), " foo bar ");
+        // Whitespace-only becomes single space
+        assert_eq!(normalize_whitespace(" "), " ");
+        assert_eq!(normalize_whitespace("   "), " ");
+        // Empty stays empty
+        assert_eq!(normalize_whitespace(""), "");
+    }
+
+    #[test]
+    fn test_whitespace_around_inline_code() {
+        // Whitespace around \code should be preserved
+        let doc = parse("\\title{T}\n\\description{via \\code{x}, \\code{y} text}").unwrap();
+        let mdast = rd_to_mdast(&doc);
+
+        // Find paragraph and check the text contains spaces around inline codes
+        for node in &mdast.children {
+            if let Node::Paragraph(p) = node {
+                // Check that we have Text with trailing space before inline code
+                let mut found_space_before_code = false;
+                for (i, child) in p.children.iter().enumerate() {
+                    if let Node::Text(t) = child {
+                        if t.value.ends_with(' ')
+                            && i + 1 < p.children.len()
+                            && matches!(p.children[i + 1], Node::InlineCode(_))
+                        {
+                            found_space_before_code = true;
+                        }
+                    }
+                }
+                assert!(
+                    found_space_before_code,
+                    "Expected whitespace before inline code"
+                );
+            }
+        }
     }
 
     #[test]
