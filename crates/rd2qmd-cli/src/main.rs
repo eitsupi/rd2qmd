@@ -2,8 +2,10 @@
 
 use anyhow::{Context, Result};
 use clap::Parser;
+use rayon::prelude::*;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rd2qmd_core::writer::Frontmatter;
 use rd2qmd_core::{WriterOptions, mdast_to_qmd, parse, rd_to_mdast};
@@ -137,7 +139,7 @@ fn convert_directory(
     quarto_code_blocks: bool,
     verbose: bool,
     quiet: bool,
-    _jobs: Option<usize>,
+    jobs: Option<usize>,
 ) -> Result<()> {
     let output_dir = output.unwrap_or(input);
 
@@ -150,41 +152,83 @@ fn convert_directory(
         return Ok(());
     }
 
+    let total = files.len();
     if verbose {
-        eprintln!("Found {} .Rd files", files.len());
+        eprintln!("Found {} .Rd files", total);
     }
 
-    // Sequential processing for now (parallel will be added in next task)
-    let mut success = 0;
-    let mut failed = 0;
+    // Configure thread pool if jobs specified
+    if let Some(n) = jobs {
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(n)
+            .build_global()
+            .ok(); // Ignore error if already initialized
+    }
 
-    for file in &files {
-        let relative = file.strip_prefix(input).unwrap_or(file);
-        let output_file = output_dir.join(relative).with_extension("qmd");
+    // Atomic counters for thread-safe progress tracking
+    let success = AtomicUsize::new(0);
+    let failed = AtomicUsize::new(0);
 
-        match convert_file(
-            file,
-            Some(&output_file),
-            use_frontmatter,
-            quarto_code_blocks,
-            verbose,
-            quiet,
-        ) {
-            Ok(()) => success += 1,
-            Err(e) => {
-                eprintln!("Error converting {}: {}", file.display(), e);
-                failed += 1;
+    // Parallel conversion
+    let errors: Vec<_> = files
+        .par_iter()
+        .filter_map(|file| {
+            let relative = file.strip_prefix(input).unwrap_or(file);
+            let output_file = output_dir.join(relative).with_extension("qmd");
+
+            match convert_file_inner(file, &output_file, use_frontmatter, quarto_code_blocks) {
+                Ok(()) => {
+                    success.fetch_add(1, Ordering::Relaxed);
+                    if !quiet {
+                        println!("{}", output_file.display());
+                    }
+                    None
+                }
+                Err(e) => {
+                    failed.fetch_add(1, Ordering::Relaxed);
+                    Some((file.clone(), e))
+                }
             }
-        }
+        })
+        .collect();
+
+    // Report errors
+    for (file, e) in &errors {
+        eprintln!("Error converting {}: {}", file.display(), e);
     }
+
+    let success_count = success.load(Ordering::Relaxed);
+    let failed_count = failed.load(Ordering::Relaxed);
 
     if !quiet {
-        eprintln!("Converted {} files, {} failed", success, failed);
+        eprintln!("Converted {} files, {} failed", success_count, failed_count);
     }
 
-    if failed > 0 {
-        anyhow::bail!("{} files failed to convert", failed);
+    if failed_count > 0 {
+        anyhow::bail!("{} files failed to convert", failed_count);
     }
+
+    Ok(())
+}
+
+/// Inner conversion function that doesn't print (for parallel use)
+fn convert_file_inner(
+    input: &Path,
+    output: &Path,
+    use_frontmatter: bool,
+    quarto_code_blocks: bool,
+) -> Result<()> {
+    let content = fs::read_to_string(input)
+        .with_context(|| format!("Failed to read: {}", input.display()))?;
+
+    let qmd = convert_rd_to_qmd(&content, use_frontmatter, quarto_code_blocks)?;
+
+    if let Some(parent) = output.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
+    }
+
+    fs::write(output, &qmd).with_context(|| format!("Failed to write: {}", output.display()))?;
 
     Ok(())
 }
