@@ -23,6 +23,11 @@ pub struct ConverterOptions {
     /// Example: "https://rdrr.io/r/base/{topic}.html"
     /// If None, unresolved links become inline code instead of hyperlinks
     pub unresolved_link_url: Option<String>,
+    /// External package URL map: package name -> reference documentation base URL
+    /// Used to resolve \link[pkg]{topic} to external package documentation
+    /// Example: "dplyr" -> "https://dplyr.tidyverse.org/reference"
+    /// The full URL is constructed as "{base_url}/{topic}.html"
+    pub external_package_urls: Option<HashMap<String, String>>,
 }
 
 /// Convert an Rd document to mdast
@@ -292,14 +297,37 @@ impl Converter {
                 };
 
                 match (package, &self.options.link_extension) {
-                    // External package link - always inline code
+                    // External package link
                     (Some(pkg), _) => {
+                        // Extract just the package name (before colon if present)
+                        // e.g., "rlang:dyn-dots" -> "rlang"
+                        let pkg_name = pkg.split(':').next().unwrap_or(pkg);
+
+                        // Extract the actual topic from the pkg string if it contains ':'
+                        // e.g., "rlang:dyn-dots" -> topic is "dyn-dots"
+                        let actual_topic = if pkg.contains(':') {
+                            pkg.split(':').nth(1).unwrap_or(topic)
+                        } else {
+                            topic
+                        };
+
                         let display = if text.is_some() {
                             display_text
                         } else {
-                            format!("{}::{}", pkg, topic)
+                            format!("{}::{}", pkg_name, actual_topic)
                         };
-                        Some(Node::inline_code(display))
+
+                        // Check if we have a URL for this external package
+                        if let Some(base_url) = self.options.external_package_urls
+                            .as_ref()
+                            .and_then(|map| map.get(pkg_name))
+                        {
+                            let url = format!("{}/{}.html", base_url.trim_end_matches('/'), actual_topic);
+                            Some(Node::link(url, vec![Node::inline_code(display)]))
+                        } else {
+                            // No URL found - just inline code
+                            Some(Node::inline_code(display))
+                        }
                     }
                     // Internal link with extension configured - create hyperlink
                     (None, Some(ext)) => {
@@ -599,6 +627,7 @@ mod tests {
             link_extension: Some("qmd".to_string()),
             alias_map: None,
             unresolved_link_url: None,
+            external_package_urls: None,
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
 
@@ -627,6 +656,7 @@ mod tests {
             link_extension: Some("qmd".to_string()),
             alias_map: None,
             unresolved_link_url: Some("https://rdrr.io/r/base/{topic}.html".to_string()),
+            external_package_urls: None,
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
 
@@ -674,16 +704,17 @@ mod tests {
     }
 
     #[test]
-    fn test_external_link_always_inline_code() {
+    fn test_external_link_without_url_becomes_inline_code() {
         let doc = parse("\\title{T}\n\\description{See \\link[dplyr]{filter}}").unwrap();
         let options = ConverterOptions {
             link_extension: Some("qmd".to_string()),
             alias_map: None,
             unresolved_link_url: None,
+            external_package_urls: None,
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
 
-        // External links should always be inline code
+        // External links without URL map should be inline code
         let has_inline_code = mdast.children.iter().any(|n| {
             if let Node::Paragraph(p) = n {
                 p.children.iter().any(|c| {
@@ -697,7 +728,76 @@ mod tests {
                 false
             }
         });
-        assert!(has_inline_code, "Expected external link to be inline code");
+        assert!(has_inline_code, "Expected external link without URL to be inline code");
+    }
+
+    #[test]
+    fn test_external_link_with_url_becomes_hyperlink() {
+        use std::collections::HashMap;
+
+        let doc = parse("\\title{T}\n\\description{See \\link[dplyr]{filter}}").unwrap();
+
+        let mut external_urls = HashMap::new();
+        external_urls.insert("dplyr".to_string(), "https://dplyr.tidyverse.org/reference".to_string());
+
+        let options = ConverterOptions {
+            link_extension: Some("qmd".to_string()),
+            alias_map: None,
+            unresolved_link_url: None,
+            external_package_urls: Some(external_urls),
+        };
+        let mdast = rd_to_mdast_with_options(&doc, &options);
+
+        // External links with URL map should become hyperlinks
+        let has_link = mdast.children.iter().any(|n| {
+            if let Node::Paragraph(p) = n {
+                p.children.iter().any(|c| {
+                    if let Node::Link(l) = c {
+                        l.url == "https://dplyr.tidyverse.org/reference/filter.html"
+                    } else {
+                        false
+                    }
+                })
+            } else {
+                false
+            }
+        });
+        assert!(has_link, "Expected external link with URL to become hyperlink");
+    }
+
+    #[test]
+    fn test_external_link_with_topic_in_package() {
+        use std::collections::HashMap;
+
+        // Test \link[rlang:dyn-dots]{text} pattern where pkg:topic is in the package field
+        let doc = parse("\\title{T}\n\\description{See \\link[rlang:abort]{abort}}").unwrap();
+
+        let mut external_urls = HashMap::new();
+        external_urls.insert("rlang".to_string(), "https://rlang.r-lib.org/reference".to_string());
+
+        let options = ConverterOptions {
+            link_extension: Some("qmd".to_string()),
+            alias_map: None,
+            unresolved_link_url: None,
+            external_package_urls: Some(external_urls),
+        };
+        let mdast = rd_to_mdast_with_options(&doc, &options);
+
+        // Should use the topic from the pkg:topic format
+        let has_link = mdast.children.iter().any(|n| {
+            if let Node::Paragraph(p) = n {
+                p.children.iter().any(|c| {
+                    if let Node::Link(l) = c {
+                        l.url == "https://rlang.r-lib.org/reference/abort.html"
+                    } else {
+                        false
+                    }
+                })
+            } else {
+                false
+            }
+        });
+        assert!(has_link, "Expected external link with pkg:topic to resolve topic correctly");
     }
 
     #[test]
@@ -714,6 +814,7 @@ mod tests {
             link_extension: Some("qmd".to_string()),
             alias_map: Some(alias_map),
             unresolved_link_url: None,
+            external_package_urls: None,
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
 
@@ -789,6 +890,7 @@ mod tests {
             link_extension: Some("qmd".to_string()),
             alias_map: Some(alias_map),
             unresolved_link_url: None,
+            external_package_urls: None,
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
 

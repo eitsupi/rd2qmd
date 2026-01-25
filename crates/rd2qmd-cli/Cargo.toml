@@ -9,6 +9,10 @@ license.workspace = true
 name = "rd2qmd"
 path = "src/main.rs"
 
+[features]
+default = ["external-links"]
+external-links = ["rd2qmd-package/external-links"]
+
 [dependencies]
 rd2qmd-core.workspace = true
 rd2qmd-package.workspace = true

@@ -6,6 +6,19 @@
 //! - Batch conversion with parallel processing
 //!
 //! This crate is designed to be used by various interfaces (CLI, R package, etc.)
+//!
+//! ## Features
+//!
+//! - `external-links`: Enable external package link resolution (requires network access)
+
+#[cfg(feature = "external-links")]
+pub mod external_links;
+
+#[cfg(feature = "external-links")]
+pub use external_links::{
+    PackageUrlResolver, PackageUrlResolverOptions,
+    collect_external_packages,
+};
 
 use rayon::prelude::*;
 use rd2qmd_core::{
@@ -92,6 +105,10 @@ pub struct PackageConvertOptions {
     /// Example: "https://rdrr.io/r/base/{topic}.html"
     /// If None, unresolved links become inline code instead of hyperlinks
     pub unresolved_link_url: Option<String>,
+    /// External package URL map: package name -> reference documentation base URL
+    /// Used for resolving `\link[pkg]{topic}` patterns to actual URLs.
+    /// Example: {"dplyr" -> "https://dplyr.tidyverse.org/reference"}
+    pub external_package_urls: Option<HashMap<String, String>>,
 }
 
 impl Default for PackageConvertOptions {
@@ -103,6 +120,7 @@ impl Default for PackageConvertOptions {
             quarto_code_blocks: true,
             parallel_jobs: None,
             unresolved_link_url: None,
+            external_package_urls: None,
         }
     }
 }
@@ -185,6 +203,7 @@ fn convert_single_file(
             link_extension: Some(options.output_extension.clone()),
             alias_map: Some(package.alias_index.clone()),
             unresolved_link_url: options.unresolved_link_url.clone(),
+            external_package_urls: options.external_package_urls.clone(),
         };
 
         // Convert to mdast

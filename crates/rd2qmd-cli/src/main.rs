@@ -9,6 +9,17 @@ use rd2qmd_core::writer::Frontmatter;
 use rd2qmd_core::{ConverterOptions, WriterOptions, mdast_to_qmd, parse, rd_to_mdast_with_options};
 use rd2qmd_package::{PackageConvertOptions, RdPackage, convert_package};
 
+#[cfg(feature = "external-links")]
+use rd2qmd_package::{PackageUrlResolver, PackageUrlResolverOptions, collect_external_packages};
+
+/// Options for external package link resolution
+#[derive(Debug, Clone)]
+struct ExternalLinkOptions {
+    lib_paths: Vec<PathBuf>,
+    cache_dir: Option<PathBuf>,
+    fallback_url: Option<String>,
+}
+
 #[derive(Parser, Debug)]
 #[command(name = "rd2qmd")]
 #[command(about = "Convert Rd files to Quarto Markdown")]
@@ -55,6 +66,27 @@ struct Cli {
     #[arg(long, conflicts_with = "unresolved_link_url")]
     no_unresolved_link_url: bool,
 
+    /// R library path to search for external packages (can be specified multiple times)
+    #[cfg(feature = "external-links")]
+    #[arg(long = "r-lib-path", value_name = "PATH")]
+    r_lib_paths: Vec<PathBuf>,
+
+    /// Cache directory for pkgdown.yml files (default: system temp directory)
+    #[cfg(feature = "external-links")]
+    #[arg(long, value_name = "DIR")]
+    cache_dir: Option<PathBuf>,
+
+    /// Disable external package link resolution
+    #[cfg(feature = "external-links")]
+    #[arg(long)]
+    no_external_links: bool,
+
+    /// Fallback URL pattern for external packages without pkgdown sites
+    /// Use {package} and {topic} as placeholders
+    #[cfg(feature = "external-links")]
+    #[arg(long, value_name = "URL_PATTERN", default_value = "https://rdrr.io/pkg/{package}/man/{topic}.html")]
+    external_package_fallback: String,
+
     /// Verbose output
     #[arg(short, long)]
     verbose: bool,
@@ -86,6 +118,20 @@ fn main() -> Result<()> {
             cli.quiet,
         )?;
     } else if cli.input.is_dir() {
+        // Build external package URL options
+        #[cfg(feature = "external-links")]
+        let external_link_options = if cli.no_external_links {
+            None
+        } else {
+            Some(ExternalLinkOptions {
+                lib_paths: cli.r_lib_paths.clone(),
+                cache_dir: cli.cache_dir.clone(),
+                fallback_url: Some(cli.external_package_fallback.clone()),
+            })
+        };
+        #[cfg(not(feature = "external-links"))]
+        let external_link_options: Option<ExternalLinkOptions> = None;
+
         // Directory conversion (with alias resolution via rd2qmd-package)
         convert_directory(
             &cli.input,
@@ -94,6 +140,7 @@ fn main() -> Result<()> {
             use_frontmatter,
             cli.quarto_code_blocks,
             unresolved_link_url,
+            external_link_options,
             cli.verbose,
             cli.quiet,
             cli.jobs,
@@ -149,6 +196,7 @@ fn convert_single_file(
 }
 
 /// Convert a directory of Rd files (with alias resolution)
+#[allow(clippy::too_many_arguments)]
 fn convert_directory(
     input: &Path,
     output: Option<&Path>,
@@ -156,6 +204,7 @@ fn convert_directory(
     use_frontmatter: bool,
     quarto_code_blocks: bool,
     unresolved_link_url: Option<String>,
+    external_link_options: Option<ExternalLinkOptions>,
     verbose: bool,
     quiet: bool,
     jobs: Option<usize>,
@@ -182,6 +231,55 @@ fn convert_directory(
         eprintln!("Built alias index with {} entries", package.alias_index.len());
     }
 
+    // Resolve external package URLs if enabled
+    #[cfg(feature = "external-links")]
+    let external_package_urls = if let Some(opts) = external_link_options {
+        if opts.lib_paths.is_empty() {
+            if verbose {
+                eprintln!("No R library paths specified, skipping external link resolution");
+            }
+            None
+        } else {
+            if verbose {
+                eprintln!("Collecting external package references...");
+            }
+            let external_packages = collect_external_packages(&package);
+            if verbose {
+                eprintln!("Found {} external packages: {:?}", external_packages.len(), external_packages);
+            }
+
+            if external_packages.is_empty() {
+                None
+            } else {
+                if verbose {
+                    eprintln!("Resolving external package URLs...");
+                }
+                let mut resolver = PackageUrlResolver::new(PackageUrlResolverOptions {
+                    lib_paths: opts.lib_paths,
+                    cache_dir: opts.cache_dir,
+                    fallback_url: opts.fallback_url,
+                    enable_http: true,
+                });
+                let urls = resolver.resolve_packages(&external_packages);
+                if verbose {
+                    eprintln!("Resolved {} package URLs", urls.len());
+                }
+                if urls.is_empty() {
+                    None
+                } else {
+                    Some(urls)
+                }
+            }
+        }
+    } else {
+        None
+    };
+    #[cfg(not(feature = "external-links"))]
+    let external_package_urls: Option<HashMap<String, String>> = {
+        let _ = external_link_options; // Suppress unused warning
+        None
+    };
+
     // Configure conversion options
     let options = PackageConvertOptions {
         output_dir,
@@ -190,6 +288,7 @@ fn convert_directory(
         quarto_code_blocks,
         parallel_jobs: jobs,
         unresolved_link_url,
+        external_package_urls,
     };
 
     // Convert package
@@ -237,6 +336,7 @@ fn convert_rd_to_qmd(
         link_extension: Some("qmd".to_string()),
         alias_map,
         unresolved_link_url: unresolved_link_url.map(|s| s.to_string()),
+        external_package_urls: None, // Single file mode doesn't resolve external packages
     };
     let mdast = rd_to_mdast_with_options(&doc, &converter_options);
 
