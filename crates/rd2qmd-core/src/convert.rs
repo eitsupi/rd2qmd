@@ -510,8 +510,9 @@ impl Converter {
 
     fn extract_text(&self, nodes: &[RdNode]) -> String {
         let mut result = String::new();
-        for node in nodes {
-            match node {
+        let mut i = 0;
+        while i < nodes.len() {
+            match &nodes[i] {
                 RdNode::Text(s) => result.push_str(s),
                 RdNode::Code(children) | RdNode::Emph(children) | RdNode::Strong(children) => {
                     result.push_str(&self.extract_text(children));
@@ -537,19 +538,249 @@ impl Converter {
                     } else {
                         result.push_str(&format!("# S3 method for class '{}'\n", class));
                     }
+                    // Check if this is an infix operator and try to format naturally
+                    if let Some(formatted) = self.try_format_infix_method(generic, nodes, i + 1) {
+                        result.push_str(&formatted.text);
+                        i += formatted.nodes_consumed;
+                        i += 1;
+                        continue;
+                    }
                     result.push_str(generic);
                 }
                 RdNode::S4Method { generic, signature } => {
                     // S4 method: add comment like pkgdown
                     result.push_str(&format!("# S4 method for signature '{}'\n", signature));
+                    // Check if this is an infix operator and try to format naturally
+                    if let Some(formatted) = self.try_format_infix_method(generic, nodes, i + 1) {
+                        result.push_str(&formatted.text);
+                        i += formatted.nodes_consumed;
+                        i += 1;
+                        continue;
+                    }
                     result.push_str(generic);
                 }
                 RdNode::Special(ch) => result.push_str(special_char_to_string(*ch)),
                 RdNode::LineBreak => result.push('\n'),
                 _ => {}
             }
+            i += 1;
         }
         result
+    }
+
+    /// Try to format a method as an infix expression (e.g., `e1 + e2` instead of `+(e1, e2)`)
+    fn try_format_infix_method(
+        &self,
+        generic: &str,
+        nodes: &[RdNode],
+        next_idx: usize,
+    ) -> Option<InfixFormatResult> {
+        // Check if generic is an infix operator
+        if !is_infix_operator(generic) {
+            return None;
+        }
+
+        // Look for the arguments text starting with '('
+        let mut args_text = String::new();
+        let mut nodes_consumed = 0;
+
+        for node in nodes.iter().skip(next_idx) {
+            match node {
+                RdNode::Text(s) => {
+                    args_text.push_str(s);
+                    nodes_consumed += 1;
+                    // Stop if we've found the closing paren and this is the end of this usage line
+                    if args_text.contains(')') && (s.ends_with(')') || s.contains('\n')) {
+                        break;
+                    }
+                }
+                RdNode::Special(ch) => {
+                    args_text.push_str(special_char_to_string(*ch));
+                    nodes_consumed += 1;
+                }
+                RdNode::LineBreak => {
+                    // End of this usage line
+                    break;
+                }
+                _ => break,
+            }
+        }
+
+        // Trim only leading whitespace, preserve trailing for newlines
+        let args_text_trimmed = args_text.trim_start();
+        if !args_text_trimmed.starts_with('(') {
+            return None;
+        }
+
+        // Find the matching closing paren
+        let paren_end = find_matching_paren(args_text_trimmed)?;
+        let args_content = &args_text_trimmed[1..paren_end];
+        let trailing = &args_text_trimmed[paren_end + 1..];
+
+        // Parse arguments (simple split by comma, respecting nested parens)
+        let args = parse_function_args(args_content);
+
+        // Format based on operator type
+        let formatted = format_infix_call(generic, &args)?;
+
+        Some(InfixFormatResult {
+            text: format!("{}{}", formatted, trailing),
+            nodes_consumed,
+        })
+    }
+}
+
+/// Result of formatting an infix method
+struct InfixFormatResult {
+    text: String,
+    nodes_consumed: usize,
+}
+
+/// Check if a generic name is an infix operator
+fn is_infix_operator(name: &str) -> bool {
+    // Binary infix operators (with spaces)
+    const PADDED_OPS: &[&str] = &[
+        "+", "-", "*", "/", "==", "!=", "<", ">", "<=", ">=", "&", "|",
+    ];
+    // Infix operators without spaces
+    const UNPADDED_OPS: &[&str] = &["^", "[", "[[", "$", ":", "::", ":::"];
+
+    // User-defined infix operators: %...% (includes %% with length 2)
+    if name.starts_with('%') && name.ends_with('%') && name.len() >= 2 {
+        return true;
+    }
+
+    PADDED_OPS.contains(&name) || UNPADDED_OPS.contains(&name)
+}
+
+/// Check if operator should have spaces around it
+fn is_padded_infix(name: &str) -> bool {
+    const PADDED_OPS: &[&str] = &[
+        "+", "-", "*", "/", "==", "!=", "<", ">", "<=", ">=", "&", "|",
+    ];
+
+    // User-defined infix operators also get spaces (includes %% with length 2)
+    if name.starts_with('%') && name.ends_with('%') && name.len() >= 2 {
+        return true;
+    }
+
+    PADDED_OPS.contains(&name)
+}
+
+/// Find the index of the matching closing parenthesis
+fn find_matching_paren(s: &str) -> Option<usize> {
+    if !s.starts_with('(') {
+        return None;
+    }
+
+    let mut depth = 0;
+    for (i, c) in s.char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Parse function arguments, respecting nested parentheses
+fn parse_function_args(args_content: &str) -> Vec<String> {
+    let mut args = Vec::new();
+    let mut current_arg = String::new();
+    let mut depth = 0;
+
+    for c in args_content.chars() {
+        match c {
+            '(' | '[' | '{' => {
+                depth += 1;
+                current_arg.push(c);
+            }
+            ')' | ']' | '}' => {
+                depth -= 1;
+                current_arg.push(c);
+            }
+            ',' if depth == 0 => {
+                args.push(current_arg.trim().to_string());
+                current_arg = String::new();
+            }
+            _ => {
+                current_arg.push(c);
+            }
+        }
+    }
+
+    // Push the last argument
+    let last = current_arg.trim().to_string();
+    if !last.is_empty() {
+        args.push(last);
+    }
+
+    args
+}
+
+/// Format an infix operator call in natural form
+fn format_infix_call(operator: &str, args: &[String]) -> Option<String> {
+    match operator {
+        // Subscript operators
+        "[" => {
+            // x[i] or x[i, j, ...]
+            if args.is_empty() {
+                return None;
+            }
+            let obj = &args[0];
+            let indices = &args[1..];
+            if indices.is_empty() {
+                Some(format!("{}[]", obj))
+            } else {
+                Some(format!("{}[{}]", obj, indices.join(", ")))
+            }
+        }
+        "[[" => {
+            // x[[i]] or x[[i, j]]
+            if args.is_empty() {
+                return None;
+            }
+            let obj = &args[0];
+            let indices = &args[1..];
+            if indices.is_empty() {
+                Some(format!("{}[[]]", obj))
+            } else {
+                Some(format!("{}[[{}]]", obj, indices.join(", ")))
+            }
+        }
+        "$" => {
+            // x$name
+            if args.len() != 2 {
+                return None;
+            }
+            Some(format!("{}${}", args[0], args[1]))
+        }
+        // Namespace operators
+        "::" | ":::" => {
+            if args.len() != 2 {
+                return None;
+            }
+            Some(format!("{}{}{}", args[0], operator, args[1]))
+        }
+        // Binary operators (padded and unpadded)
+        _ => {
+            // For binary operators, we need exactly 2 arguments
+            if args.len() != 2 {
+                return None;
+            }
+            if is_padded_infix(operator) {
+                Some(format!("{} {} {}", args[0], operator, args[1]))
+            } else {
+                // Unpadded (like ^)
+                Some(format!("{}{}{}", args[0], operator, args[1]))
+            }
+        }
     }
 }
 
@@ -1156,10 +1387,207 @@ arrange(.data, ...)
             "Expected S3 method comment, got: {}",
             code
         );
+        // Infix operators are now formatted naturally: x[i, j, drop = TRUE]
         assert!(
-            code.contains("[(x, i, j, drop = TRUE)"),
-            "Expected operator function signature, got: {}",
+            code.contains("x[i, j, drop = TRUE]"),
+            "Expected subscript operator in natural form, got: {}",
             code
         );
+    }
+
+    #[test]
+    fn test_infix_binary_operators() {
+        // Test binary infix operators are formatted naturally
+        let rd = r#"
+\title{Test}
+\usage{
+\method{+}{polars_expr}(e1, e2)
+
+\method{-}{polars_expr}(e1, e2)
+
+\method{*}{polars_expr}(e1, e2)
+
+\method{/}{polars_expr}(e1, e2)
+
+\method{^}{polars_expr}(e1, e2)
+}
+"#;
+        let doc = parse(rd).unwrap();
+        let mdast = rd_to_mdast(&doc);
+
+        let code_content = mdast.children.iter().find_map(|n| {
+            if let Node::Code(c) = n {
+                Some(c.value.clone())
+            } else {
+                None
+            }
+        });
+
+        assert!(code_content.is_some(), "Expected a code block");
+        let code = code_content.unwrap();
+
+        // Padded operators (with spaces)
+        assert!(code.contains("e1 + e2"), "Expected 'e1 + e2', got: {}", code);
+        assert!(code.contains("e1 - e2"), "Expected 'e1 - e2', got: {}", code);
+        assert!(code.contains("e1 * e2"), "Expected 'e1 * e2', got: {}", code);
+        assert!(code.contains("e1 / e2"), "Expected 'e1 / e2', got: {}", code);
+
+        // Unpadded operator (no spaces around ^)
+        assert!(code.contains("e1^e2"), "Expected 'e1^e2', got: {}", code);
+    }
+
+    #[test]
+    fn test_infix_user_defined_operators() {
+        // Test user-defined infix operators (%...%)
+        let rd = r#"
+\title{Test}
+\usage{
+\method{\%\%}{polars_expr}(e1, e2)
+
+\method{\%/\%}{polars_expr}(e1, e2)
+
+\method{\%>\%}{polars_expr}(lhs, rhs)
+}
+"#;
+        let doc = parse(rd).unwrap();
+        let mdast = rd_to_mdast(&doc);
+
+        let code_content = mdast.children.iter().find_map(|n| {
+            if let Node::Code(c) = n {
+                Some(c.value.clone())
+            } else {
+                None
+            }
+        });
+
+        assert!(code_content.is_some(), "Expected a code block");
+        let code = code_content.unwrap();
+
+        assert!(code.contains("e1 %% e2"), "Expected 'e1 %% e2', got: {}", code);
+        assert!(code.contains("e1 %/% e2"), "Expected 'e1 %/% e2', got: {}", code);
+        assert!(code.contains("lhs %>% rhs"), "Expected 'lhs %>% rhs', got: {}", code);
+    }
+
+    #[test]
+    fn test_infix_subscript_operators() {
+        // Test subscript operators [, [[, $
+        let rd = r#"
+\title{Test}
+\usage{
+\method{[}{data.frame}(x, i, j, drop = TRUE)
+
+\method{[[}{list}(x, i)
+
+\method{$}{env}(x, name)
+}
+"#;
+        let doc = parse(rd).unwrap();
+        let mdast = rd_to_mdast(&doc);
+
+        let code_content = mdast.children.iter().find_map(|n| {
+            if let Node::Code(c) = n {
+                Some(c.value.clone())
+            } else {
+                None
+            }
+        });
+
+        assert!(code_content.is_some(), "Expected a code block");
+        let code = code_content.unwrap();
+
+        assert!(code.contains("x[i, j, drop = TRUE]"), "Expected 'x[i, j, drop = TRUE]', got: {}", code);
+        assert!(code.contains("x[[i]]"), "Expected 'x[[i]]', got: {}", code);
+        assert!(code.contains("x$name"), "Expected 'x$name', got: {}", code);
+    }
+
+    #[test]
+    fn test_infix_comparison_operators() {
+        // Test comparison operators
+        let rd = r#"
+\title{Test}
+\usage{
+\method{<}{polars_expr}(e1, e2)
+
+\method{>}{polars_expr}(e1, e2)
+
+\method{==}{polars_expr}(e1, e2)
+
+\method{!=}{polars_expr}(e1, e2)
+}
+"#;
+        let doc = parse(rd).unwrap();
+        let mdast = rd_to_mdast(&doc);
+
+        let code_content = mdast.children.iter().find_map(|n| {
+            if let Node::Code(c) = n {
+                Some(c.value.clone())
+            } else {
+                None
+            }
+        });
+
+        assert!(code_content.is_some(), "Expected a code block");
+        let code = code_content.unwrap();
+
+        assert!(code.contains("e1 < e2"), "Expected 'e1 < e2', got: {}", code);
+        assert!(code.contains("e1 > e2"), "Expected 'e1 > e2', got: {}", code);
+        assert!(code.contains("e1 == e2"), "Expected 'e1 == e2', got: {}", code);
+        assert!(code.contains("e1 != e2"), "Expected 'e1 != e2', got: {}", code);
+    }
+
+    #[test]
+    fn test_s4_method_infix_operator() {
+        // Test S4 methods with infix operators
+        let rd = r#"
+\title{Test}
+\usage{
+\S4method{+}{MyClass,MyClass}(e1, e2)
+}
+"#;
+        let doc = parse(rd).unwrap();
+        let mdast = rd_to_mdast(&doc);
+
+        let code_content = mdast.children.iter().find_map(|n| {
+            if let Node::Code(c) = n {
+                Some(c.value.clone())
+            } else {
+                None
+            }
+        });
+
+        assert!(code_content.is_some(), "Expected a code block");
+        let code = code_content.unwrap();
+
+        assert!(code.contains("# S4 method for signature 'MyClass,MyClass'"), "Expected S4 method comment, got: {}", code);
+        assert!(code.contains("e1 + e2"), "Expected 'e1 + e2', got: {}", code);
+    }
+
+    #[test]
+    fn test_non_infix_methods_unchanged() {
+        // Regular methods should not be affected
+        let rd = r#"
+\title{Test}
+\usage{
+\method{print}{data.frame}(x, ...)
+
+\method{summary}{lm}(object, ...)
+}
+"#;
+        let doc = parse(rd).unwrap();
+        let mdast = rd_to_mdast(&doc);
+
+        let code_content = mdast.children.iter().find_map(|n| {
+            if let Node::Code(c) = n {
+                Some(c.value.clone())
+            } else {
+                None
+            }
+        });
+
+        assert!(code_content.is_some(), "Expected a code block");
+        let code = code_content.unwrap();
+
+        assert!(code.contains("print(x, ...)"), "Expected 'print(x, ...)', got: {}", code);
+        assert!(code.contains("summary(object, ...)"), "Expected 'summary(object, ...)', got: {}", code);
     }
 }
