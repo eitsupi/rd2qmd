@@ -7,7 +7,7 @@ default-members = ["crates/rd2qmd-cli"]
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-repository = "https://github.com/user/rd2md"
+repository = "https://github.com/eitsupi/rd2qmd"
 
 [workspace.dependencies]
 # Core dependencies
@@ -29,6 +29,9 @@ r-description = { path = "refs/r-description-rs" }
 saphyr = "0.0.6"
 reqwest = { version = "0.12", features = ["blocking"], default-features = false }
 url = "2"
+
+# Testing
+insta = { version = "1", features = ["yaml"] }
 
 # Internal crates
 rd2qmd-core = { path = "crates/rd2qmd-core" }

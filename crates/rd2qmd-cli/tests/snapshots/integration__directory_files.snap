@@ -1,0 +1,8 @@
+---
+source: crates/rd2qmd-cli/tests/integration.rs
+assertion_line: 93
+expression: files
+---
+- formatting.qmd
+- simple.qmd
+- with_links.qmd

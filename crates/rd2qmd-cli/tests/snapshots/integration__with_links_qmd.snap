@@ -1,0 +1,35 @@
+---
+source: crates/rd2qmd-cli/tests/integration.rs
+assertion_line: 57
+expression: output
+---
+---
+title: "Function with Links"
+---
+
+# Function with Links
+
+## Description
+
+ This function demonstrates various link types. See [`simple`](https://rdrr.io/r/base/simple.html) for a simpler example. Also see `stats::lm` for linear models. 
+
+## Usage
+
+```r
+with_links(data)
+```
+
+## Arguments
+
+data
+:   A data frame. See `base::data.frame`.
+
+## See Also
+
+[`simple`](https://rdrr.io/r/base/simple.html), `ggplot2::ggplot`
+
+## Examples
+
+```{r}
+with_links(mtcars)
+```

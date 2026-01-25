@@ -18,3 +18,6 @@ rd2qmd-core.workspace = true
 rd2qmd-package.workspace = true
 clap.workspace = true
 anyhow.workspace = true
+
+[dev-dependencies]
+insta.workspace = true

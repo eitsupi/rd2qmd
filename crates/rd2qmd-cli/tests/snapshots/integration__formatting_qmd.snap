@@ -1,0 +1,39 @@
+---
+source: crates/rd2qmd-cli/tests/integration.rs
+assertion_line: 63
+expression: output
+---
+---
+title: "Formatting Examples"
+---
+
+# Formatting Examples
+
+## Description
+
+ This demonstrates *emphasis*, **strong text**, and `inline code`. It also has a [hyperlink](https://example.com) and email: [test@example.com](mailto:test@example.com). 
+
+## Usage
+
+```r
+formatting()
+```
+
+## Details
+
+ Here is a bullet list: 
+
+- First item 
+- Second item with `code` 
+- Third item 
+
+And a numbered list: 
+
+1. Step one 
+2. Step two 
+
+## Examples
+
+```{r}
+# No examples needed
+```
