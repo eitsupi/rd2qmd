@@ -8,9 +8,22 @@ use crate::mdast::{
     TableRow,
 };
 
+/// Options for Rd to mdast conversion
+#[derive(Debug, Clone, Default)]
+pub struct ConverterOptions {
+    /// File extension for internal links (e.g., "qmd", "md", "html")
+    /// If None, internal links become inline code instead of hyperlinks
+    pub link_extension: Option<String>,
+}
+
 /// Convert an Rd document to mdast
 pub fn rd_to_mdast(doc: &RdDocument) -> Root {
-    let mut converter = Converter::new();
+    rd_to_mdast_with_options(doc, &ConverterOptions::default())
+}
+
+/// Convert an Rd document to mdast with options
+pub fn rd_to_mdast_with_options(doc: &RdDocument, options: &ConverterOptions) -> Root {
+    let mut converter = Converter::new(options.clone());
     converter.convert_document(doc)
 }
 
@@ -18,11 +31,16 @@ pub fn rd_to_mdast(doc: &RdDocument) -> Root {
 struct Converter {
     /// Current heading depth for sections
     section_depth: u8,
+    /// Conversion options
+    options: ConverterOptions,
 }
 
 impl Converter {
-    fn new() -> Self {
-        Self { section_depth: 1 }
+    fn new(options: ConverterOptions) -> Self {
+        Self {
+            section_depth: 1,
+            options,
+        }
     }
 
     fn convert_document(&mut self, doc: &RdDocument) -> Root {
@@ -241,15 +259,31 @@ impl Converter {
                 topic,
                 text,
             } => {
-                // Convert to a simple text reference for now
-                let display = if let Some(text_nodes) = text {
+                // Determine display text
+                let display_text = if let Some(text_nodes) = text {
                     self.extract_text(text_nodes)
-                } else if let Some(pkg) = package {
-                    format!("{}::{}", pkg, topic)
                 } else {
                     topic.clone()
                 };
-                Some(Node::inline_code(display))
+
+                match (package, &self.options.link_extension) {
+                    // External package link - always inline code
+                    (Some(pkg), _) => {
+                        let display = if text.is_some() {
+                            display_text
+                        } else {
+                            format!("{}::{}", pkg, topic)
+                        };
+                        Some(Node::inline_code(display))
+                    }
+                    // Internal link with extension configured - create hyperlink
+                    (None, Some(ext)) => {
+                        let url = format!("{}.{}", topic, ext);
+                        Some(Node::link(url, vec![Node::inline_code(display_text)]))
+                    }
+                    // Internal link without extension - just inline code
+                    (None, None) => Some(Node::inline_code(display_text)),
+                }
             }
             RdNode::Url(url) => Some(Node::link(url.clone(), vec![Node::text(url.clone())])),
             RdNode::Email(email) => {
@@ -514,5 +548,81 @@ mod tests {
         let mdast = rd_to_mdast(&doc);
 
         assert!(mdast.children.iter().any(|n| matches!(n, Node::List(_))));
+    }
+
+    #[test]
+    fn test_internal_link_with_extension() {
+        let doc = parse("\\title{T}\n\\description{See \\link{other_func}}").unwrap();
+        let options = ConverterOptions {
+            link_extension: Some("qmd".to_string()),
+        };
+        let mdast = rd_to_mdast_with_options(&doc, &options);
+
+        // Find the paragraph with a link
+        let has_link = mdast.children.iter().any(|n| {
+            if let Node::Paragraph(p) = n {
+                p.children.iter().any(|c| {
+                    if let Node::Link(l) = c {
+                        l.url == "other_func.qmd"
+                    } else {
+                        false
+                    }
+                })
+            } else {
+                false
+            }
+        });
+        assert!(has_link, "Expected internal link to be converted to hyperlink");
+    }
+
+    #[test]
+    fn test_internal_link_without_extension() {
+        let doc = parse("\\title{T}\n\\description{See \\link{other_func}}").unwrap();
+        let options = ConverterOptions::default(); // No link_extension
+        let mdast = rd_to_mdast_with_options(&doc, &options);
+
+        // Should be inline code, not a link
+        let has_inline_code = mdast.children.iter().any(|n| {
+            if let Node::Paragraph(p) = n {
+                p.children.iter().any(|c| {
+                    if let Node::InlineCode(ic) = c {
+                        ic.value == "other_func"
+                    } else {
+                        false
+                    }
+                })
+            } else {
+                false
+            }
+        });
+        assert!(
+            has_inline_code,
+            "Expected internal link without extension to be inline code"
+        );
+    }
+
+    #[test]
+    fn test_external_link_always_inline_code() {
+        let doc = parse("\\title{T}\n\\description{See \\link[dplyr]{filter}}").unwrap();
+        let options = ConverterOptions {
+            link_extension: Some("qmd".to_string()),
+        };
+        let mdast = rd_to_mdast_with_options(&doc, &options);
+
+        // External links should always be inline code
+        let has_inline_code = mdast.children.iter().any(|n| {
+            if let Node::Paragraph(p) = n {
+                p.children.iter().any(|c| {
+                    if let Node::InlineCode(ic) = c {
+                        ic.value == "dplyr::filter"
+                    } else {
+                        false
+                    }
+                })
+            } else {
+                false
+            }
+        });
+        assert!(has_inline_code, "Expected external link to be inline code");
     }
 }

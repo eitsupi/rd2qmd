@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rd2qmd_core::writer::Frontmatter;
-use rd2qmd_core::{WriterOptions, mdast_to_qmd, parse, rd_to_mdast};
+use rd2qmd_core::{ConverterOptions, WriterOptions, mdast_to_qmd, parse, rd_to_mdast_with_options};
 
 #[derive(Parser, Debug)]
 #[command(name = "rd2qmd")]
@@ -265,7 +265,10 @@ fn convert_rd_to_qmd(
 ) -> Result<String> {
     let doc = parse(rd_content).map_err(|e| anyhow::anyhow!("Parse error: {}", e))?;
 
-    let mdast = rd_to_mdast(&doc);
+    let converter_options = ConverterOptions {
+        link_extension: Some("qmd".to_string()),
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &converter_options);
 
     // Extract title for frontmatter
     let title = doc
