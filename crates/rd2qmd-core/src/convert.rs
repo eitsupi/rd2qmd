@@ -530,15 +530,18 @@ impl Converter {
                         result.push_str(topic);
                     }
                 }
-                RdNode::Method { generic, class: _ } => {
-                    // S3 method: use generic function name
+                RdNode::Method { generic, class } => {
+                    // S3 method: add comment like pkgdown
+                    if class == "default" {
+                        result.push_str("# Default S3 method\n");
+                    } else {
+                        result.push_str(&format!("# S3 method for class '{}'\n", class));
+                    }
                     result.push_str(generic);
                 }
-                RdNode::S4Method {
-                    generic,
-                    signature: _,
-                } => {
-                    // S4 method: use generic function name
+                RdNode::S4Method { generic, signature } => {
+                    // S4 method: add comment like pkgdown
+                    result.push_str(&format!("# S4 method for signature '{}'\n", signature));
                     result.push_str(generic);
                 }
                 RdNode::Special(ch) => result.push_str(special_char_to_string(*ch)),
@@ -918,6 +921,245 @@ mod tests {
         assert!(
             has_link_with_code,
             "Expected \\code{{\\link[=alias]{{text}}}} to produce a link with inline code text"
+        );
+    }
+
+    #[test]
+    fn test_s3_method_comment_in_usage() {
+        // Test S3 method with specific class
+        let rd = r#"
+\title{Test}
+\usage{
+\method{print}{data.frame}(x, ...)
+}
+"#;
+        let doc = parse(rd).unwrap();
+        let mdast = rd_to_mdast(&doc);
+
+        // Find the code block and check it contains the S3 method comment
+        let code_content = mdast.children.iter().find_map(|n| {
+            if let Node::Code(c) = n {
+                Some(c.value.clone())
+            } else {
+                None
+            }
+        });
+
+        assert!(code_content.is_some(), "Expected a code block in usage section");
+        let code = code_content.unwrap();
+        assert!(
+            code.contains("# S3 method for class 'data.frame'"),
+            "Expected S3 method comment for class 'data.frame', got: {}",
+            code
+        );
+        assert!(
+            code.contains("print(x, ...)"),
+            "Expected function signature, got: {}",
+            code
+        );
+    }
+
+    #[test]
+    fn test_s3_default_method_comment_in_usage() {
+        // Test S3 default method
+        let rd = r#"
+\title{Test}
+\usage{
+\method{print}{default}(x, ...)
+}
+"#;
+        let doc = parse(rd).unwrap();
+        let mdast = rd_to_mdast(&doc);
+
+        let code_content = mdast.children.iter().find_map(|n| {
+            if let Node::Code(c) = n {
+                Some(c.value.clone())
+            } else {
+                None
+            }
+        });
+
+        assert!(code_content.is_some(), "Expected a code block in usage section");
+        let code = code_content.unwrap();
+        assert!(
+            code.contains("# Default S3 method"),
+            "Expected 'Default S3 method' comment, got: {}",
+            code
+        );
+    }
+
+    #[test]
+    fn test_s4_method_comment_in_usage() {
+        // Test S4 method
+        let rd = r#"
+\title{Test}
+\usage{
+\S4method{show}{MyClass}(object)
+}
+"#;
+        let doc = parse(rd).unwrap();
+        let mdast = rd_to_mdast(&doc);
+
+        let code_content = mdast.children.iter().find_map(|n| {
+            if let Node::Code(c) = n {
+                Some(c.value.clone())
+            } else {
+                None
+            }
+        });
+
+        assert!(code_content.is_some(), "Expected a code block in usage section");
+        let code = code_content.unwrap();
+        assert!(
+            code.contains("# S4 method for signature 'MyClass'"),
+            "Expected S4 method comment, got: {}",
+            code
+        );
+        assert!(
+            code.contains("show(object)"),
+            "Expected function signature, got: {}",
+            code
+        );
+    }
+
+    #[test]
+    fn test_s4_method_with_multiple_signatures() {
+        // Test S4 method with comma-separated signatures
+        let rd = r#"
+\title{Test}
+\usage{
+\S4method{coerce}{OldClass,NewClass}(from, to)
+}
+"#;
+        let doc = parse(rd).unwrap();
+        let mdast = rd_to_mdast(&doc);
+
+        let code_content = mdast.children.iter().find_map(|n| {
+            if let Node::Code(c) = n {
+                Some(c.value.clone())
+            } else {
+                None
+            }
+        });
+
+        assert!(code_content.is_some(), "Expected a code block in usage section");
+        let code = code_content.unwrap();
+        assert!(
+            code.contains("# S4 method for signature 'OldClass,NewClass'"),
+            "Expected S4 method comment with multiple signatures, got: {}",
+            code
+        );
+    }
+
+    #[test]
+    fn test_mixed_usage_with_s3_methods() {
+        // Test usage with regular function and S3 methods
+        let rd = r#"
+\title{Test}
+\usage{
+arrange(.data, ...)
+
+\method{arrange}{data.frame}(.data, ..., .by_group = FALSE)
+
+\method{arrange}{default}(.data, ...)
+}
+"#;
+        let doc = parse(rd).unwrap();
+        let mdast = rd_to_mdast(&doc);
+
+        let code_content = mdast.children.iter().find_map(|n| {
+            if let Node::Code(c) = n {
+                Some(c.value.clone())
+            } else {
+                None
+            }
+        });
+
+        assert!(code_content.is_some(), "Expected a code block in usage section");
+        let code = code_content.unwrap();
+
+        // Check regular function is present
+        assert!(
+            code.contains("arrange(.data, ...)"),
+            "Expected regular function, got: {}",
+            code
+        );
+
+        // Check S3 method for data.frame
+        assert!(
+            code.contains("# S3 method for class 'data.frame'"),
+            "Expected S3 method comment for data.frame, got: {}",
+            code
+        );
+
+        // Check default S3 method
+        assert!(
+            code.contains("# Default S3 method"),
+            "Expected Default S3 method comment, got: {}",
+            code
+        );
+    }
+
+    #[test]
+    fn test_s3_method_with_special_class_name() {
+        // Test S3 method with special characters in class name
+        let rd = r#"
+\title{Test}
+\usage{
+\method{print}{tbl_df}(x, ..., n = NULL, width = NULL)
+}
+"#;
+        let doc = parse(rd).unwrap();
+        let mdast = rd_to_mdast(&doc);
+
+        let code_content = mdast.children.iter().find_map(|n| {
+            if let Node::Code(c) = n {
+                Some(c.value.clone())
+            } else {
+                None
+            }
+        });
+
+        assert!(code_content.is_some(), "Expected a code block in usage section");
+        let code = code_content.unwrap();
+        assert!(
+            code.contains("# S3 method for class 'tbl_df'"),
+            "Expected S3 method comment with special class name, got: {}",
+            code
+        );
+    }
+
+    #[test]
+    fn test_s3_method_with_operator_generic() {
+        // Test S3 method for operators like [, [[, $
+        let rd = r#"
+\title{Test}
+\usage{
+\method{[}{data.frame}(x, i, j, drop = TRUE)
+}
+"#;
+        let doc = parse(rd).unwrap();
+        let mdast = rd_to_mdast(&doc);
+
+        let code_content = mdast.children.iter().find_map(|n| {
+            if let Node::Code(c) = n {
+                Some(c.value.clone())
+            } else {
+                None
+            }
+        });
+
+        assert!(code_content.is_some(), "Expected a code block in usage section");
+        let code = code_content.unwrap();
+        assert!(
+            code.contains("# S3 method for class 'data.frame'"),
+            "Expected S3 method comment, got: {}",
+            code
+        );
+        assert!(
+            code.contains("[(x, i, j, drop = TRUE)"),
+            "Expected operator function signature, got: {}",
+            code
         );
     }
 }
