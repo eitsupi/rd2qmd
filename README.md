@@ -93,6 +93,13 @@ These options require the `external-links` feature (enabled by default):
 
 You can get your R library paths by running `.libPaths()` in R:
 
+```r
+.libPaths()
+#> [1] "/home/user/R/x86_64-pc-linux-gnu-library/4.4"
+#> [2] "/usr/local/lib/R/site-library"
+#> [3] "/usr/lib/R/library"
+```
+
 ### Example control options
 
 These options control how `\dontrun{}` and `\donttest{}` example code is handled:
@@ -107,13 +114,6 @@ Default behavior (pkgdown-compatible):
 - `\donttest{}` → executable (`{r}`), because it means "don't run during testing" but should run normally
 
 Use `--exec-dontrun` to make `\dontrun{}` code executable, or `--no-exec-donttest` to make `\donttest{}` code non-executable.
-
-```r
-.libPaths()
-#> [1] "/home/user/R/x86_64-pc-linux-gnu-library/4.4"
-#> [2] "/usr/local/lib/R/site-library"
-#> [3] "/usr/lib/R/library"
-```
 
 ## Output formats
 
