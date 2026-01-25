@@ -1,0 +1,13 @@
+[package]
+name = "rd2qmd-core"
+description = "Core library for converting Rd files to Quarto Markdown"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]

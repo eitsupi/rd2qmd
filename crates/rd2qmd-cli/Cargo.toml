@@ -1,0 +1,16 @@
+[package]
+name = "rd2qmd"
+description = "CLI tool to convert Rd files to Quarto Markdown"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "rd2qmd"
+path = "src/main.rs"
+
+[dependencies]
+rd2qmd-core.workspace = true
+clap.workspace = true
+anyhow.workspace = true
+rayon.workspace = true
