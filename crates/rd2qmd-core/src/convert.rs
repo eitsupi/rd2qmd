@@ -7,6 +7,7 @@ use crate::mdast::{
     Align, DefinitionDescription, DefinitionList, DefinitionTerm, Node, Root, Table, TableCell,
     TableRow,
 };
+use std::collections::HashMap;
 
 /// Options for Rd to mdast conversion
 #[derive(Debug, Clone, Default)]
@@ -14,6 +15,9 @@ pub struct ConverterOptions {
     /// File extension for internal links (e.g., "qmd", "md", "html")
     /// If None, internal links become inline code instead of hyperlinks
     pub link_extension: Option<String>,
+    /// Alias map: maps alias names to Rd file basenames (without extension)
+    /// Used to resolve \link{alias} to the correct target file
+    pub alias_map: Option<HashMap<String, String>>,
 }
 
 /// Convert an Rd document to mdast
@@ -278,7 +282,15 @@ impl Converter {
                     }
                     // Internal link with extension configured - create hyperlink
                     (None, Some(ext)) => {
-                        let url = format!("{}.{}", topic, ext);
+                        // Resolve alias to target file using alias_map
+                        let target_file = self
+                            .options
+                            .alias_map
+                            .as_ref()
+                            .and_then(|map| map.get(topic))
+                            .map(|s| s.as_str())
+                            .unwrap_or(topic);
+                        let url = format!("{}.{}", target_file, ext);
                         Some(Node::link(url, vec![Node::inline_code(display_text)]))
                     }
                     // Internal link without extension - just inline code
@@ -555,6 +567,7 @@ mod tests {
         let doc = parse("\\title{T}\n\\description{See \\link{other_func}}").unwrap();
         let options = ConverterOptions {
             link_extension: Some("qmd".to_string()),
+            alias_map: None,
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
 
@@ -606,6 +619,7 @@ mod tests {
         let doc = parse("\\title{T}\n\\description{See \\link[dplyr]{filter}}").unwrap();
         let options = ConverterOptions {
             link_extension: Some("qmd".to_string()),
+            alias_map: None,
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
 
@@ -624,5 +638,41 @@ mod tests {
             }
         });
         assert!(has_inline_code, "Expected external link to be inline code");
+    }
+
+    #[test]
+    fn test_alias_resolution() {
+        use std::collections::HashMap;
+
+        let doc = parse("\\title{T}\n\\description{See \\link{DataFrame}}").unwrap();
+
+        // Create an alias map: DataFrame -> pl__DataFrame
+        let mut alias_map = HashMap::new();
+        alias_map.insert("DataFrame".to_string(), "pl__DataFrame".to_string());
+
+        let options = ConverterOptions {
+            link_extension: Some("qmd".to_string()),
+            alias_map: Some(alias_map),
+        };
+        let mdast = rd_to_mdast_with_options(&doc, &options);
+
+        // Find the paragraph with a link that has resolved alias
+        let has_resolved_link = mdast.children.iter().any(|n| {
+            if let Node::Paragraph(p) = n {
+                p.children.iter().any(|c| {
+                    if let Node::Link(l) = c {
+                        l.url == "pl__DataFrame.qmd"
+                    } else {
+                        false
+                    }
+                })
+            } else {
+                false
+            }
+        });
+        assert!(
+            has_resolved_link,
+            "Expected alias 'DataFrame' to resolve to 'pl__DataFrame.qmd'"
+        );
     }
 }

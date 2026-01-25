@@ -1,0 +1,15 @@
+[package]
+name = "rd2qmd-package"
+description = "Package-level operations for converting R documentation to Quarto Markdown"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+rd2qmd-core = { workspace = true }
+thiserror = { workspace = true }
+rayon = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

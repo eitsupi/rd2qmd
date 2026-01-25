@@ -2,13 +2,12 @@
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use rayon::prelude::*;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rd2qmd_core::writer::Frontmatter;
 use rd2qmd_core::{ConverterOptions, WriterOptions, mdast_to_qmd, parse, rd_to_mdast_with_options};
+use rd2qmd_package::{PackageConvertOptions, RdPackage, convert_package};
 
 #[derive(Parser, Debug)]
 #[command(name = "rd2qmd")]
@@ -17,7 +16,7 @@ use rd2qmd_core::{ConverterOptions, WriterOptions, mdast_to_qmd, parse, rd_to_md
 #[command(after_help = "Examples:
   rd2qmd file.Rd                    # Convert single file to file.qmd
   rd2qmd file.Rd -o output.qmd      # Convert to specific output file
-  rd2qmd man/ -o docs/              # Convert directory
+  rd2qmd man/ -o docs/              # Convert directory (with alias resolution)
   rd2qmd man/ -o docs/ -j4          # Use 4 parallel jobs")]
 struct Cli {
     /// Input Rd file or directory
@@ -62,7 +61,8 @@ fn main() -> Result<()> {
     let use_frontmatter = cli.frontmatter && !cli.no_frontmatter;
 
     if cli.input.is_file() {
-        convert_file(
+        // Single file conversion (no alias resolution)
+        convert_single_file(
             &cli.input,
             cli.output.as_deref(),
             use_frontmatter,
@@ -71,6 +71,7 @@ fn main() -> Result<()> {
             cli.quiet,
         )?;
     } else if cli.input.is_dir() {
+        // Directory conversion (with alias resolution via rd2qmd-package)
         convert_directory(
             &cli.input,
             cli.output.as_deref(),
@@ -88,8 +89,8 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// Convert a single Rd file to QMD
-fn convert_file(
+/// Convert a single Rd file to QMD (without alias resolution)
+fn convert_single_file(
     input: &Path,
     output: Option<&Path>,
     use_frontmatter: bool,
@@ -113,7 +114,7 @@ fn convert_file(
     let content = fs::read_to_string(input)
         .with_context(|| format!("Failed to read: {}", input.display()))?;
 
-    let qmd = convert_rd_to_qmd(&content, use_frontmatter, quarto_code_blocks)?;
+    let qmd = convert_rd_to_qmd(&content, use_frontmatter, quarto_code_blocks, None)?;
 
     if let Some(parent) = output_path.parent() {
         fs::create_dir_all(parent)
@@ -130,7 +131,7 @@ fn convert_file(
     Ok(())
 }
 
-/// Convert a directory of Rd files
+/// Convert a directory of Rd files (with alias resolution)
 fn convert_directory(
     input: &Path,
     output: Option<&Path>,
@@ -141,132 +142,80 @@ fn convert_directory(
     quiet: bool,
     jobs: Option<usize>,
 ) -> Result<()> {
-    let output_dir = output.unwrap_or(input);
+    let output_dir = output.map(|p| p.to_path_buf()).unwrap_or_else(|| input.to_path_buf());
 
-    let files = collect_rd_files(input, recursive)?;
+    // Load package with alias index
+    if verbose {
+        eprintln!("Scanning {} for Rd files...", input.display());
+    }
 
-    if files.is_empty() {
+    let package = RdPackage::from_directory(input, recursive)
+        .with_context(|| format!("Failed to scan directory: {}", input.display()))?;
+
+    if package.files.is_empty() {
         if !quiet {
             eprintln!("No .Rd files found in {}", input.display());
         }
         return Ok(());
     }
 
-    let total = files.len();
     if verbose {
-        eprintln!("Found {} .Rd files", total);
+        eprintln!("Found {} .Rd files", package.files.len());
+        eprintln!("Built alias index with {} entries", package.alias_index.len());
     }
 
-    // Configure thread pool if jobs specified
-    if let Some(n) = jobs {
-        rayon::ThreadPoolBuilder::new()
-            .num_threads(n)
-            .build_global()
-            .ok(); // Ignore error if already initialized
-    }
+    // Configure conversion options
+    let options = PackageConvertOptions {
+        output_dir,
+        output_extension: "qmd".to_string(),
+        frontmatter: use_frontmatter,
+        quarto_code_blocks,
+        parallel_jobs: jobs,
+    };
 
-    // Atomic counters for thread-safe progress tracking
-    let success = AtomicUsize::new(0);
-    let failed = AtomicUsize::new(0);
+    // Convert package
+    let result = convert_package(&package, &options)
+        .with_context(|| "Package conversion failed")?;
 
-    // Parallel conversion
-    let errors: Vec<_> = files
-        .par_iter()
-        .filter_map(|file| {
-            let relative = file.strip_prefix(input).unwrap_or(file);
-            let output_file = output_dir.join(relative).with_extension("qmd");
-
-            match convert_file_inner(file, &output_file, use_frontmatter, quarto_code_blocks) {
-                Ok(()) => {
-                    success.fetch_add(1, Ordering::Relaxed);
-                    if !quiet {
-                        println!("{}", output_file.display());
-                    }
-                    None
-                }
-                Err(e) => {
-                    failed.fetch_add(1, Ordering::Relaxed);
-                    Some((file.clone(), e))
-                }
-            }
-        })
-        .collect();
-
-    // Report errors
-    for (file, e) in &errors {
-        eprintln!("Error converting {}: {}", file.display(), e);
-    }
-
-    let success_count = success.load(Ordering::Relaxed);
-    let failed_count = failed.load(Ordering::Relaxed);
-
+    // Print output files
     if !quiet {
-        eprintln!("Converted {} files, {} failed", success_count, failed_count);
-    }
-
-    if failed_count > 0 {
-        anyhow::bail!("{} files failed to convert", failed_count);
-    }
-
-    Ok(())
-}
-
-/// Inner conversion function that doesn't print (for parallel use)
-fn convert_file_inner(
-    input: &Path,
-    output: &Path,
-    use_frontmatter: bool,
-    quarto_code_blocks: bool,
-) -> Result<()> {
-    let content = fs::read_to_string(input)
-        .with_context(|| format!("Failed to read: {}", input.display()))?;
-
-    let qmd = convert_rd_to_qmd(&content, use_frontmatter, quarto_code_blocks)?;
-
-    if let Some(parent) = output.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
-    }
-
-    fs::write(output, &qmd).with_context(|| format!("Failed to write: {}", output.display()))?;
-
-    Ok(())
-}
-
-/// Collect all .Rd files in a directory
-fn collect_rd_files(dir: &Path, recursive: bool) -> Result<Vec<PathBuf>> {
-    let mut files = Vec::new();
-
-    for entry in
-        fs::read_dir(dir).with_context(|| format!("Failed to read directory: {}", dir.display()))?
-    {
-        let entry = entry?;
-        let path = entry.path();
-
-        if path.is_file() {
-            if let Some(ext) = path.extension() {
-                if ext.eq_ignore_ascii_case("rd") {
-                    files.push(path);
-                }
-            }
-        } else if path.is_dir() && recursive {
-            files.extend(collect_rd_files(&path, recursive)?);
+        for path in &result.output_files {
+            println!("{}", path.display());
         }
     }
 
-    Ok(files)
+    // Report errors
+    for (file, error) in &result.failed_files {
+        eprintln!("Error converting {}: {}", file.display(), error);
+    }
+
+    if !quiet {
+        eprintln!(
+            "Converted {} files, {} failed",
+            result.success_count,
+            result.failed_files.len()
+        );
+    }
+
+    if !result.failed_files.is_empty() {
+        anyhow::bail!("{} files failed to convert", result.failed_files.len());
+    }
+
+    Ok(())
 }
 
-/// Core conversion function
+/// Core conversion function for single file
 fn convert_rd_to_qmd(
     rd_content: &str,
     use_frontmatter: bool,
     quarto_code_blocks: bool,
+    alias_map: Option<std::collections::HashMap<String, String>>,
 ) -> Result<String> {
     let doc = parse(rd_content).map_err(|e| anyhow::anyhow!("Parse error: {}", e))?;
 
     let converter_options = ConverterOptions {
         link_extension: Some("qmd".to_string()),
+        alias_map,
     };
     let mdast = rd_to_mdast_with_options(&doc, &converter_options);
 

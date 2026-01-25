@@ -25,3 +25,4 @@ serde_json = "1"
 
 # Internal crates
 rd2qmd-core = { path = "crates/rd2qmd-core" }
+rd2qmd-package = { path = "crates/rd2qmd-package" }
