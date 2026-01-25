@@ -325,6 +325,12 @@ impl<'a> Writer<'a> {
     }
 
     fn write_inline_code(&mut self, c: &crate::mdast::InlineCode) {
+        // Add space before if the previous character is a backtick
+        // This prevents `foo``bar` which CommonMark parses as a single code span
+        if self.output.ends_with('`') {
+            self.output.push(' ');
+        }
+
         // Handle backticks in content
         let value = &c.value;
         if value.contains('`') {
@@ -473,6 +479,20 @@ mod tests {
         ])]);
         let qmd = mdast_to_qmd(&root, &WriterOptions::default());
         assert!(qmd.contains("`foo()`"));
+    }
+
+    #[test]
+    fn test_consecutive_inline_codes() {
+        // Consecutive inline codes need a space between them
+        // Without a space, `foo``bar` is parsed as a single code span in CommonMark
+        let root = Root::new(vec![Node::paragraph(vec![
+            Node::inline_code("foo"),
+            Node::inline_code("bar"),
+        ])]);
+        let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+        // Should produce "`foo` `bar`" not "`foo``bar`"
+        assert!(qmd.contains("`foo` `bar`"));
+        assert!(!qmd.contains("`foo``bar`"));
     }
 
     #[test]
