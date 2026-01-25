@@ -238,13 +238,26 @@ impl PackageUrlResolver {
 
     /// Build a URL map for external packages
     ///
-    /// Takes a set of package names and returns a map of package -> reference URL
+    /// Takes a set of package names and returns a map of package -> reference URL.
+    /// For packages that cannot be resolved via lib paths, uses the fallback URL pattern.
     pub fn resolve_packages(&mut self, packages: &HashSet<String>) -> HashMap<String, String> {
         let mut result = HashMap::new();
 
         for package in packages {
             if let Some(url) = self.resolve(package) {
                 result.insert(package.clone(), url);
+            } else if let Some(pattern) = &self.options.fallback_url {
+                // Use fallback URL pattern for uninstalled packages
+                // Extract base URL by removing {topic}.html part
+                // e.g., "https://rdrr.io/pkg/{package}/man/{topic}.html"
+                //    -> "https://rdrr.io/pkg/dplyr/man"
+                let base_url = pattern
+                    .replace("{package}", package)
+                    .replace("{topic}.html", "")
+                    .replace("{topic}", "")
+                    .trim_end_matches('/')
+                    .to_string();
+                result.insert(package.clone(), base_url);
             }
         }
 
@@ -471,5 +484,28 @@ URL: https://testpkg.example.com
         // Should construct URL from DESCRIPTION
         let url = resolver.resolve("testpkg");
         assert_eq!(url, Some("https://testpkg.example.com/reference".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_packages_with_fallback_for_uninstalled() {
+        let mut resolver = PackageUrlResolver::new(PackageUrlResolverOptions {
+            lib_paths: vec![], // No lib paths, so no packages can be resolved
+            cache_dir: None,
+            fallback_url: Some("https://rdrr.io/pkg/{package}/man/{topic}.html".to_string()),
+            enable_http: false,
+        });
+
+        let packages: HashSet<String> = ["dplyr", "ggplot2", "tidyr"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+
+        let urls = resolver.resolve_packages(&packages);
+
+        // All packages should have fallback URLs
+        assert_eq!(urls.len(), 3);
+        assert_eq!(urls.get("dplyr"), Some(&"https://rdrr.io/pkg/dplyr/man".to_string()));
+        assert_eq!(urls.get("ggplot2"), Some(&"https://rdrr.io/pkg/ggplot2/man".to_string()));
+        assert_eq!(urls.get("tidyr"), Some(&"https://rdrr.io/pkg/tidyr/man".to_string()));
     }
 }
