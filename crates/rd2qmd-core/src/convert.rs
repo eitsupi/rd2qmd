@@ -375,7 +375,9 @@ impl Converter {
                 Node::List(l) => {
                     // Flatten list items with bullet markers
                     for (j, item) in l.children.iter().enumerate() {
-                        if j > 0 || !result.is_empty() {
+                        // Add <br> between list items (not before first item -
+                        // block separator already handles gap from previous content)
+                        if j > 0 {
                             result.push(Node::Html(crate::mdast::Html {
                                 value: " <br>".to_string(),
                             }));
