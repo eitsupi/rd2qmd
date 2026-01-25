@@ -59,6 +59,7 @@ rd2qmd man/ -o docs/ -j4
 | `-j, --jobs <N>` | Number of parallel jobs (defaults to CPU count) |
 | `-r, --recursive` | Process directories recursively |
 | `--no-frontmatter` | Disable YAML frontmatter |
+| `--no-pagetitle` | Skip pkgdown-style `pagetitle` metadata (`"<title> — <name>"`) |
 | `--quarto-code-blocks <BOOL>` | Use `{r}` code blocks (auto-set based on format) |
 | `-v, --verbose` | Verbose output |
 | `-q, --quiet` | Only show errors |
@@ -95,14 +96,14 @@ You can get your R library paths by running `.libPaths()` in R:
 ### Quarto Markdown (`.qmd`)
 
 The default format produces Quarto-compatible markdown with:
-- YAML frontmatter with title
+- YAML frontmatter with title and pagetitle (pkgdown style: `"<title> — <name>"`)
 - Executable R code blocks using `{r}` syntax
 - Internal links resolved to `.qmd` files
 
 ### Standard Markdown (`.md`)
 
 Use `-f md` for standard markdown with:
-- YAML frontmatter with title
+- YAML frontmatter with title and pagetitle
 - Plain `r` code blocks (non-executable)
 - Internal links resolved to `.md` files
 

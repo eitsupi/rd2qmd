@@ -1,11 +1,10 @@
 ---
 source: crates/rd2qmd-cli/tests/integration.rs
-assertion_line: 46
+assertion_line: 64
 expression: output
 ---
 ---
 title: "A Simple Function"
-pagetitle: "A Simple Function — simple"
 ---
 
 # A Simple Function

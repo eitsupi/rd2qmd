@@ -71,6 +71,10 @@ struct Cli {
     #[arg(long, conflicts_with = "frontmatter")]
     no_frontmatter: bool,
 
+    /// Skip pkgdown-style pagetitle metadata ("<title> — <name>")
+    #[arg(long)]
+    no_pagetitle: bool,
+
     /// Use Quarto {r} code blocks instead of r (auto-set based on format)
     #[arg(long)]
     quarto_code_blocks: Option<bool>,
@@ -118,6 +122,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     let use_frontmatter = cli.frontmatter && !cli.no_frontmatter;
+    let use_pagetitle = !cli.no_pagetitle;
     let unresolved_link_url = if cli.no_unresolved_link_url {
         None
     } else {
@@ -138,6 +143,7 @@ fn main() -> Result<()> {
             cli.output.as_deref(),
             output_extension,
             use_frontmatter,
+            use_pagetitle,
             quarto_code_blocks,
             unresolved_link_url.as_deref(),
             cli.verbose,
@@ -165,6 +171,7 @@ fn main() -> Result<()> {
             output_extension,
             cli.recursive,
             use_frontmatter,
+            use_pagetitle,
             quarto_code_blocks,
             unresolved_link_url,
             external_link_options,
@@ -180,11 +187,13 @@ fn main() -> Result<()> {
 }
 
 /// Convert a single Rd file (without alias resolution)
+#[allow(clippy::too_many_arguments)]
 fn convert_single_file(
     input: &Path,
     output: Option<&Path>,
     output_extension: &str,
     use_frontmatter: bool,
+    use_pagetitle: bool,
     quarto_code_blocks: bool,
     unresolved_link_url: Option<&str>,
     verbose: bool,
@@ -206,7 +215,7 @@ fn convert_single_file(
     let content = fs::read_to_string(input)
         .with_context(|| format!("Failed to read: {}", input.display()))?;
 
-    let qmd = convert_rd_to_qmd(&content, output_extension, use_frontmatter, quarto_code_blocks, None, unresolved_link_url)?;
+    let qmd = convert_rd_to_qmd(&content, output_extension, use_frontmatter, use_pagetitle, quarto_code_blocks, None, unresolved_link_url)?;
 
     if let Some(parent) = output_path.parent() {
         fs::create_dir_all(parent)
@@ -231,6 +240,7 @@ fn convert_directory(
     output_extension: &str,
     recursive: bool,
     use_frontmatter: bool,
+    use_pagetitle: bool,
     quarto_code_blocks: bool,
     unresolved_link_url: Option<String>,
     external_link_options: Option<ExternalLinkOptions>,
@@ -354,6 +364,7 @@ fn convert_directory(
         output_dir,
         output_extension: output_extension.to_string(),
         frontmatter: use_frontmatter,
+        pagetitle: use_pagetitle,
         quarto_code_blocks,
         parallel_jobs: jobs,
         unresolved_link_url,
@@ -392,10 +403,12 @@ fn convert_directory(
 }
 
 /// Core conversion function for single file
+#[allow(clippy::too_many_arguments)]
 fn convert_rd_to_qmd(
     rd_content: &str,
     output_extension: &str,
     use_frontmatter: bool,
+    use_pagetitle: bool,
     quarto_code_blocks: bool,
     alias_map: Option<std::collections::HashMap<String, String>>,
     unresolved_link_url: Option<&str>,
@@ -410,15 +423,29 @@ fn convert_rd_to_qmd(
     };
     let mdast = rd_to_mdast_with_options(&doc, &converter_options);
 
-    // Extract title for frontmatter
+    // Extract title and name for frontmatter
     let title = doc
         .get_section(&rd2qmd_core::SectionTag::Title)
         .map(|s| extract_text(&s.content));
+    let name = doc
+        .get_section(&rd2qmd_core::SectionTag::Name)
+        .map(|s| extract_text(&s.content));
+
+    // Build pagetitle in pkgdown style: "<title> — <name>"
+    let pagetitle = if use_pagetitle {
+        match (&title, &name) {
+            (Some(t), Some(n)) => Some(format!("{} \u{2014} {}", t, n)),
+            _ => None,
+        }
+    } else {
+        None
+    };
 
     let options = WriterOptions {
         frontmatter: if use_frontmatter {
             Some(Frontmatter {
                 title,
+                pagetitle,
                 format: None,
             })
         } else {

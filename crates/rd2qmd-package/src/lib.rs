@@ -97,6 +97,8 @@ pub struct PackageConvertOptions {
     pub output_extension: String,
     /// Whether to add YAML frontmatter
     pub frontmatter: bool,
+    /// Whether to add pagetitle in pkgdown style ("<title> — <name>")
+    pub pagetitle: bool,
     /// Whether to use Quarto {r} code blocks for examples
     pub quarto_code_blocks: bool,
     /// Number of parallel jobs (None = use all CPUs)
@@ -118,6 +120,7 @@ impl Default for PackageConvertOptions {
             output_dir: PathBuf::from("."),
             output_extension: "qmd".to_string(),
             frontmatter: true,
+            pagetitle: true,
             quarto_code_blocks: true,
             parallel_jobs: None,
             unresolved_link_url: None,
@@ -210,16 +213,30 @@ fn convert_single_file(
         // Convert to mdast
         let mdast = rd_to_mdast_with_options(&doc, &converter_options);
 
-        // Extract title for frontmatter
+        // Extract title and name for frontmatter
         let title = doc
             .get_section(&SectionTag::Title)
             .map(|s| extract_text(&s.content));
+        let name = doc
+            .get_section(&SectionTag::Name)
+            .map(|s| extract_text(&s.content));
+
+        // Build pagetitle in pkgdown style: "<title> — <name>"
+        let pagetitle = if options.pagetitle {
+            match (&title, &name) {
+                (Some(t), Some(n)) => Some(format!("{} \u{2014} {}", t, n)),
+                _ => None,
+            }
+        } else {
+            None
+        };
 
         // Build writer options
         let writer_options = WriterOptions {
             frontmatter: if options.frontmatter {
                 Some(Frontmatter {
                     title,
+                    pagetitle,
                     format: None,
                 })
             } else {

@@ -59,6 +59,12 @@ fn test_simple_no_frontmatter() {
 }
 
 #[test]
+fn test_simple_no_pagetitle() {
+    let output = convert_fixture("simple", &["--no-pagetitle"]);
+    insta::assert_snapshot!("simple_no_pagetitle", output);
+}
+
+#[test]
 fn test_with_links() {
     let output = convert_fixture("with_links", &[]);
     insta::assert_snapshot!("with_links_qmd", output);

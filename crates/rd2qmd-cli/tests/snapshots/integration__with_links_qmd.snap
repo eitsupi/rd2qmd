@@ -1,10 +1,11 @@
 ---
 source: crates/rd2qmd-cli/tests/integration.rs
-assertion_line: 57
+assertion_line: 64
 expression: output
 ---
 ---
 title: "Function with Links"
+pagetitle: "Function with Links — with_links"
 ---
 
 # Function with Links

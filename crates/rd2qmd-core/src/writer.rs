@@ -17,6 +17,8 @@ pub struct WriterOptions {
 #[derive(Debug, Clone, Default)]
 pub struct Frontmatter {
     pub title: Option<String>,
+    /// Page title for browser tab/SEO (pkgdown style: "<title> — <name>")
+    pub pagetitle: Option<String>,
     pub format: Option<String>,
 }
 
@@ -68,6 +70,10 @@ impl<'a> Writer<'a> {
         if let Some(title) = &fm.title {
             self.output
                 .push_str(&format!("title: \"{}\"\n", escape_yaml_string(title)));
+        }
+        if let Some(pagetitle) = &fm.pagetitle {
+            self.output
+                .push_str(&format!("pagetitle: \"{}\"\n", escape_yaml_string(pagetitle)));
         }
         if let Some(format) = &fm.format {
             self.output.push_str(&format!("format: {}\n", format));
@@ -548,6 +554,7 @@ mod tests {
         let opts = WriterOptions {
             frontmatter: Some(Frontmatter {
                 title: Some("My Document".to_string()),
+                pagetitle: None,
                 format: Some("html".to_string()),
             }),
             ..Default::default()
@@ -556,5 +563,22 @@ mod tests {
         assert!(qmd.starts_with("---\n"));
         assert!(qmd.contains("title: \"My Document\""));
         assert!(qmd.contains("format: html"));
+    }
+
+    #[test]
+    fn test_frontmatter_with_pagetitle() {
+        let root = Root::new(vec![Node::paragraph(vec![Node::text("Content")])]);
+        let opts = WriterOptions {
+            frontmatter: Some(Frontmatter {
+                title: Some("Order rows using column values".to_string()),
+                pagetitle: Some("Order rows using column values — arrange".to_string()),
+                format: None,
+            }),
+            ..Default::default()
+        };
+        let qmd = mdast_to_qmd(&root, &opts);
+        assert!(qmd.starts_with("---\n"));
+        assert!(qmd.contains("title: \"Order rows using column values\""));
+        assert!(qmd.contains("pagetitle: \"Order rows using column values — arrange\""));
     }
 }
