@@ -6,7 +6,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use rd2qmd_core::{
-    ConverterOptions, Frontmatter, WriterOptions, mdast_to_qmd, parse, rd_to_mdast_with_options,
+    ArgumentsFormat, ConverterOptions, Frontmatter, WriterOptions, mdast_to_qmd, parse,
+    rd_to_mdast_with_options,
 };
 use rd2qmd_package::{PackageConvertOptions, RdPackage, convert_package};
 
@@ -31,6 +32,16 @@ enum OutputFormat {
     Qmd,
     /// Standard Markdown (.md) - uses plain r code blocks
     Md,
+}
+
+/// Table format for the Arguments section
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, clap::ValueEnum)]
+enum ArgumentsTableFormat {
+    /// Pipe table - limited to inline content
+    Pipe,
+    /// Pandoc grid table (default) - supports block elements (lists, paragraphs) in cells
+    #[default]
+    Grid,
 }
 
 #[derive(Parser, Debug)]
@@ -132,6 +143,11 @@ struct Cli {
     /// Don't make \donttest{} example code executable (by default it is executable)
     #[arg(long)]
     no_exec_donttest: bool,
+
+    /// Table format for the Arguments section: grid (Pandoc grid table) or pipe (pipe table)
+    /// Grid tables support block elements (lists, paragraphs) in cells. Use pipe for simpler Markdown output.
+    #[arg(long, value_enum, default_value_t = ArgumentsTableFormat::Grid)]
+    arguments_table: ArgumentsTableFormat,
 }
 
 fn main() -> Result<()> {
@@ -154,6 +170,12 @@ fn main() -> Result<()> {
         .quarto_code_blocks
         .unwrap_or(cli.format == OutputFormat::Qmd);
 
+    // Convert CLI arguments table format to internal ArgumentsFormat
+    let arguments_format = match cli.arguments_table {
+        ArgumentsTableFormat::Pipe => ArgumentsFormat::PipeTable,
+        ArgumentsTableFormat::Grid => ArgumentsFormat::GridTable,
+    };
+
     if cli.input.is_file() {
         // Single file conversion (no alias resolution)
         convert_single_file(
@@ -166,6 +188,7 @@ fn main() -> Result<()> {
             unresolved_link_url.as_deref(),
             cli.exec_dontrun,
             !cli.no_exec_donttest,
+            arguments_format,
             cli.verbose,
             cli.quiet,
         )?;
@@ -220,6 +243,7 @@ fn convert_single_file(
     unresolved_link_url: Option<&str>,
     exec_dontrun: bool,
     exec_donttest: bool,
+    arguments_format: ArgumentsFormat,
     verbose: bool,
     quiet: bool,
 ) -> Result<()> {
@@ -249,6 +273,7 @@ fn convert_single_file(
         unresolved_link_url,
         exec_dontrun,
         exec_donttest,
+        arguments_format,
     )?;
 
     if let Some(parent) = output_path.parent() {
@@ -471,6 +496,7 @@ fn convert_rd_to_qmd(
     unresolved_link_url: Option<&str>,
     exec_dontrun: bool,
     exec_donttest: bool,
+    arguments_format: ArgumentsFormat,
 ) -> Result<String> {
     let doc = parse(rd_content).map_err(|e| anyhow::anyhow!("Parse error: {}", e))?;
 
@@ -482,6 +508,7 @@ fn convert_rd_to_qmd(
         exec_dontrun,
         exec_donttest,
         quarto_code_blocks,
+        arguments_format,
     };
     let mdast = rd_to_mdast_with_options(&doc, &converter_options);
 

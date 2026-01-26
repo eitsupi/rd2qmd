@@ -1,4 +1,5 @@
     use super::*;
+    use mdast_rd2qmd::mdast_to_qmd;
     use rd_parser::parse;
 
     #[test]
@@ -101,6 +102,7 @@
             exec_dontrun: false,
             exec_donttest: false,
             quarto_code_blocks: true,
+            ..Default::default()
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
 
@@ -136,6 +138,7 @@
             exec_dontrun: false,
             exec_donttest: false,
             quarto_code_blocks: true,
+            ..Default::default()
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
 
@@ -196,6 +199,7 @@
             exec_dontrun: false,
             exec_donttest: false,
             quarto_code_blocks: true,
+            ..Default::default()
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
 
@@ -239,6 +243,7 @@
             exec_dontrun: false,
             exec_donttest: false,
             quarto_code_blocks: true,
+            ..Default::default()
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
 
@@ -283,6 +288,7 @@
             exec_dontrun: false,
             exec_donttest: false,
             quarto_code_blocks: true,
+            ..Default::default()
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
 
@@ -324,6 +330,7 @@
             exec_dontrun: false,
             exec_donttest: false,
             quarto_code_blocks: true,
+            ..Default::default()
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
 
@@ -416,6 +423,7 @@
             exec_dontrun: false,
             exec_donttest: false,
             quarto_code_blocks: true,
+            ..Default::default()
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
 
@@ -1144,4 +1152,70 @@ regular_code()
             code_blocks[0].value.contains("test_code()"),
             "Block should contain test_code()"
         );
+    }
+
+    #[test]
+    fn test_arguments_pipe_table_snapshot() {
+        let rd = r#"
+\name{test}
+\title{Test Function}
+\arguments{
+\item{x}{A simple description.}
+\item{data}{Input data. Use \code{NULL} for default.}
+}
+"#;
+        let doc = parse(rd).unwrap();
+        let options = ConverterOptions {
+            arguments_format: ArgumentsFormat::PipeTable,
+            ..Default::default()
+        };
+        let mdast = rd_to_mdast_with_options(&doc, &options);
+        let qmd = mdast_to_qmd(&mdast, &mdast_rd2qmd::WriterOptions::default());
+        insta::assert_snapshot!(qmd);
+    }
+
+    #[test]
+    fn test_arguments_grid_table_simple_snapshot() {
+        let rd = r#"
+\name{test}
+\title{Test Function}
+\arguments{
+\item{x}{A simple description.}
+\item{data}{Input data. Use \code{NULL} for default.}
+}
+"#;
+        let doc = parse(rd).unwrap();
+        let options = ConverterOptions {
+            arguments_format: ArgumentsFormat::GridTable,
+            ..Default::default()
+        };
+        let mdast = rd_to_mdast_with_options(&doc, &options);
+        let qmd = mdast_to_qmd(&mdast, &mdast_rd2qmd::WriterOptions::default());
+        insta::assert_snapshot!(qmd);
+    }
+
+    #[test]
+    fn test_arguments_grid_table_with_list_snapshot() {
+        let rd = r#"
+\name{test}
+\title{Test Function}
+\arguments{
+\item{x}{A simple description.}
+\item{opts}{A named list of options:
+\itemize{
+\item option A
+\item option B
+\item option C
+}}
+\item{data}{Input data. Use \code{NULL} for default.}
+}
+"#;
+        let doc = parse(rd).unwrap();
+        let options = ConverterOptions {
+            arguments_format: ArgumentsFormat::GridTable,
+            ..Default::default()
+        };
+        let mdast = rd_to_mdast_with_options(&doc, &options);
+        let qmd = mdast_to_qmd(&mdast, &mdast_rd2qmd::WriterOptions::default());
+        insta::assert_snapshot!(qmd);
     }

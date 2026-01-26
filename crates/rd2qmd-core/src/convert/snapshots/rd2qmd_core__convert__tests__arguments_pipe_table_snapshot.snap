@@ -1,0 +1,12 @@
+---
+source: crates/rd2qmd-core/src/convert/tests.rs
+expression: qmd
+---
+# Test Function
+
+## Arguments
+
+| Argument | Description |
+|:---|:---|
+| `x` | A simple description. |
+| `data` | Input data. Use `NULL` for default. |

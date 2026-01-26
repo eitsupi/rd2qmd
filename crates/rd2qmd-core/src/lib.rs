@@ -13,4 +13,4 @@ pub use rd_parser::{RdDocument, RdNode, RdSection, SectionTag, parse};
 // Re-export mdast-rd2qmd types
 pub use mdast_rd2qmd::{Frontmatter, WriterOptions, mdast_to_qmd};
 
-pub use convert::{ConverterOptions, rd_to_mdast, rd_to_mdast_with_options};
+pub use convert::{ArgumentsFormat, ConverterOptions, rd_to_mdast, rd_to_mdast_with_options};

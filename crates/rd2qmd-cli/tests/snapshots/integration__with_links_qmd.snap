@@ -21,10 +21,11 @@ with_links(data)
 
 ## Arguments
 
-| Argument | Description |
-|:---|:---|
-| `data` | A data frame. See `base::data.frame`. |
-
++----------+---------------------------------------+
+| Argument | Description                           |
++==========+=======================================+
+| `data`   | A data frame. See `base::data.frame`. |
++----------+---------------------------------------+
 ## See Also
 
 [`simple`](https://rdrr.io/r/base/simple.html), `ggplot2::ggplot`

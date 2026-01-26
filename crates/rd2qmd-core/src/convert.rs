@@ -8,6 +8,18 @@ use mdast_rd2qmd::{
 };
 use rd_parser::{DescribeItem, RdDocument, RdNode, RdSection, SectionTag, SpecialChar};
 use std::collections::HashMap;
+use tabled::settings::style::HorizontalLine;
+use tabled::settings::Style;
+
+/// Format for the Arguments section output
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum ArgumentsFormat {
+    /// Pipe table - limited to inline content in cells
+    PipeTable,
+    /// Pandoc grid table (default) - supports block elements (lists, paragraphs) in cells
+    #[default]
+    GridTable,
+}
 
 /// Options for Rd to mdast conversion
 #[derive(Debug, Clone)]
@@ -39,6 +51,10 @@ pub struct ConverterOptions {
     /// When true, \dontshow{} content is output with #| include: false
     /// When false, \dontshow{} content is skipped entirely
     pub quarto_code_blocks: bool,
+    /// Format for the Arguments section
+    /// GfmTable (default): GFM pipe table, limited to inline content
+    /// GridTable: Pandoc grid table, supports block elements in cells
+    pub arguments_format: ArgumentsFormat,
 }
 
 impl Default for ConverterOptions {
@@ -51,6 +67,7 @@ impl Default for ConverterOptions {
             exec_dontrun: false,
             exec_donttest: true, // pkgdown-compatible: \donttest{} is executable by default
             quarto_code_blocks: true,
+            arguments_format: ArgumentsFormat::default(),
         }
     }
 }
@@ -302,11 +319,17 @@ impl Converter {
         result
     }
 
-    // TODO: Consider implementing HTML table support for complex argument descriptions
-    // containing nested lists. See beads task rd2md-68z for investigation notes.
-    // GFM tables cannot contain block elements (lists, multiple paragraphs).
-    // Current workaround: use <br> for line breaks, flatten nested lists with bullet markers.
     fn convert_arguments(&mut self, content: &[RdNode]) -> Vec<Node> {
+        match self.options.arguments_format {
+            ArgumentsFormat::PipeTable => self.convert_arguments_pipe(content),
+            ArgumentsFormat::GridTable => self.convert_arguments_grid(content),
+        }
+    }
+
+    /// Convert arguments to pipe table format.
+    /// Pipe tables cannot contain block elements (lists, multiple paragraphs).
+    /// Workaround: use <br> for line breaks, flatten nested lists with bullet markers.
+    fn convert_arguments_pipe(&mut self, content: &[RdNode]) -> Vec<Node> {
         // Build header row
         let header_row = Node::TableRow(TableRow {
             children: vec![
@@ -351,6 +374,170 @@ impl Converter {
                 align: vec![Some(Align::Left), Some(Align::Left)],
                 children: rows,
             })]
+        }
+    }
+
+    /// Convert arguments to Pandoc grid table format.
+    /// Grid tables support block elements (lists, paragraphs) within cells.
+    fn convert_arguments_grid(&mut self, content: &[RdNode]) -> Vec<Node> {
+        use tabled::builder::Builder;
+
+        let mut builder = Builder::default();
+        builder.push_record(["Argument", "Description"]);
+
+        for node in content {
+            if let RdNode::Item { label, content } = node
+                && let Some(label_nodes) = label
+            {
+                // Argument name with backticks for inline code
+                let term_text = self.extract_text(label_nodes);
+                let arg_text = format!("`{}`", term_text.trim());
+
+                // Convert description to Markdown text for grid table
+                let desc_text = self.convert_to_markdown_text(content);
+
+                builder.push_record([arg_text, desc_text]);
+            }
+        }
+
+        let mut table = builder.build();
+
+        // Check if table has any data rows
+        if table.count_rows() <= 1 {
+            // Only header, no data rows - fall back to regular content
+            return self.convert_content(content);
+        }
+
+        // Apply grid table style with = separator after header
+        let grid_style = Style::ascii()
+            .horizontals([(1, HorizontalLine::new('=').left('+').right('+').intersection('+'))]);
+        let grid_table = table.with(grid_style).to_string();
+
+        // Output as raw text (will be rendered as grid table by Pandoc)
+        vec![Node::Html(Html { value: grid_table })]
+    }
+
+    /// Convert RdNode content to Markdown text for use in grid table cells.
+    /// Preserves block structure (paragraphs, lists) as Markdown.
+    fn convert_to_markdown_text(&mut self, content: &[RdNode]) -> String {
+        let nodes = self.convert_content(content);
+        self.nodes_to_markdown(&nodes)
+    }
+
+    /// Convert mdast nodes to Markdown text string.
+    fn nodes_to_markdown(&self, nodes: &[Node]) -> String {
+        let mut result = String::new();
+
+        for (i, node) in nodes.iter().enumerate() {
+            if i > 0 {
+                result.push_str("\n\n");
+            }
+
+            match node {
+                Node::Paragraph(p) => {
+                    result.push_str(&self.inline_nodes_to_markdown(&p.children));
+                }
+                Node::List(l) => {
+                    // Lists need a blank line before them in grid tables
+                    if i > 0 && !result.ends_with("\n\n") {
+                        result.push('\n');
+                    }
+                    for (j, item) in l.children.iter().enumerate() {
+                        if j > 0 {
+                            result.push('\n');
+                        }
+                        if let Node::ListItem(li) = item {
+                            let marker = if l.ordered {
+                                format!("{}. ", j + 1)
+                            } else {
+                                "- ".to_string()
+                            };
+                            result.push_str(&marker);
+                            // Get first paragraph content
+                            for child in &li.children {
+                                if let Node::Paragraph(p) = child {
+                                    result.push_str(&self.inline_nodes_to_markdown(&p.children));
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                Node::Code(c) => {
+                    result.push_str("```");
+                    if let Some(lang) = &c.lang {
+                        result.push_str(lang);
+                    }
+                    result.push('\n');
+                    result.push_str(&c.value);
+                    result.push_str("\n```");
+                }
+                _ => {
+                    // For other nodes, try to extract text
+                    if let Some(text) = self.node_to_text(node) {
+                        result.push_str(&text);
+                    }
+                }
+            }
+        }
+
+        result
+    }
+
+    /// Convert inline mdast nodes to Markdown text.
+    fn inline_nodes_to_markdown(&self, nodes: &[Node]) -> String {
+        let mut result = String::new();
+
+        for node in nodes {
+            match node {
+                Node::Text(t) => result.push_str(&t.value),
+                Node::InlineCode(c) => {
+                    result.push('`');
+                    result.push_str(&c.value);
+                    result.push('`');
+                }
+                Node::Emphasis(e) => {
+                    result.push('*');
+                    result.push_str(&self.inline_nodes_to_markdown(&e.children));
+                    result.push('*');
+                }
+                Node::Strong(s) => {
+                    result.push_str("**");
+                    result.push_str(&self.inline_nodes_to_markdown(&s.children));
+                    result.push_str("**");
+                }
+                Node::Link(l) => {
+                    result.push('[');
+                    result.push_str(&self.inline_nodes_to_markdown(&l.children));
+                    result.push_str("](");
+                    result.push_str(&l.url);
+                    result.push(')');
+                }
+                Node::InlineMath(m) => {
+                    result.push('$');
+                    result.push_str(&m.value);
+                    result.push('$');
+                }
+                Node::Break => result.push_str("  \n"),
+                Node::Html(h) => result.push_str(&h.value),
+                _ => {
+                    if let Some(text) = self.node_to_text(node) {
+                        result.push_str(&text);
+                    }
+                }
+            }
+        }
+
+        result
+    }
+
+    /// Extract plain text from a node (for fallback).
+    fn node_to_text(&self, node: &Node) -> Option<String> {
+        match node {
+            Node::Text(t) => Some(t.value.clone()),
+            Node::InlineCode(c) => Some(format!("`{}`", c.value)),
+            Node::Paragraph(p) => Some(self.inline_nodes_to_markdown(&p.children)),
+            _ => None,
         }
     }
 

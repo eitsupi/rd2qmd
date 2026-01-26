@@ -218,6 +218,7 @@ fn convert_single_file(
             exec_dontrun: options.exec_dontrun,
             exec_donttest: options.exec_donttest,
             quarto_code_blocks: options.quarto_code_blocks,
+            ..Default::default()
         };
 
         // Convert to mdast

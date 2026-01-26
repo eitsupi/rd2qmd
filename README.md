@@ -8,6 +8,7 @@ A fast Rd-to-Quarto Markdown converter written in Rust, with intelligent link re
 - **Smart link resolution**: Automatically resolves `\link{}` references to correct output files
 - **External package links**: Resolves cross-package links using pkgdown URL conventions (e.g., `\link[dplyr]{mutate}` → `https://dplyr.tidyverse.org/reference/mutate.html`)
 - **Quarto-ready**: Generates `.qmd` files with `{r}` executable code blocks and YAML frontmatter
+- **Grid Table support**: Uses Pandoc-compatible Grid Tables for Arguments section, supporting lists and block elements in cells
 - **pkgdown-compatible metadata**: Adds `pagetitle` in pkgdown style (`"<title> — <name>"`) for SEO
 - **No R required**: Pure Rust binary with no runtime R dependency
 
@@ -70,6 +71,7 @@ rd2qmd man/ -o docs/ -j4
 | `--no-frontmatter` | Disable YAML frontmatter |
 | `--no-pagetitle` | Skip pkgdown-style `pagetitle` metadata (`"<title> — <name>"`) |
 | `--quarto-code-blocks <BOOL>` | Use `{r}` code blocks (auto-set based on format) |
+| `--arguments-table <FORMAT>` | Arguments table format: `grid` (default) or `pipe` |
 | `-v, --verbose` | Verbose output |
 | `-q, --quiet` | Only show errors |
 
@@ -130,6 +132,34 @@ Use `-f md` for standard markdown with:
 - YAML frontmatter with title and pagetitle
 - Plain `r` code blocks (non-executable)
 - Internal links resolved to `.md` files
+
+### Arguments table format
+
+The Arguments section is rendered as a table. By default, rd2qmd uses **Pandoc Grid Tables** which support block elements (lists, multiple paragraphs) within cells:
+
+```markdown
++----------+-------------------------------------+
+| Argument | Description                         |
++==========+=====================================+
+| `x`      | A simple description.               |
++----------+-------------------------------------+
+| `opts`   | Available options:                  |
+|          |                                     |
+|          | - option A                          |
+|          | - option B                          |
++----------+-------------------------------------+
+```
+
+For Markdown environments that don't support Grid Tables, use `--arguments-table pipe` for pipe tables:
+
+```markdown
+| Argument | Description |
+|:---|:---|
+| `x` | A simple description. |
+| `opts` | Available options: <br>- option A <br>- option B |
+```
+
+Note: GFM tables cannot contain true block elements; lists are flattened with `<br>` separators.
 
 ## Examples
 

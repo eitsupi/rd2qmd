@@ -1,0 +1,21 @@
+---
+source: crates/rd2qmd-core/src/convert/tests.rs
+expression: qmd
+---
+# Test Function
+
+## Arguments
+
++----------+-------------------------------------+
+| Argument | Description                         |
++==========+=====================================+
+| `x`      | A simple description.               |
++----------+-------------------------------------+
+| `opts`   | A named list of options:            |
+|          |                                     |
+|          | - option A                          |
+|          | - option B                          |
+|          | - option C                          |
++----------+-------------------------------------+
+| `data`   | Input data. Use `NULL` for default. |
++----------+-------------------------------------+

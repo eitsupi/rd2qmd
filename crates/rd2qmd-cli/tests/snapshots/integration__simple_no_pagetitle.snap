@@ -20,11 +20,13 @@ simple(x, y = 1)
 
 ## Arguments
 
-| Argument | Description |
-|:---|:---|
-| `x` | The first argument. |
-| `y` | The second argument, defaults to 1. |
-
++----------+-------------------------------------+
+| Argument | Description                         |
++==========+=====================================+
+| `x`      | The first argument.                 |
++----------+-------------------------------------+
+| `y`      | The second argument, defaults to 1. |
++----------+-------------------------------------+
 ## Value
 
  Returns the sum of `x` and `y`. 
