@@ -2,7 +2,7 @@
 //!
 //! Converts an Rd document into an mdast tree for Markdown output.
 
-use crate::ast::{RdDocument, RdNode, RdSection, SectionTag, SpecialChar};
+use rd_parser::{DescribeItem, RdDocument, RdNode, RdSection, SectionTag, SpecialChar};
 use crate::mdast::{
     Align, DefinitionDescription, DefinitionList, DefinitionTerm, Node, Root, Table, TableCell,
     TableRow,
@@ -698,7 +698,7 @@ impl Converter {
         Node::list(ordered, list_items)
     }
 
-    fn convert_describe(&self, items: &[crate::ast::DescribeItem]) -> Node {
+    fn convert_describe(&self, items: &[DescribeItem]) -> Node {
         let mut children = Vec::new();
 
         for item in items {
@@ -1094,7 +1094,7 @@ fn normalize_whitespace(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::parse;
+    use rd_parser::parse;
 
     #[test]
     fn test_simple_conversion() {

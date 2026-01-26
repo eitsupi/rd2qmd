@@ -34,5 +34,6 @@ url = "2"
 insta = { version = "1", features = ["yaml"] }
 
 # Internal crates
+rd-parser = { path = "crates/rd-parser" }
 rd2qmd-core = { path = "crates/rd2qmd-core" }
 rd2qmd-package = { path = "crates/rd2qmd-package" }

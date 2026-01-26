@@ -6,7 +6,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-thiserror.workspace = true
+rd-parser.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 

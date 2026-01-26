@@ -783,6 +783,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rd-parser"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "rd2qmd"
 version = "0.1.0"
 dependencies = [
@@ -797,9 +806,9 @@ dependencies = [
 name = "rd2qmd-core"
 version = "0.1.0"
 dependencies = [
+ "rd-parser",
  "serde",
  "serde_json",
- "thiserror",
 ]
 
 [[package]]
