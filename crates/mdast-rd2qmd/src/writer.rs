@@ -518,7 +518,6 @@ impl<'a> Writer<'a> {
             self.output.push('\n');
         }
     }
-
 }
 
 fn escape_yaml_string(s: &str) -> String {
@@ -538,10 +537,33 @@ mod tests {
     }
 
     #[test]
+    fn test_heading_levels() {
+        for depth in 1..=6 {
+            let root = Root::new(vec![Node::heading(depth, vec![Node::text("Title")])]);
+            let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+            let expected_prefix = "#".repeat(depth as usize);
+            assert!(qmd.starts_with(&format!("{} Title", expected_prefix)));
+        }
+    }
+
+    #[test]
     fn test_paragraph() {
         let root = Root::new(vec![Node::paragraph(vec![Node::text("Hello world")])]);
         let qmd = mdast_to_qmd(&root, &WriterOptions::default());
         assert_eq!(qmd.trim(), "Hello world");
+    }
+
+    #[test]
+    fn test_multiple_paragraphs() {
+        let root = Root::new(vec![
+            Node::paragraph(vec![Node::text("First paragraph")]),
+            Node::paragraph(vec![Node::text("Second paragraph")]),
+        ]);
+        let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+        assert!(qmd.contains("First paragraph"));
+        assert!(qmd.contains("Second paragraph"));
+        // Paragraphs should be separated by blank line
+        assert!(qmd.contains("\n\n"));
     }
 
     #[test]
@@ -550,6 +572,15 @@ mod tests {
         let qmd = mdast_to_qmd(&root, &WriterOptions::default());
         assert!(qmd.contains("```r"));
         assert!(qmd.contains("x <- 1"));
+        assert!(qmd.contains("```\n"));
+    }
+
+    #[test]
+    fn test_code_block_no_language() {
+        let root = Root::new(vec![Node::code(None, "some code")]);
+        let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+        assert!(qmd.contains("```\n"));
+        assert!(qmd.contains("some code"));
     }
 
     #[test]
@@ -586,6 +617,15 @@ mod tests {
     }
 
     #[test]
+    fn test_inline_code_with_backticks() {
+        let root = Root::new(vec![Node::paragraph(vec![Node::inline_code(
+            "code with ` backtick",
+        )])]);
+        let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+        assert!(qmd.contains("`` code with ` backtick ``"));
+    }
+
+    #[test]
     fn test_consecutive_inline_codes() {
         // Consecutive inline codes need a space between them
         // Without a space, `foo``bar` is parsed as a single code span in CommonMark
@@ -612,6 +652,16 @@ mod tests {
     }
 
     #[test]
+    fn test_nested_emphasis() {
+        let root = Root::new(vec![Node::paragraph(vec![Node::strong(vec![
+            Node::text("bold "),
+            Node::emphasis(vec![Node::text("and italic")]),
+        ])])]);
+        let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+        assert!(qmd.contains("**bold *and italic***"));
+    }
+
+    #[test]
     fn test_link() {
         let root = Root::new(vec![Node::paragraph(vec![Node::link(
             "https://example.com",
@@ -622,7 +672,39 @@ mod tests {
     }
 
     #[test]
-    fn test_list() {
+    fn test_link_with_title() {
+        let root = Root::new(vec![Node::paragraph(vec![Node::link_with_title(
+            "https://example.com",
+            "Example Site",
+            vec![Node::text("Example")],
+        )])]);
+        let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+        assert!(qmd.contains("[Example](https://example.com \"Example Site\")"));
+    }
+
+    #[test]
+    fn test_image() {
+        let root = Root::new(vec![Node::paragraph(vec![Node::image(
+            "image.png",
+            "An image",
+        )])]);
+        let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+        assert!(qmd.contains("![An image](image.png)"));
+    }
+
+    #[test]
+    fn test_image_with_title() {
+        let root = Root::new(vec![Node::paragraph(vec![Node::image_with_title(
+            "image.png",
+            "An image",
+            "Image Title",
+        )])]);
+        let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+        assert!(qmd.contains("![An image](image.png \"Image Title\")"));
+    }
+
+    #[test]
+    fn test_unordered_list() {
         let root = Root::new(vec![Node::list(
             false,
             vec![
@@ -636,6 +718,98 @@ mod tests {
     }
 
     #[test]
+    fn test_ordered_list() {
+        let root = Root::new(vec![Node::list(
+            true,
+            vec![
+                Node::list_item(vec![Node::paragraph(vec![Node::text("First")])]),
+                Node::list_item(vec![Node::paragraph(vec![Node::text("Second")])]),
+            ],
+        )]);
+        let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+        assert!(qmd.contains("1. First"));
+        assert!(qmd.contains("2. Second"));
+    }
+
+    #[test]
+    fn test_ordered_list_custom_start() {
+        let root = Root::new(vec![Node::ordered_list_from(
+            5,
+            vec![
+                Node::list_item(vec![Node::paragraph(vec![Node::text("Five")])]),
+                Node::list_item(vec![Node::paragraph(vec![Node::text("Six")])]),
+            ],
+        )]);
+        let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+        assert!(qmd.contains("5. Five"));
+        assert!(qmd.contains("6. Six"));
+    }
+
+    #[test]
+    fn test_nested_list() {
+        let root = Root::new(vec![Node::list(
+            false,
+            vec![Node::list_item(vec![
+                Node::paragraph(vec![Node::text("Parent")]),
+                Node::list(
+                    false,
+                    vec![Node::list_item(vec![Node::paragraph(vec![Node::text(
+                        "Child",
+                    )])])],
+                ),
+            ])],
+        )]);
+        let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+        assert!(qmd.contains("- Parent"));
+        assert!(qmd.contains("  - Child"));
+    }
+
+    #[test]
+    fn test_table() {
+        let root = Root::new(vec![Node::table(
+            vec![Some(Align::Left), Some(Align::Right)],
+            vec![
+                Node::table_row(vec![
+                    Node::table_cell(vec![Node::text("Name")]),
+                    Node::table_cell(vec![Node::text("Value")]),
+                ]),
+                Node::table_row(vec![
+                    Node::table_cell(vec![Node::text("foo")]),
+                    Node::table_cell(vec![Node::text("1")]),
+                ]),
+            ],
+        )]);
+        let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+        assert!(qmd.contains("| Name | Value |"));
+        assert!(qmd.contains("|:---|---:|"));
+        assert!(qmd.contains("| foo | 1 |"));
+    }
+
+    #[test]
+    fn test_table_center_align() {
+        let root = Root::new(vec![Node::table(
+            vec![Some(Align::Center)],
+            vec![
+                Node::table_row(vec![Node::table_cell(vec![Node::text("Header")])]),
+                Node::table_row(vec![Node::table_cell(vec![Node::text("Data")])]),
+            ],
+        )]);
+        let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+        assert!(qmd.contains("|:--:|"));
+    }
+
+    #[test]
+    fn test_definition_list() {
+        let root = Root::new(vec![Node::definition_list(vec![
+            Node::definition_term(vec![Node::text("Term")]),
+            Node::definition_description(vec![Node::paragraph(vec![Node::text("Definition")])]),
+        ])]);
+        let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+        assert!(qmd.contains("Term"));
+        assert!(qmd.contains(":   Definition"));
+    }
+
+    #[test]
     fn test_math() {
         let root = Root::new(vec![
             Node::paragraph(vec![Node::inline_math("x^2")]),
@@ -644,6 +818,46 @@ mod tests {
         let qmd = mdast_to_qmd(&root, &WriterOptions::default());
         assert!(qmd.contains("$x^2$"));
         assert!(qmd.contains("$$\nE = mc^2\n$$"));
+    }
+
+    #[test]
+    fn test_blockquote() {
+        let root = Root::new(vec![Node::blockquote(vec![Node::paragraph(vec![
+            Node::text("Quote"),
+        ])])]);
+        let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+        assert!(qmd.contains("> Quote"));
+    }
+
+    #[test]
+    fn test_thematic_break() {
+        let root = Root::new(vec![
+            Node::paragraph(vec![Node::text("Before")]),
+            Node::thematic_break(),
+            Node::paragraph(vec![Node::text("After")]),
+        ]);
+        let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+        assert!(qmd.contains("Before"));
+        assert!(qmd.contains("\n---\n"));
+        assert!(qmd.contains("After"));
+    }
+
+    #[test]
+    fn test_line_break() {
+        let root = Root::new(vec![Node::paragraph(vec![
+            Node::text("Line 1"),
+            Node::line_break(),
+            Node::text("Line 2"),
+        ])]);
+        let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+        assert!(qmd.contains("Line 1  \nLine 2"));
+    }
+
+    #[test]
+    fn test_html() {
+        let root = Root::new(vec![Node::html("<div>Raw HTML</div>")]);
+        let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+        assert!(qmd.contains("<div>Raw HTML</div>"));
     }
 
     #[test]
@@ -678,5 +892,20 @@ mod tests {
         assert!(qmd.starts_with("---\n"));
         assert!(qmd.contains("title: \"Order rows using column values\""));
         assert!(qmd.contains("pagetitle: \"Order rows using column values — arrange\""));
+    }
+
+    #[test]
+    fn test_frontmatter_escaping() {
+        let root = Root::new(vec![Node::paragraph(vec![Node::text("Content")])]);
+        let opts = WriterOptions {
+            frontmatter: Some(Frontmatter {
+                title: Some("Title with \"quotes\" and \\backslash".to_string()),
+                pagetitle: None,
+                format: None,
+            }),
+            ..Default::default()
+        };
+        let qmd = mdast_to_qmd(&root, &opts);
+        assert!(qmd.contains("title: \"Title with \\\"quotes\\\" and \\\\backslash\""));
     }
 }

@@ -2,11 +2,11 @@
 //!
 //! Converts an Rd document into an mdast tree for Markdown output.
 
-use rd_parser::{DescribeItem, RdDocument, RdNode, RdSection, SectionTag, SpecialChar};
-use crate::mdast::{
-    Align, DefinitionDescription, DefinitionList, DefinitionTerm, Node, Root, Table, TableCell,
-    TableRow,
+use mdast_rd2qmd::{
+    Align, DefinitionDescription, DefinitionList, DefinitionTerm, Html, Image, Node, Root, Table,
+    TableCell, TableRow,
 };
+use rd_parser::{DescribeItem, RdDocument, RdNode, RdSection, SectionTag, SpecialChar};
 use std::collections::HashMap;
 
 /// Options for Rd to mdast conversion
@@ -363,7 +363,7 @@ impl Converter {
         for (i, node) in block_nodes.iter().enumerate() {
             if i > 0 && !result.is_empty() {
                 // Add line break between blocks
-                result.push(Node::Html(crate::mdast::Html {
+                result.push(Node::Html(Html {
                     value: " <br>".to_string(),
                 }));
             }
@@ -378,7 +378,7 @@ impl Converter {
                         // Add <br> between list items (not before first item -
                         // block separator already handles gap from previous content)
                         if j > 0 {
-                            result.push(Node::Html(crate::mdast::Html {
+                            result.push(Node::Html(Html {
                                 value: " <br>".to_string(),
                             }));
                         }
@@ -654,7 +654,7 @@ impl Converter {
                     Some(Node::paragraph(inline))
                 }
             }
-            RdNode::Out(html) => Some(Node::Html(crate::mdast::Html {
+            RdNode::Out(html) => Some(Node::Html(Html {
                 value: html.clone(),
             })),
             RdNode::Figure { file, options } => {
@@ -662,7 +662,7 @@ impl Converter {
                     .as_ref()
                     .and_then(|opts| Self::extract_figure_alt(opts))
                     .unwrap_or_else(|| file.clone());
-                Some(Node::Image(crate::mdast::Image {
+                Some(Node::Image(Image {
                     url: file.clone(),
                     title: None,
                     alt,

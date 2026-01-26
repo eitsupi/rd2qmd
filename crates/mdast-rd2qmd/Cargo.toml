@@ -1,0 +1,12 @@
+[package]
+name = "mdast-rd2qmd"
+description = "mdast types and Quarto Markdown writer for rd2qmd"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+
+[dev-dependencies]
+serde_json.workspace = true

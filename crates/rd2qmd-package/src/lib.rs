@@ -22,8 +22,8 @@ pub use external_links::{
 
 use rayon::prelude::*;
 use rd2qmd_core::{
-    ConverterOptions, RdNode, SectionTag, WriterOptions, mdast_to_qmd, parse,
-    rd_to_mdast_with_options, writer::Frontmatter,
+    ConverterOptions, Frontmatter, RdNode, SectionTag, WriterOptions, mdast_to_qmd, parse,
+    rd_to_mdast_with_options,
 };
 use std::collections::HashMap;
 use std::fs;

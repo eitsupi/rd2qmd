@@ -5,8 +5,9 @@ use clap::Parser;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use rd2qmd_core::writer::Frontmatter;
-use rd2qmd_core::{ConverterOptions, WriterOptions, mdast_to_qmd, parse, rd_to_mdast_with_options};
+use rd2qmd_core::{
+    ConverterOptions, Frontmatter, WriterOptions, mdast_to_qmd, parse, rd_to_mdast_with_options,
+};
 use rd2qmd_package::{PackageConvertOptions, RdPackage, convert_package};
 
 #[cfg(feature = "external-links")]
