@@ -13,6 +13,10 @@ A Rust parser for R Documentation (Rd) files.
 - Strongly-typed AST with serde support
 - Support for all standard Rd tags and sections
 
+### Optional Features
+
+- `json` - Enables JSON serialization/deserialization methods on `RdDocument`
+
 ## Usage
 
 ```rust
@@ -31,6 +35,22 @@ assert_eq!(doc.sections.len(), 3);
 if let Some(name_section) = doc.get_section(&SectionTag::Name) {
     println!("Name section found");
 }
+```
+
+### JSON Serialization (requires `json` feature)
+
+```rust
+use rd_parser::{parse, RdDocument};
+
+let source = r#"\name{example}\title{Example}"#;
+let doc = parse(source).unwrap();
+
+// Serialize to JSON
+let json = doc.to_json_pretty().unwrap();
+println!("{}", json);
+
+// Deserialize from JSON
+let restored = RdDocument::from_json(&json).unwrap();
 ```
 
 ## Supported Tags

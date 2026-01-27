@@ -370,6 +370,24 @@ impl RdDocument {
     }
 }
 
+#[cfg(feature = "json")]
+impl RdDocument {
+    /// Serialize the document to a JSON string
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(self)
+    }
+
+    /// Serialize the document to a pretty-printed JSON string
+    pub fn to_json_pretty(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string_pretty(self)
+    }
+
+    /// Deserialize a document from a JSON string
+    pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(json)
+    }
+}
+
 impl Default for RdDocument {
     fn default() -> Self {
         Self::new()
@@ -420,5 +438,75 @@ mod tests {
         let json = serde_json::to_string(&node).unwrap();
         assert!(json.contains("href"));
         assert!(json.contains("https://example.com"));
+    }
+
+    #[cfg(feature = "json")]
+    #[test]
+    fn test_document_to_json() {
+        let doc = RdDocument {
+            sections: vec![RdSection {
+                tag: SectionTag::Name,
+                content: vec![RdNode::Text("test".to_string())],
+            }],
+        };
+
+        let json = doc.to_json().unwrap();
+        assert!(json.contains("\"tag\":\"name\""));
+        assert!(json.contains("\"text\":\"test\""));
+    }
+
+    #[cfg(feature = "json")]
+    #[test]
+    fn test_document_to_json_pretty() {
+        let doc = RdDocument {
+            sections: vec![RdSection {
+                tag: SectionTag::Name,
+                content: vec![RdNode::Text("test".to_string())],
+            }],
+        };
+
+        let json = doc.to_json_pretty().unwrap();
+        assert!(json.contains('\n')); // Pretty-printed has newlines
+        assert!(json.contains("\"tag\": \"name\""));
+    }
+
+    #[cfg(feature = "json")]
+    #[test]
+    fn test_document_from_json() {
+        let json = r#"{"sections":[{"tag":"name","content":[{"text":"test"}]}]}"#;
+        let doc = RdDocument::from_json(json).unwrap();
+
+        assert_eq!(doc.sections.len(), 1);
+        assert_eq!(doc.sections[0].tag, SectionTag::Name);
+    }
+
+    #[cfg(feature = "json")]
+    #[test]
+    fn test_document_json_roundtrip() {
+        let original = RdDocument {
+            sections: vec![
+                RdSection {
+                    tag: SectionTag::Name,
+                    content: vec![RdNode::Text("myfunction".to_string())],
+                },
+                RdSection {
+                    tag: SectionTag::Title,
+                    content: vec![RdNode::Text("My Function".to_string())],
+                },
+                RdSection {
+                    tag: SectionTag::Description,
+                    content: vec![
+                        RdNode::Text("A function with ".to_string()),
+                        RdNode::Code(vec![RdNode::Text("code".to_string())]),
+                        RdNode::Text(".".to_string()),
+                    ],
+                },
+            ],
+        };
+
+        let json = original.to_json().unwrap();
+        let restored = RdDocument::from_json(&json).unwrap();
+
+        assert_eq!(original, restored);
     }
 }
