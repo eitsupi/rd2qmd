@@ -1,4 +1,4 @@
-//! mdast-rd2qmd: mdast types and Quarto Markdown writer for rd2qmd
+//! rd2qmd-mdast: mdast types and Quarto Markdown writer for rd2qmd
 //!
 //! This crate provides:
 //! - mdast (Markdown Abstract Syntax Tree) types (subset)
@@ -7,7 +7,7 @@
 //! ## Example
 //!
 //! ```rust
-//! use mdast_rd2qmd::{Node, Root, mdast_to_qmd, WriterOptions};
+//! use rd2qmd_mdast::{Node, Root, mdast_to_qmd, WriterOptions};
 //!
 //! let doc = Root::new(vec![
 //!     Node::heading(1, vec![Node::text("Hello")]),

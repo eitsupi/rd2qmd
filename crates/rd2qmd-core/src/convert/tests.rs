@@ -1,5 +1,5 @@
     use super::*;
-    use mdast_rd2qmd::mdast_to_qmd;
+    use rd2qmd_mdast::mdast_to_qmd;
     use rd_parser::parse;
 
     #[test]
@@ -1170,7 +1170,7 @@ regular_code()
             ..Default::default()
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
-        let qmd = mdast_to_qmd(&mdast, &mdast_rd2qmd::WriterOptions::default());
+        let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
         insta::assert_snapshot!(qmd);
     }
 
@@ -1190,7 +1190,7 @@ regular_code()
             ..Default::default()
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
-        let qmd = mdast_to_qmd(&mdast, &mdast_rd2qmd::WriterOptions::default());
+        let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
         insta::assert_snapshot!(qmd);
     }
 
@@ -1216,6 +1216,6 @@ regular_code()
             ..Default::default()
         };
         let mdast = rd_to_mdast_with_options(&doc, &options);
-        let qmd = mdast_to_qmd(&mdast, &mdast_rd2qmd::WriterOptions::default());
+        let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
         insta::assert_snapshot!(qmd);
     }

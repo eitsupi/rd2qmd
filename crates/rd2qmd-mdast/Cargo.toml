@@ -1,5 +1,5 @@
 [package]
-name = "mdast-rd2qmd"
+name = "rd2qmd-mdast"
 description = "mdast types and Quarto Markdown writer for rd2qmd"
 version.workspace = true
 edition.workspace = true

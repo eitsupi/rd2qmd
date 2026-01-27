@@ -2,7 +2,7 @@
 //!
 //! Converts an Rd document into an mdast tree for Markdown output.
 
-use mdast_rd2qmd::{
+use rd2qmd_mdast::{
     Align, DefinitionDescription, DefinitionList, DefinitionTerm, Html, Image, Node, Root, Table,
     TableCell, TableRow,
 };
