@@ -21,10 +21,12 @@ pub use external_links::{
 };
 
 use rayon::prelude::*;
+use rd_parser::Lifecycle;
 use rd2qmd_core::{
     ConverterOptions, Frontmatter, RdNode, SectionTag, WriterOptions, mdast_to_qmd, parse,
     rd_to_mdast_with_options,
 };
+use serde::Serialize;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -144,6 +146,130 @@ pub struct ConvertResult {
     pub failed_files: Vec<(PathBuf, String)>,
     /// Output files that were created
     pub output_files: Vec<PathBuf>,
+}
+
+/// Information about a single topic (Rd file) for index generation
+#[derive(Debug, Clone, Serialize)]
+pub struct TopicInfo {
+    /// Topic name (from \name{})
+    pub name: String,
+    /// Output filename (e.g., "foo.qmd")
+    pub file: String,
+    /// Topic title (from \title{})
+    pub title: String,
+    /// Aliases for this topic (from \alias{})
+    pub aliases: Vec<String>,
+    /// Lifecycle stage, if present
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lifecycle: Option<Lifecycle>,
+}
+
+/// Index of all topics in a package
+#[derive(Debug, Clone, Serialize)]
+pub struct TopicIndex {
+    /// List of topics
+    pub topics: Vec<TopicInfo>,
+}
+
+impl TopicIndex {
+    /// Serialize the index to JSON string
+    pub fn to_json(&self) -> Result<String> {
+        serde_json::to_string_pretty(self).map_err(|e| PackageError::Io(std::io::Error::other(e)))
+    }
+}
+
+/// Options for topic index generation
+#[derive(Debug, Clone, Default)]
+pub struct TopicIndexOptions {
+    /// File extension for output files (e.g., "qmd", "md")
+    pub output_extension: String,
+}
+
+/// Generate a topic index from a package
+///
+/// This function parses all Rd files in the package and extracts metadata
+/// for each topic, including name, title, aliases, and lifecycle stage.
+///
+/// # Example
+///
+/// ```ignore
+/// let package = RdPackage::from_directory(Path::new("man"), false)?;
+/// let options = TopicIndexOptions {
+///     output_extension: "qmd".to_string(),
+/// };
+/// let index = generate_topic_index(&package, &options)?;
+/// println!("{}", index.to_json()?);
+/// ```
+pub fn generate_topic_index(
+    package: &RdPackage,
+    options: &TopicIndexOptions,
+) -> Result<TopicIndex> {
+    let mut topics = Vec::new();
+
+    for file in &package.files {
+        match extract_topic_info(file, &options.output_extension) {
+            Ok(info) => topics.push(info),
+            Err(e) => {
+                // Log error but continue processing other files
+                eprintln!(
+                    "Warning: failed to extract topic info from {}: {}",
+                    file.display(),
+                    e
+                );
+            }
+        }
+    }
+
+    // Sort by name for consistent output
+    topics.sort_by(|a, b| a.name.cmp(&b.name));
+
+    Ok(TopicIndex { topics })
+}
+
+/// Extract topic information from a single Rd file
+fn extract_topic_info(file: &Path, output_extension: &str) -> Result<TopicInfo> {
+    let content = fs::read_to_string(file)?;
+    let doc = parse(&content).map_err(|e| PackageError::Parse {
+        file: file.to_path_buf(),
+        message: e.to_string(),
+    })?;
+
+    // Extract name
+    let name = doc
+        .get_section(&SectionTag::Name)
+        .map(|s| extract_text(&s.content))
+        .unwrap_or_default();
+
+    // Extract title
+    let title = doc
+        .get_section(&SectionTag::Title)
+        .map(|s| extract_text(&s.content))
+        .unwrap_or_default();
+
+    // Extract aliases
+    let mut aliases: Vec<String> = doc
+        .get_sections(&SectionTag::Alias)
+        .iter()
+        .map(|s| extract_text(&s.content))
+        .filter(|s| !s.is_empty())
+        .collect();
+    aliases.sort();
+    aliases.dedup();
+
+    // Extract lifecycle
+    let lifecycle = doc.lifecycle();
+
+    // Determine output filename
+    let basename = file.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    let output_file = format!("{}.{}", basename, output_extension);
+
+    Ok(TopicInfo {
+        name,
+        file: output_file,
+        title,
+        aliases,
+        lifecycle,
+    })
 }
 
 /// Convert an entire package to Quarto Markdown
@@ -409,5 +535,87 @@ mod tests {
         assert_eq!(package.resolve_alias("FuncA"), Some("func_a"));
         assert_eq!(package.resolve_alias("func_b"), Some("func_b"));
         assert_eq!(package.resolve_alias("nonexistent"), None);
+    }
+
+    #[test]
+    fn test_generate_topic_index() {
+        let dir = tempdir().unwrap();
+
+        // Create test Rd files - one with lifecycle, one without
+        let rd_deprecated = r#"\name{old_func}
+\alias{old_func}
+\alias{legacy_func}
+\title{Old Function}
+\description{
+\ifelse{html}{\href{https://lifecycle.r-lib.org/}{\figure{lifecycle-deprecated.svg}{}}}{\strong{[Deprecated]}}
+An old deprecated function.
+}
+"#;
+        let rd_normal = r#"\name{new_func}
+\alias{new_func}
+\title{New Function}
+\description{A normal function.}
+"#;
+        fs::write(dir.path().join("old_func.Rd"), rd_deprecated).unwrap();
+        fs::write(dir.path().join("new_func.Rd"), rd_normal).unwrap();
+
+        let package = RdPackage::from_directory(dir.path(), false).unwrap();
+        let options = TopicIndexOptions {
+            output_extension: "qmd".to_string(),
+        };
+        let index = generate_topic_index(&package, &options).unwrap();
+
+        assert_eq!(index.topics.len(), 2);
+
+        // Topics are sorted by name
+        let new_topic = index.topics.iter().find(|t| t.name == "new_func").unwrap();
+        assert_eq!(new_topic.file, "new_func.qmd");
+        assert_eq!(new_topic.title, "New Function");
+        assert!(new_topic.aliases.contains(&"new_func".to_string()));
+        assert!(new_topic.lifecycle.is_none());
+
+        let old_topic = index.topics.iter().find(|t| t.name == "old_func").unwrap();
+        assert_eq!(old_topic.file, "old_func.qmd");
+        assert_eq!(old_topic.title, "Old Function");
+        assert!(old_topic.aliases.contains(&"old_func".to_string()));
+        assert!(old_topic.aliases.contains(&"legacy_func".to_string()));
+        assert_eq!(old_topic.lifecycle, Some(Lifecycle::Deprecated));
+    }
+
+    #[test]
+    fn test_topic_index_json_serialization() {
+        let index = TopicIndex {
+            topics: vec![
+                TopicInfo {
+                    name: "foo".to_string(),
+                    file: "foo.qmd".to_string(),
+                    title: "Foo Function".to_string(),
+                    aliases: vec!["foo".to_string(), "bar".to_string()],
+                    lifecycle: Some(Lifecycle::Deprecated),
+                },
+                TopicInfo {
+                    name: "baz".to_string(),
+                    file: "baz.qmd".to_string(),
+                    title: "Baz Function".to_string(),
+                    aliases: vec!["baz".to_string()],
+                    lifecycle: None,
+                },
+            ],
+        };
+
+        let json = index.to_json().unwrap();
+
+        // Parse JSON to verify structure
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let topics = parsed["topics"].as_array().unwrap();
+        assert_eq!(topics.len(), 2);
+
+        // First topic has lifecycle
+        assert_eq!(topics[0]["name"], "foo");
+        assert_eq!(topics[0]["lifecycle"], "deprecated");
+
+        // Second topic has no lifecycle field (skip_serializing_if)
+        assert_eq!(topics[1]["name"], "baz");
+        assert!(topics[1].get("lifecycle").is_none());
     }
 }

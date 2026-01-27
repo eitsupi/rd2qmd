@@ -7,6 +7,7 @@ A fast Rd-to-Quarto Markdown converter written in Rust, with intelligent link re
 - **Blazing fast**: Converts 228 ggplot2 docs in ~0.13s with parallel processing
 - **Smart link resolution**: Automatically resolves `\link{}` references to correct output files
 - **External package links**: Resolves cross-package links using pkgdown URL conventions (e.g., `\link[dplyr]{mutate}` → `https://dplyr.tidyverse.org/reference/mutate.html`)
+- **Topic index generation**: Outputs JSON index with topic metadata (name, title, aliases, lifecycle) for building reference sites
 - **Quarto-ready**: Generates `.qmd` files with `{r}` executable code blocks and YAML frontmatter
 - **Grid Table support**: Uses Pandoc-compatible Grid Tables for Arguments section, supporting lists and block elements in cells
 - **pkgdown-compatible metadata**: Adds `pagetitle` in pkgdown style (`"<title> — <name>"`) for SEO
@@ -101,6 +102,37 @@ You can get your R library paths by running `.libPaths()` in R:
 #> [2] "/usr/local/lib/R/site-library"
 #> [3] "/usr/lib/R/library"
 ```
+
+### Topic index generation
+
+Generate a JSON index of all topics with metadata for building reference sites:
+
+```bash
+# Generate index to stdout (pipe to jq for filtering)
+rd2qmd index man/
+rd2qmd index man/ | jq '.topics[] | select(.lifecycle)'
+
+# Generate index while converting
+rd2qmd man/ -o docs/ --topic-index index.json
+```
+
+The index includes topic name, output file, title, aliases, and lifecycle stage:
+
+```json
+{
+  "topics": [
+    {
+      "name": "my_func",
+      "file": "my_func.qmd",
+      "title": "My Function",
+      "aliases": ["my_func", "myFunc"],
+      "lifecycle": "deprecated"
+    }
+  ]
+}
+```
+
+The `lifecycle` field is omitted for topics without a lifecycle badge. Supported stages: `experimental`, `stable`, `superseded`, `deprecated`, and legacy stages (`maturing`, `questioning`, `soft_deprecated`, `defunct`, `retired`).
 
 ### Example control options
 

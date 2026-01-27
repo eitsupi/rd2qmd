@@ -824,6 +824,7 @@ dependencies = [
  "insta",
  "rd2qmd-core",
  "rd2qmd-package",
+ "serde_json",
 ]
 
 [[package]]
@@ -852,9 +853,12 @@ version = "0.1.0"
 dependencies = [
  "r-description",
  "rayon",
+ "rd-parser",
  "rd2qmd-core",
  "reqwest",
  "saphyr",
+ "serde",
+ "serde_json",
  "tempfile",
  "thiserror",
  "url",

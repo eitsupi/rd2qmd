@@ -411,10 +411,7 @@ mod tests {
 
     #[test]
     fn test_list_constructors() {
-        let unordered = Node::list(
-            false,
-            vec![Node::list_item(vec![Node::text("item")])],
-        );
+        let unordered = Node::list(false, vec![Node::list_item(vec![Node::text("item")])]);
         if let Node::List(l) = unordered {
             assert!(!l.ordered);
             assert_eq!(l.start, None);
@@ -422,10 +419,7 @@ mod tests {
             panic!("Expected List node");
         }
 
-        let ordered = Node::ordered_list_from(
-            5,
-            vec![Node::list_item(vec![Node::text("item")])],
-        );
+        let ordered = Node::ordered_list_from(5, vec![Node::list_item(vec![Node::text("item")])]);
         if let Node::List(l) = ordered {
             assert!(l.ordered);
             assert_eq!(l.start, Some(5));
@@ -479,12 +473,10 @@ mod tests {
     fn test_table_constructors() {
         let table = Node::table(
             vec![Some(Align::Left), Some(Align::Right)],
-            vec![
-                Node::table_row(vec![
-                    Node::table_cell(vec![Node::text("A")]),
-                    Node::table_cell(vec![Node::text("B")]),
-                ]),
-            ],
+            vec![Node::table_row(vec![
+                Node::table_cell(vec![Node::text("A")]),
+                Node::table_cell(vec![Node::text("B")]),
+            ])],
         );
         if let Node::Table(t) = table {
             assert_eq!(t.align.len(), 2);

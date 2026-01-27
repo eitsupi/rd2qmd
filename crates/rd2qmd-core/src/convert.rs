@@ -2,14 +2,14 @@
 //!
 //! Converts an Rd document into an mdast tree for Markdown output.
 
+use rd_parser::{DescribeItem, RdDocument, RdNode, RdSection, SectionTag, SpecialChar};
 use rd2qmd_mdast::{
     Align, DefinitionDescription, DefinitionList, DefinitionTerm, Html, Image, Node, Root, Table,
     TableCell, TableRow,
 };
-use rd_parser::{DescribeItem, RdDocument, RdNode, RdSection, SectionTag, SpecialChar};
 use std::collections::HashMap;
-use tabled::settings::style::HorizontalLine;
 use tabled::settings::Style;
+use tabled::settings::style::HorizontalLine;
 
 /// Format for the Arguments section output
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -409,8 +409,13 @@ impl Converter {
         }
 
         // Apply grid table style with = separator after header
-        let grid_style = Style::ascii()
-            .horizontals([(1, HorizontalLine::new('=').left('+').right('+').intersection('+'))]);
+        let grid_style = Style::ascii().horizontals([(
+            1,
+            HorizontalLine::new('=')
+                .left('+')
+                .right('+')
+                .intersection('+'),
+        )]);
         let grid_table = table.with(grid_style).to_string();
 
         // Output as raw text (will be rendered as grid table by Pandoc)
@@ -1277,7 +1282,6 @@ fn normalize_whitespace(s: &str) -> String {
     }
     result
 }
-
 
 #[cfg(test)]
 mod tests;

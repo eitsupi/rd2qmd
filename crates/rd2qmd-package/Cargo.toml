@@ -12,8 +12,11 @@ external-links = ["dep:r-description", "dep:saphyr", "dep:reqwest", "dep:url"]
 
 [dependencies]
 rd2qmd-core = { workspace = true }
+rd-parser = { workspace = true, features = ["lifecycle"] }
 thiserror = { workspace = true }
 rayon = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 # Optional dependencies for external link resolution
 r-description = { workspace = true, optional = true }

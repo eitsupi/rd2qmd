@@ -26,4 +26,4 @@ pub use mdast::{
     Heading, Html, Image, InlineCode, InlineMath, Link, List, ListItem, Math, Node, Paragraph,
     Root, Strong, Table, TableCell, TableRow, Text,
 };
-pub use writer::{mdast_to_qmd, Frontmatter, WriterOptions};
+pub use writer::{Frontmatter, WriterOptions, mdast_to_qmd};

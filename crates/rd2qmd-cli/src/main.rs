@@ -1,7 +1,7 @@
 //! rd2qmd: CLI tool to convert Rd files to Quarto Markdown
 
 use anyhow::{Context, Result};
-use clap::Parser;
+use clap::{Args, Parser, Subcommand};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -9,7 +9,9 @@ use rd2qmd_core::{
     ArgumentsFormat, ConverterOptions, Frontmatter, WriterOptions, mdast_to_qmd, parse,
     rd_to_mdast_with_options,
 };
-use rd2qmd_package::{PackageConvertOptions, RdPackage, convert_package};
+use rd2qmd_package::{
+    PackageConvertOptions, RdPackage, TopicIndexOptions, convert_package, generate_topic_index,
+};
 
 #[cfg(feature = "external-links")]
 use rd2qmd_package::{
@@ -50,16 +52,24 @@ enum ArgumentsTableFormat {
 #[command(name = "rd2qmd")]
 #[command(about = "Convert Rd files to Quarto Markdown")]
 #[command(version)]
+#[command(subcommand_negates_reqs = true)]
 #[command(after_help = "Examples:
   rd2qmd file.Rd                    # Convert single file to file.qmd
   rd2qmd file.Rd -o output.qmd      # Convert to specific output file
   rd2qmd file.Rd -f md              # Convert to standard Markdown (.md)
   rd2qmd file.Rd -f rmd             # Convert to R Markdown (.Rmd)
   rd2qmd man/ -o docs/              # Convert directory (with alias resolution)
-  rd2qmd man/ -o docs/ -j4          # Use 4 parallel jobs")]
+  rd2qmd man/ -o docs/ -j4          # Use 4 parallel jobs
+  rd2qmd man/ --topic-index i.json  # Convert and generate topic index
+  rd2qmd index man/                 # Generate topic index JSON to stdout
+  rd2qmd index man/ | jq '.topics[] | select(.lifecycle)'")]
 struct Cli {
+    /// Subcommand (optional)
+    #[command(subcommand)]
+    subcommand: Option<Commands>,
+
     /// Input Rd file or directory
-    input: PathBuf,
+    input: Option<PathBuf>,
 
     /// Output file or directory
     #[arg(short, long)]
@@ -151,10 +161,56 @@ struct Cli {
     /// Grid tables support block elements (lists, paragraphs) in cells. Use pipe for simpler Markdown output.
     #[arg(long, value_enum, default_value_t = ArgumentsTableFormat::Grid)]
     arguments_table: ArgumentsTableFormat,
+
+    /// Generate topic index JSON file (directory mode only)
+    /// Contains topic names, files, titles, aliases, and lifecycle stages
+    #[arg(long, value_name = "FILE")]
+    topic_index: Option<PathBuf>,
+}
+
+/// Subcommands
+#[derive(Subcommand, Debug)]
+enum Commands {
+    /// Generate topic index JSON to stdout
+    ///
+    /// Parses all Rd files in the directory and outputs a JSON index
+    /// containing topic metadata (name, file, title, aliases, lifecycle).
+    /// Use with jq for filtering: rd2qmd index man/ | jq '.topics[]'
+    Index(IndexArgs),
+}
+
+/// Arguments for the index subcommand
+#[derive(Args, Debug)]
+struct IndexArgs {
+    /// Input directory containing Rd files
+    input: PathBuf,
+
+    /// Output format extension (used for file field in JSON)
+    #[arg(short, long, value_enum, default_value_t = OutputFormat::Qmd)]
+    format: OutputFormat,
+
+    /// Process directories recursively
+    #[arg(short, long)]
+    recursive: bool,
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+
+    // Handle subcommands first
+    if let Some(subcommand) = cli.subcommand {
+        return match subcommand {
+            Commands::Index(args) => run_index_command(&args),
+        };
+    }
+
+    // Regular conversion mode - input is required
+    let input = match cli.input {
+        Some(path) => path,
+        None => {
+            anyhow::bail!("Input path is required. Run 'rd2qmd --help' for usage.");
+        }
+    };
 
     let use_frontmatter = cli.frontmatter && !cli.no_frontmatter;
     let use_pagetitle = !cli.no_pagetitle;
@@ -180,10 +236,10 @@ fn main() -> Result<()> {
         ArgumentsTableFormat::Grid => ArgumentsFormat::GridTable,
     };
 
-    if cli.input.is_file() {
+    if input.is_file() {
         // Single file conversion (no alias resolution)
         convert_single_file(
-            &cli.input,
+            &input,
             cli.output.as_deref(),
             output_extension,
             use_frontmatter,
@@ -196,7 +252,7 @@ fn main() -> Result<()> {
             cli.verbose,
             cli.quiet,
         )?;
-    } else if cli.input.is_dir() {
+    } else if input.is_dir() {
         // Build external package URL options
         #[cfg(feature = "external-links")]
         let external_link_options = if cli.no_external_links {
@@ -213,7 +269,7 @@ fn main() -> Result<()> {
 
         // Directory conversion (with alias resolution via rd2qmd-package)
         convert_directory(
-            &cli.input,
+            &input,
             cli.output.as_deref(),
             output_extension,
             cli.recursive,
@@ -224,12 +280,13 @@ fn main() -> Result<()> {
             external_link_options,
             cli.exec_dontrun,
             !cli.no_exec_donttest,
+            cli.topic_index.as_deref(),
             cli.verbose,
             cli.quiet,
             cli.jobs,
         )?;
     } else {
-        anyhow::bail!("Input path does not exist: {}", cli.input.display());
+        anyhow::bail!("Input path does not exist: {}", input.display());
     }
 
     Ok(())
@@ -309,6 +366,7 @@ fn convert_directory(
     external_link_options: Option<ExternalLinkOptions>,
     exec_dontrun: bool,
     exec_donttest: bool,
+    topic_index_path: Option<&Path>,
     verbose: bool,
     quiet: bool,
     jobs: Option<usize>,
@@ -485,6 +543,30 @@ fn convert_directory(
         anyhow::bail!("{} files failed to convert", result.failed_files.len());
     }
 
+    // Generate topic index if requested
+    if let Some(index_path) = topic_index_path {
+        if verbose {
+            eprintln!("Generating topic index...");
+        }
+
+        let index_options = TopicIndexOptions {
+            output_extension: output_extension.to_string(),
+        };
+        let index = generate_topic_index(&package, &index_options)
+            .with_context(|| "Failed to generate topic index")?;
+
+        let json = index
+            .to_json()
+            .with_context(|| "Failed to serialize topic index")?;
+
+        fs::write(index_path, &json)
+            .with_context(|| format!("Failed to write topic index: {}", index_path.display()))?;
+
+        if !quiet {
+            eprintln!("Topic index written to {}", index_path.display());
+        }
+    }
+
     Ok(())
 }
 
@@ -565,4 +647,40 @@ fn extract_text(nodes: &[rd2qmd_core::RdNode]) -> String {
         }
     }
     result.trim().to_string()
+}
+
+/// Run the index subcommand: generate topic index JSON to stdout
+fn run_index_command(args: &IndexArgs) -> Result<()> {
+    if !args.input.is_dir() {
+        anyhow::bail!("Input path is not a directory: {}", args.input.display());
+    }
+
+    let output_extension = match args.format {
+        OutputFormat::Qmd => "qmd",
+        OutputFormat::Md => "md",
+        OutputFormat::Rmd => "Rmd",
+    };
+
+    let package = RdPackage::from_directory(&args.input, args.recursive)
+        .with_context(|| format!("Failed to scan directory: {}", args.input.display()))?;
+
+    if package.files.is_empty() {
+        anyhow::bail!("No .Rd files found in {}", args.input.display());
+    }
+
+    let index_options = TopicIndexOptions {
+        output_extension: output_extension.to_string(),
+    };
+
+    let index = generate_topic_index(&package, &index_options)
+        .with_context(|| "Failed to generate topic index")?;
+
+    let json = index
+        .to_json()
+        .with_context(|| "Failed to serialize topic index")?;
+
+    // Output to stdout for piping to jq etc.
+    println!("{}", json);
+
+    Ok(())
 }

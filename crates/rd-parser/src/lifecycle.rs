@@ -208,8 +208,9 @@ fn find_lifecycle_in_node(node: &RdNode) -> Option<Lifecycle> {
             then_content,
             else_content,
             ..
-        } => find_lifecycle_in_nodes(then_content)
-            .or_else(|| find_lifecycle_in_nodes(else_content)),
+        } => {
+            find_lifecycle_in_nodes(then_content).or_else(|| find_lifecycle_in_nodes(else_content))
+        }
 
         RdNode::If { content, .. } => find_lifecycle_in_nodes(content),
 
@@ -232,10 +233,10 @@ fn find_lifecycle_in_node(node: &RdNode) -> Option<Lifecycle> {
         RdNode::Itemize(items) | RdNode::Enumerate(items) => find_lifecycle_in_nodes(items),
 
         RdNode::Item { content, label } => {
-            if let Some(label_nodes) = label {
-                if let Some(lifecycle) = find_lifecycle_in_nodes(label_nodes) {
-                    return Some(lifecycle);
-                }
+            if let Some(label_nodes) = label
+                && let Some(lifecycle) = find_lifecycle_in_nodes(label_nodes)
+            {
+                return Some(lifecycle);
             }
             find_lifecycle_in_nodes(content)
         }
@@ -325,13 +326,12 @@ fn extract_lifecycle_from_filename(filename: &str) -> Option<Lifecycle> {
     let basename = filename.rsplit('/').next().unwrap_or(filename);
 
     // Remove "lifecycle-" prefix and file extension
-    let stage_str = basename
-        .strip_prefix("lifecycle-")
-        .and_then(|s| s.rsplit('.').last())
-        .or_else(|| {
-            // Handle case where there's no extension
-            basename.strip_prefix("lifecycle-")
-        })?;
+    let stage_str = basename.strip_prefix("lifecycle-").and_then(|s| {
+        // Split off the file extension if present
+        s.rsplit_once('.')
+            .map(|(name, _ext)| name)
+            .or(Some(s)) // No extension case
+    })?;
 
     if stage_str.is_empty() {
         return None;
@@ -462,19 +462,34 @@ A function with a non-lifecycle figure.
     // Tests for Lifecycle enum
     #[test]
     fn test_lifecycle_from_str() {
-        assert_eq!("experimental".parse::<Lifecycle>(), Ok(Lifecycle::Experimental));
+        assert_eq!(
+            "experimental".parse::<Lifecycle>(),
+            Ok(Lifecycle::Experimental)
+        );
         assert_eq!("stable".parse::<Lifecycle>(), Ok(Lifecycle::Stable));
         assert_eq!("superseded".parse::<Lifecycle>(), Ok(Lifecycle::Superseded));
         assert_eq!("deprecated".parse::<Lifecycle>(), Ok(Lifecycle::Deprecated));
         assert_eq!("maturing".parse::<Lifecycle>(), Ok(Lifecycle::Maturing));
-        assert_eq!("questioning".parse::<Lifecycle>(), Ok(Lifecycle::Questioning));
-        assert_eq!("soft-deprecated".parse::<Lifecycle>(), Ok(Lifecycle::SoftDeprecated));
-        assert_eq!("softdeprecated".parse::<Lifecycle>(), Ok(Lifecycle::SoftDeprecated));
+        assert_eq!(
+            "questioning".parse::<Lifecycle>(),
+            Ok(Lifecycle::Questioning)
+        );
+        assert_eq!(
+            "soft-deprecated".parse::<Lifecycle>(),
+            Ok(Lifecycle::SoftDeprecated)
+        );
+        assert_eq!(
+            "softdeprecated".parse::<Lifecycle>(),
+            Ok(Lifecycle::SoftDeprecated)
+        );
         assert_eq!("defunct".parse::<Lifecycle>(), Ok(Lifecycle::Defunct));
         assert_eq!("retired".parse::<Lifecycle>(), Ok(Lifecycle::Retired));
 
         // Case insensitive
-        assert_eq!("EXPERIMENTAL".parse::<Lifecycle>(), Ok(Lifecycle::Experimental));
+        assert_eq!(
+            "EXPERIMENTAL".parse::<Lifecycle>(),
+            Ok(Lifecycle::Experimental)
+        );
         assert_eq!("Deprecated".parse::<Lifecycle>(), Ok(Lifecycle::Deprecated));
 
         // Invalid

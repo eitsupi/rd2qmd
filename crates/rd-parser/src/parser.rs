@@ -262,9 +262,7 @@ impl Parser {
             // Example control macros
             "dontrun" => self.parse_inline_nodes().map(|n| Some(RdNode::DontRun(n))),
             "donttest" => self.parse_inline_nodes().map(|n| Some(RdNode::DontTest(n))),
-            "dontshow" | "testonly" => {
-                self.parse_inline_nodes().map(|n| Some(RdNode::DontShow(n)))
-            }
+            "dontshow" | "testonly" => self.parse_inline_nodes().map(|n| Some(RdNode::DontShow(n))),
 
             // Unknown macro - store generically
             _ => self.parse_generic_macro(&name),

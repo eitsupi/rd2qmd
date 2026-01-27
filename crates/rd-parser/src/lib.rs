@@ -36,7 +36,7 @@ mod lifecycle;
 // Re-export main types for convenient access
 pub use ast::{DescribeItem, RdDocument, RdNode, RdSection, SectionTag, SpecialChar};
 pub use lexer::{Lexer, Span, Token, TokenKind};
-pub use parser::{parse, ParseError, ParseResult, Parser};
+pub use parser::{ParseError, ParseResult, Parser, parse};
 
 // Re-export lifecycle types when the feature is enabled
 #[cfg(feature = "lifecycle")]
