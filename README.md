@@ -65,7 +65,7 @@ rd2qmd man/ -o docs/ -j4
 | Option | Description |
 |--------|-------------|
 | `-o, --output <PATH>` | Output file or directory |
-| `-f, --format <FORMAT>` | Output format: `qmd` (default) or `md` |
+| `-f, --format <FORMAT>` | Output format: `qmd` (default), `md`, or `rmd` |
 | `-j, --jobs <N>` | Number of parallel jobs (defaults to CPU count) |
 | `-r, --recursive` | Process directories recursively |
 | `--no-frontmatter` | Disable YAML frontmatter |
@@ -125,6 +125,8 @@ The default format produces Quarto-compatible markdown with:
 - YAML frontmatter with title and pagetitle (pkgdown style: `"<title> — <name>"`)
 - Executable R code blocks using `{r}` syntax
 - Internal links resolved to `.qmd` files
+
+Use `-f rmd` for R Markdown (`.Rmd`) output with identical content.
 
 ### Standard Markdown (`.md`)
 

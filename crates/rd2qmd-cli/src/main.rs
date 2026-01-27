@@ -32,6 +32,8 @@ enum OutputFormat {
     Qmd,
     /// Standard Markdown (.md) - uses plain r code blocks
     Md,
+    /// R Markdown (.Rmd) - uses {r} code blocks for examples
+    Rmd,
 }
 
 /// Table format for the Arguments section
@@ -52,6 +54,7 @@ enum ArgumentsTableFormat {
   rd2qmd file.Rd                    # Convert single file to file.qmd
   rd2qmd file.Rd -o output.qmd      # Convert to specific output file
   rd2qmd file.Rd -f md              # Convert to standard Markdown (.md)
+  rd2qmd file.Rd -f rmd             # Convert to R Markdown (.Rmd)
   rd2qmd man/ -o docs/              # Convert directory (with alias resolution)
   rd2qmd man/ -o docs/ -j4          # Use 4 parallel jobs")]
 struct Cli {
@@ -165,10 +168,11 @@ fn main() -> Result<()> {
     let output_extension = match cli.format {
         OutputFormat::Qmd => "qmd",
         OutputFormat::Md => "md",
+        OutputFormat::Rmd => "Rmd",
     };
     let quarto_code_blocks = cli
         .quarto_code_blocks
-        .unwrap_or(cli.format == OutputFormat::Qmd);
+        .unwrap_or(matches!(cli.format, OutputFormat::Qmd | OutputFormat::Rmd));
 
     // Convert CLI arguments table format to internal ArgumentsFormat
     let arguments_format = match cli.arguments_table {
