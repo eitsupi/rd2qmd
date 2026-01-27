@@ -1,0 +1,67 @@
+---
+source: crates/rd-parser/tests/parser_snapshots.rs
+expression: ast_json
+---
+{
+  "sections": [
+    {
+      "tag": "name",
+      "content": [
+        {
+          "text": "equations"
+        }
+      ]
+    },
+    {
+      "tag": "title",
+      "content": [
+        {
+          "text": "Equation Examples"
+        }
+      ]
+    },
+    {
+      "tag": "description",
+      "content": [
+        {
+          "text": "\nMathematical notation examples.\n"
+        }
+      ]
+    },
+    {
+      "tag": "details",
+      "content": [
+        {
+          "text": "\nInline equation: "
+        },
+        {
+          "eqn": {
+            "latex": "x^2 + y^2 = z^2",
+            "ascii": "x^2 + y^2 = z^2"
+          }
+        },
+        {
+          "text": "\n\nDisplay equation:\n"
+        },
+        {
+          "deqn": {
+            "latex": "\\sum_{i=1}^{n} x_i",
+            "ascii": "sum(x)"
+          }
+        },
+        {
+          "text": "\n\nEquation without ASCII fallback: "
+        },
+        {
+          "eqn": {
+            "latex": "\\alpha + \\beta",
+            "ascii": null
+          }
+        },
+        {
+          "text": "\n"
+        }
+      ]
+    }
+  ]
+}

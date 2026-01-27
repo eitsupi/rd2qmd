@@ -1,0 +1,194 @@
+---
+source: crates/rd-parser/tests/parser_snapshots.rs
+expression: ast_json
+---
+{
+  "sections": [
+    {
+      "tag": "name",
+      "content": [
+        {
+          "text": "formatting"
+        }
+      ]
+    },
+    {
+      "tag": "title",
+      "content": [
+        {
+          "text": "Formatting Examples"
+        }
+      ]
+    },
+    {
+      "tag": "description",
+      "content": [
+        {
+          "text": "\nText with "
+        },
+        {
+          "emph": [
+            {
+              "text": "emphasis"
+            }
+          ]
+        },
+        {
+          "text": ", "
+        },
+        {
+          "strong": [
+            {
+              "text": "strong"
+            }
+          ]
+        },
+        {
+          "text": ", "
+        },
+        {
+          "strong": [
+            {
+              "text": "bold"
+            }
+          ]
+        },
+        {
+          "text": ", and "
+        },
+        {
+          "code": [
+            {
+              "text": "inline code"
+            }
+          ]
+        },
+        {
+          "text": ".\nSpecial characters: "
+        },
+        {
+          "special": "r"
+        },
+        {
+          "text": " is R, "
+        },
+        {
+          "special": "dots"
+        },
+        {
+          "text": " is ellipsis.\nQuotes: "
+        },
+        {
+          "sQuote": [
+            {
+              "text": "single"
+            }
+          ]
+        },
+        {
+          "text": " and "
+        },
+        {
+          "dQuote": [
+            {
+              "text": "double"
+            }
+          ]
+        },
+        {
+          "text": ".\n"
+        }
+      ]
+    },
+    {
+      "tag": "details",
+      "content": [
+        {
+          "text": "\nKeyboard input: "
+        },
+        {
+          "kbd": [
+            {
+              "text": "Ctrl+C"
+            }
+          ]
+        },
+        {
+          "text": "\nVariable: "
+        },
+        {
+          "var": "varname"
+        },
+        {
+          "text": "\nEnvironment variable: "
+        },
+        {
+          "env": "HOME"
+        },
+        {
+          "text": "\nOption: "
+        },
+        {
+          "option": "--verbose"
+        },
+        {
+          "text": "\nCommand: "
+        },
+        {
+          "command": "ls -la"
+        },
+        {
+          "text": "\nAcronym: "
+        },
+        {
+          "acronym": "HTML"
+        },
+        {
+          "text": "\nDefinition: "
+        },
+        {
+          "dfn": [
+            {
+              "text": "recursion"
+            }
+          ]
+        },
+        {
+          "text": "\nFile path: "
+        },
+        {
+          "file": [
+            {
+              "text": "/path/to/file.R"
+            }
+          ]
+        },
+        {
+          "text": "\nSample: "
+        },
+        {
+          "samp": [
+            {
+              "text": "sample text"
+            }
+          ]
+        },
+        {
+          "text": "\nPackage: "
+        },
+        {
+          "pkg": "ggplot2"
+        },
+        {
+          "text": "\nVerbatim: "
+        },
+        {
+          "verb": "literal text"
+        },
+        {
+          "text": "\n"
+        }
+      ]
+    }
+  ]
+}

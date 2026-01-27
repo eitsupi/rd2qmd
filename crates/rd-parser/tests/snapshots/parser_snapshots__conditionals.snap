@@ -1,0 +1,86 @@
+---
+source: crates/rd-parser/tests/parser_snapshots.rs
+expression: ast_json
+---
+{
+  "sections": [
+    {
+      "tag": "name",
+      "content": [
+        {
+          "text": "conditionals"
+        }
+      ]
+    },
+    {
+      "tag": "title",
+      "content": [
+        {
+          "text": "Conditional Examples"
+        }
+      ]
+    },
+    {
+      "tag": "description",
+      "content": [
+        {
+          "text": "\nConditional content for different output formats.\n"
+        }
+      ]
+    },
+    {
+      "tag": "details",
+      "content": [
+        {
+          "text": "\nHTML only: "
+        },
+        {
+          "if": {
+            "format": "html",
+            "content": [
+              {
+                "text": "This appears in HTML output."
+              }
+            ]
+          }
+        },
+        {
+          "text": "\n\nWith else: "
+        },
+        {
+          "ifElse": {
+            "format": "latex",
+            "then_content": [
+              {
+                "text": "LaTeX version"
+              }
+            ],
+            "else_content": [
+              {
+                "text": "Other version"
+              }
+            ]
+          }
+        },
+        {
+          "text": "\n\nSexpr: "
+        },
+        {
+          "sexpr": {
+            "options": "results=rd",
+            "code": "paste(\"Dynamic\", \"content\")"
+          }
+        },
+        {
+          "text": "\n\nRaw output: "
+        },
+        {
+          "out": "<b>raw HTML</b>"
+        },
+        {
+          "text": "\n"
+        }
+      ]
+    }
+  ]
+}

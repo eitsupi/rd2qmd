@@ -1,0 +1,165 @@
+---
+source: crates/rd-parser/tests/parser_snapshots.rs
+expression: ast_json
+---
+{
+  "sections": [
+    {
+      "tag": "name",
+      "content": [
+        {
+          "text": "lists"
+        }
+      ]
+    },
+    {
+      "tag": "title",
+      "content": [
+        {
+          "text": "List Examples"
+        }
+      ]
+    },
+    {
+      "tag": "description",
+      "content": [
+        {
+          "text": "\nFunctions demonstrating list formatting.\n"
+        }
+      ]
+    },
+    {
+      "tag": "details",
+      "content": [
+        {
+          "text": "\nItemized list:\n"
+        },
+        {
+          "itemize": [
+            {
+              "item": {
+                "label": null,
+                "content": [
+                  {
+                    "text": "First item\n  "
+                  }
+                ]
+              }
+            },
+            {
+              "item": {
+                "label": null,
+                "content": [
+                  {
+                    "text": "Second item with "
+                  },
+                  {
+                    "code": [
+                      {
+                        "text": "code"
+                      }
+                    ]
+                  },
+                  {
+                    "text": "\n  "
+                  }
+                ]
+              }
+            },
+            {
+              "item": {
+                "label": null,
+                "content": [
+                  {
+                    "text": "Third item\n"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "text": "\n\nNumbered list:\n"
+        },
+        {
+          "enumerate": [
+            {
+              "item": {
+                "label": null,
+                "content": [
+                  {
+                    "text": "Step one\n  "
+                  }
+                ]
+              }
+            },
+            {
+              "item": {
+                "label": null,
+                "content": [
+                  {
+                    "text": "Step two\n  "
+                  }
+                ]
+              }
+            },
+            {
+              "item": {
+                "label": null,
+                "content": [
+                  {
+                    "text": "Step three\n"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "text": "\n\nDescription list:\n"
+        },
+        {
+          "describe": [
+            {
+              "term": [
+                {
+                  "text": "term1"
+                }
+              ],
+              "description": [
+                {
+                  "text": "Description of first term."
+                }
+              ]
+            },
+            {
+              "term": [
+                {
+                  "text": "term2"
+                }
+              ],
+              "description": [
+                {
+                  "text": "Description of second term with "
+                },
+                {
+                  "emph": [
+                    {
+                      "text": "emphasis"
+                    }
+                  ]
+                },
+                {
+                  "text": "."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "text": "\n"
+        }
+      ]
+    }
+  ]
+}

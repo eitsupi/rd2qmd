@@ -1,0 +1,70 @@
+---
+source: crates/rd-parser/tests/parser_snapshots.rs
+expression: ast_json
+---
+{
+  "sections": [
+    {
+      "tag": "name",
+      "content": [
+        {
+          "text": "examples"
+        }
+      ]
+    },
+    {
+      "tag": "title",
+      "content": [
+        {
+          "text": "Example Control"
+        }
+      ]
+    },
+    {
+      "tag": "description",
+      "content": [
+        {
+          "text": "\nDemonstrates example control macros.\n"
+        }
+      ]
+    },
+    {
+      "tag": "examples",
+      "content": [
+        {
+          "text": "\n# Normal example\nx <- 1:10\nmean(x)\n\n"
+        },
+        {
+          "dontRun": [
+            {
+              "text": "\n# This won't run automatically\ndangerous_operation()\n"
+            }
+          ]
+        },
+        {
+          "text": "\n\n"
+        },
+        {
+          "dontTest": [
+            {
+              "text": "\n# This won't be tested\nslow_function(x)\n"
+            }
+          ]
+        },
+        {
+          "text": "\n\n"
+        },
+        {
+          "dontShow": [
+            {
+              "text": "\n# Hidden test code\nstopifnot(mean(x) == 5.5)\n"
+            }
+          ]
+        },
+        {
+          "text": "\n"
+        }
+      ]
+    }
+  ]
+}

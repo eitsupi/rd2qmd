@@ -1,0 +1,144 @@
+---
+source: crates/rd-parser/tests/parser_snapshots.rs
+expression: ast_json
+---
+{
+  "sections": [
+    {
+      "tag": "name",
+      "content": [
+        {
+          "text": "sections"
+        }
+      ]
+    },
+    {
+      "tag": "title",
+      "content": [
+        {
+          "text": "Section Examples"
+        }
+      ]
+    },
+    {
+      "tag": "description",
+      "content": [
+        {
+          "text": "\nDemonstrates various section types.\n"
+        }
+      ]
+    },
+    {
+      "tag": "details",
+      "content": [
+        {
+          "text": "\nMain details content.\n\n"
+        },
+        {
+          "subsection": {
+            "title": [
+              {
+                "text": "First Subsection"
+              }
+            ],
+            "content": [
+              {
+                "text": "\nContent of first subsection.\n"
+              }
+            ]
+          }
+        },
+        {
+          "text": "\n\n"
+        },
+        {
+          "subsection": {
+            "title": [
+              {
+                "text": "Second Subsection"
+              }
+            ],
+            "content": [
+              {
+                "text": "\nContent with "
+              },
+              {
+                "code": [
+                  {
+                    "text": "code"
+                  }
+                ]
+              },
+              {
+                "text": " and "
+              },
+              {
+                "emph": [
+                  {
+                    "text": "emphasis"
+                  }
+                ]
+              },
+              {
+                "text": ".\n"
+              }
+            ]
+          }
+        },
+        {
+          "text": "\n"
+        }
+      ]
+    },
+    {
+      "tag": {
+        "section": "Custom Section"
+      },
+      "content": [
+        {
+          "text": "\nThis is a custom section with its own title.\n\nIt can contain multiple paragraphs and "
+        },
+        {
+          "code": [
+            {
+              "text": "formatting"
+            }
+          ]
+        },
+        {
+          "text": ".\n"
+        }
+      ]
+    },
+    {
+      "tag": "note",
+      "content": [
+        {
+          "text": "\nAn important note about this function.\n"
+        }
+      ]
+    },
+    {
+      "tag": "author",
+      "content": [
+        {
+          "text": "\nAuthor Name "
+        },
+        {
+          "email": "author@example.com"
+        },
+        {
+          "text": "\n"
+        }
+      ]
+    },
+    {
+      "tag": "references",
+      "content": [
+        {
+          "text": "\nReference text here.\n"
+        }
+      ]
+    }
+  ]
+}

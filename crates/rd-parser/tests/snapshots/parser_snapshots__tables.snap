@@ -1,0 +1,118 @@
+---
+source: crates/rd-parser/tests/parser_snapshots.rs
+expression: ast_json
+---
+{
+  "sections": [
+    {
+      "tag": "name",
+      "content": [
+        {
+          "text": "tables"
+        }
+      ]
+    },
+    {
+      "tag": "title",
+      "content": [
+        {
+          "text": "Table Examples"
+        }
+      ]
+    },
+    {
+      "tag": "description",
+      "content": [
+        {
+          "text": "\nFunction demonstrating table formatting.\n"
+        }
+      ]
+    },
+    {
+      "tag": "details",
+      "content": [
+        {
+          "text": "\nA simple table:\n"
+        },
+        {
+          "tabular": {
+            "alignment": "lrc",
+            "rows": [
+              [
+                [
+                  {
+                    "text": "\n  Left "
+                  }
+                ],
+                [
+                  {
+                    "text": " Center "
+                  }
+                ],
+                [
+                  {
+                    "text": " Right "
+                  }
+                ]
+              ],
+              [
+                [
+                  {
+                    "text": "\n  A "
+                  }
+                ],
+                [
+                  {
+                    "text": " B "
+                  }
+                ],
+                [
+                  {
+                    "text": " C "
+                  }
+                ]
+              ],
+              [
+                [
+                  {
+                    "text": "\n  Long text "
+                  }
+                ],
+                [
+                  {
+                    "text": " "
+                  },
+                  {
+                    "code": [
+                      {
+                        "text": "code"
+                      }
+                    ]
+                  },
+                  {
+                    "text": " "
+                  }
+                ],
+                [
+                  {
+                    "text": " 123 "
+                  }
+                ]
+              ],
+              [
+                [
+                  {
+                    "text": "\n"
+                  }
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "text": "\n"
+        }
+      ]
+    }
+  ]
+}

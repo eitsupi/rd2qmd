@@ -237,6 +237,19 @@ impl<'a> Lexer<'a> {
     }
 
     /// Consume text until a special character
+    ///
+    /// FIXME: This function treats parentheses and other punctuation as part of text,
+    /// which causes issues when parsing macros like `\dots)`. The `)` gets included
+    /// in the macro name, resulting in `macro{name:"dots)"}` instead of the special
+    /// character `\dots` followed by text `)`.
+    ///
+    /// According to parseRd.pdf, macro names should only consist of alphanumeric
+    /// characters. A proper fix would require either:
+    /// 1. Making the lexer context-aware (knowing when it's after a backslash)
+    /// 2. Handling macro name termination in the parser
+    /// 3. Tokenizing punctuation separately
+    ///
+    /// See snapshot test `nested` for an example of this behavior.
     fn consume_text(&mut self) -> String {
         let mut text = String::new();
         while let Some(ch) = self.peek() {

@@ -1,0 +1,161 @@
+---
+source: crates/rd-parser/tests/parser_snapshots.rs
+expression: ast_json
+---
+{
+  "sections": [
+    {
+      "tag": "name",
+      "content": [
+        {
+          "text": "nested"
+        }
+      ]
+    },
+    {
+      "tag": "title",
+      "content": [
+        {
+          "text": "Nested Structures"
+        }
+      ]
+    },
+    {
+      "tag": "description",
+      "content": [
+        {
+          "text": "\nComplex nested content.\n"
+        }
+      ]
+    },
+    {
+      "tag": "details",
+      "content": [
+        {
+          "text": "\nNested lists:\n"
+        },
+        {
+          "itemize": [
+            {
+              "item": {
+                "label": null,
+                "content": [
+                  {
+                    "text": "Outer item 1\n  "
+                  }
+                ]
+              }
+            },
+            {
+              "item": {
+                "label": null,
+                "content": [
+                  {
+                    "text": "Outer item 2 with nested:\n    "
+                  },
+                  {
+                    "enumerate": [
+                      {
+                        "item": {
+                          "label": null,
+                          "content": [
+                            {
+                              "text": "Inner numbered 1\n      "
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "item": {
+                          "label": null,
+                          "content": [
+                            {
+                              "text": "Inner numbered 2\n    "
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "text": "\n  "
+                  }
+                ]
+              }
+            },
+            {
+              "item": {
+                "label": null,
+                "content": [
+                  {
+                    "text": "Outer item 3\n"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "text": "\n\nCode with nested macros: "
+        },
+        {
+          "code": [
+            {
+              "link": {
+                "package": null,
+                "topic": "function",
+                "text": null
+              }
+            },
+            {
+              "text": "(x, "
+            },
+            {
+              "macro": {
+                "name": "dots)",
+                "args": []
+              }
+            }
+          ]
+        },
+        {
+          "text": "\n\nNested emphasis: "
+        },
+        {
+          "emph": [
+            {
+              "text": "emphasized with "
+            },
+            {
+              "strong": [
+                {
+                  "text": "strong"
+                }
+              ]
+            },
+            {
+              "text": " inside"
+            }
+          ]
+        },
+        {
+          "text": "\n\nLink in code: "
+        },
+        {
+          "code": [
+            {
+              "link": {
+                "package": "pkg",
+                "topic": "func",
+                "text": null
+              }
+            }
+          ]
+        },
+        {
+          "text": "\n"
+        }
+      ]
+    }
+  ]
+}

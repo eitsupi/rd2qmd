@@ -1,0 +1,127 @@
+---
+source: crates/rd-parser/tests/parser_snapshots.rs
+expression: ast_json
+---
+{
+  "sections": [
+    {
+      "tag": "name",
+      "content": [
+        {
+          "text": "links"
+        }
+      ]
+    },
+    {
+      "tag": "title",
+      "content": [
+        {
+          "text": "Link Examples"
+        }
+      ]
+    },
+    {
+      "tag": "description",
+      "content": [
+        {
+          "text": "\nBasic link: "
+        },
+        {
+          "link": {
+            "package": null,
+            "topic": "other_function",
+            "text": null
+          }
+        },
+        {
+          "text": "\nLink with package: "
+        },
+        {
+          "link": {
+            "package": "stats",
+            "topic": "lm",
+            "text": null
+          }
+        },
+        {
+          "text": "\nLink with display text: "
+        },
+        {
+          "link": {
+            "package": null,
+            "topic": "other",
+            "text": [
+              {
+                "text": "display text"
+              }
+            ]
+          }
+        },
+        {
+          "text": "\nURL: "
+        },
+        {
+          "url": "https://example.com"
+        },
+        {
+          "text": "\nEmail: "
+        },
+        {
+          "email": "user@example.com"
+        },
+        {
+          "text": "\nHref: "
+        },
+        {
+          "href": {
+            "url": "https://cran.r-project.org",
+            "text": [
+              {
+                "text": "CRAN"
+              }
+            ]
+          }
+        },
+        {
+          "text": "\n"
+        }
+      ]
+    },
+    {
+      "tag": "seealso",
+      "content": [
+        {
+          "text": "\n"
+        },
+        {
+          "code": [
+            {
+              "link": {
+                "package": null,
+                "topic": "print",
+                "text": null
+              }
+            }
+          ]
+        },
+        {
+          "text": ", "
+        },
+        {
+          "code": [
+            {
+              "link": {
+                "package": "base",
+                "topic": "summary",
+                "text": null
+              }
+            }
+          ]
+        },
+        {
+          "text": "\n"
+        }
+      ]
+    }
+  ]
+}

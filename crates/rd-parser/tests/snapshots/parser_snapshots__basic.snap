@@ -1,0 +1,105 @@
+---
+source: crates/rd-parser/tests/parser_snapshots.rs
+expression: ast_json
+---
+{
+  "sections": [
+    {
+      "tag": "name",
+      "content": [
+        {
+          "text": "basic"
+        }
+      ]
+    },
+    {
+      "tag": "alias",
+      "content": [
+        {
+          "text": "basic"
+        }
+      ]
+    },
+    {
+      "tag": "alias",
+      "content": [
+        {
+          "text": "basic_func"
+        }
+      ]
+    },
+    {
+      "tag": "title",
+      "content": [
+        {
+          "text": "A Basic Function"
+        }
+      ]
+    },
+    {
+      "tag": "description",
+      "content": [
+        {
+          "text": "\nThis is a basic function with minimal content.\n"
+        }
+      ]
+    },
+    {
+      "tag": "usage",
+      "content": [
+        {
+          "text": "\nbasic(x)\n"
+        }
+      ]
+    },
+    {
+      "tag": "arguments",
+      "content": [
+        {
+          "text": "\n"
+        },
+        {
+          "item": {
+            "label": [
+              {
+                "text": "x"
+              }
+            ],
+            "content": [
+              {
+                "text": "An input value."
+              }
+            ]
+          }
+        },
+        {
+          "text": "\n"
+        }
+      ]
+    },
+    {
+      "tag": "value",
+      "content": [
+        {
+          "text": "\nReturns the input value unchanged.\n"
+        }
+      ]
+    },
+    {
+      "tag": "examples",
+      "content": [
+        {
+          "text": "\nbasic(1)\nbasic(\"hello\")\n"
+        }
+      ]
+    },
+    {
+      "tag": "keyword",
+      "content": [
+        {
+          "text": "misc"
+        }
+      ]
+    }
+  ]
+}

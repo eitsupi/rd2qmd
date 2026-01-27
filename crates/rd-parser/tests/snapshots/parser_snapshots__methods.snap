@@ -1,0 +1,159 @@
+---
+source: crates/rd-parser/tests/parser_snapshots.rs
+expression: ast_json
+---
+{
+  "sections": [
+    {
+      "tag": "name",
+      "content": [
+        {
+          "text": "print.myclass"
+        }
+      ]
+    },
+    {
+      "tag": "alias",
+      "content": [
+        {
+          "text": "print.myclass"
+        }
+      ]
+    },
+    {
+      "tag": "alias",
+      "content": [
+        {
+          "text": "summary.myclass"
+        }
+      ]
+    },
+    {
+      "tag": "title",
+      "content": [
+        {
+          "text": "Methods for myclass"
+        }
+      ]
+    },
+    {
+      "tag": "description",
+      "content": [
+        {
+          "text": "\nPrint and summary methods for myclass objects.\n"
+        }
+      ]
+    },
+    {
+      "tag": "usage",
+      "content": [
+        {
+          "text": "\n"
+        },
+        {
+          "method": {
+            "generic": "print",
+            "class": "myclass"
+          }
+        },
+        {
+          "text": "(x, ...)\n"
+        },
+        {
+          "method": {
+            "generic": "summary",
+            "class": "myclass"
+          }
+        },
+        {
+          "text": "(object, digits = 3, ...)\n"
+        },
+        {
+          "s4Method": {
+            "generic": "show",
+            "signature": "MyS4Class"
+          }
+        },
+        {
+          "text": "(object)\n"
+        }
+      ]
+    },
+    {
+      "tag": "arguments",
+      "content": [
+        {
+          "text": "\n"
+        },
+        {
+          "item": {
+            "label": [
+              {
+                "text": "x"
+              }
+            ],
+            "content": [
+              {
+                "text": "An object of class myclass."
+              }
+            ]
+          }
+        },
+        {
+          "text": "\n"
+        },
+        {
+          "item": {
+            "label": [
+              {
+                "text": "object"
+              }
+            ],
+            "content": [
+              {
+                "text": "An object of class myclass or MyS4Class."
+              }
+            ]
+          }
+        },
+        {
+          "text": "\n"
+        },
+        {
+          "item": {
+            "label": [
+              {
+                "text": "digits"
+              }
+            ],
+            "content": [
+              {
+                "text": "Number of digits for display."
+              }
+            ]
+          }
+        },
+        {
+          "text": "\n"
+        },
+        {
+          "item": {
+            "label": [
+              {
+                "text": "..."
+              }
+            ],
+            "content": [
+              {
+                "text": "Additional arguments."
+              }
+            ]
+          }
+        },
+        {
+          "text": "\n"
+        }
+      ]
+    }
+  ]
+}

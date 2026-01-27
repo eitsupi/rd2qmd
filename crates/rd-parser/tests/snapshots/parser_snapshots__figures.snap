@@ -1,0 +1,67 @@
+---
+source: crates/rd-parser/tests/parser_snapshots.rs
+expression: ast_json
+---
+{
+  "sections": [
+    {
+      "tag": "name",
+      "content": [
+        {
+          "text": "figures"
+        }
+      ]
+    },
+    {
+      "tag": "title",
+      "content": [
+        {
+          "text": "Figure Examples"
+        }
+      ]
+    },
+    {
+      "tag": "description",
+      "content": [
+        {
+          "text": "\nDemonstrates figure inclusion.\n"
+        }
+      ]
+    },
+    {
+      "tag": "details",
+      "content": [
+        {
+          "text": "\nSimple figure:\n"
+        },
+        {
+          "figure": {
+            "file": "plot.png",
+            "options": null
+          }
+        },
+        {
+          "text": "\n\nFigure with options:\n"
+        },
+        {
+          "figure": {
+            "file": "diagram.svg",
+            "options": "options: width=50%"
+          }
+        },
+        {
+          "text": "\n\nFigure with alt text:\n"
+        },
+        {
+          "figure": {
+            "file": "lifecycle-experimental.svg",
+            "options": "options: alt=\"Experimental lifecycle badge\""
+          }
+        },
+        {
+          "text": "\n"
+        }
+      ]
+    }
+  ]
+}
