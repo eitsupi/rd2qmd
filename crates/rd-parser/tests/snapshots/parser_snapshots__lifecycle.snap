@@ -1,0 +1,187 @@
+---
+source: crates/rd-parser/tests/parser_snapshots.rs
+expression: ast_json
+---
+{
+  "sections": [
+    {
+      "tag": "name",
+      "content": [
+        {
+          "text": "lifecycle"
+        }
+      ]
+    },
+    {
+      "tag": "alias",
+      "content": [
+        {
+          "text": "lifecycle_deprecated"
+        }
+      ]
+    },
+    {
+      "tag": "alias",
+      "content": [
+        {
+          "text": "lifecycle_example"
+        }
+      ]
+    },
+    {
+      "tag": "title",
+      "content": [
+        {
+          "text": "Lifecycle Badge Examples"
+        }
+      ]
+    },
+    {
+      "tag": "description",
+      "content": [
+        {
+          "text": "\n"
+        },
+        {
+          "ifElse": {
+            "format": "html",
+            "then_content": [
+              {
+                "href": {
+                  "url": "https://lifecycle.r-lib.org/articles/stages.html#deprecated",
+                  "text": [
+                    {
+                      "figure": {
+                        "file": "lifecycle-deprecated.svg",
+                        "options": "options: alt='[Deprecated]'"
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            "else_content": [
+              {
+                "strong": [
+                  {
+                    "text": "[Deprecated]"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "text": "\n\nThis function demonstrates a deprecated lifecycle badge.\nThe lifecycle badge is typically placed at the start of the description.\n"
+        }
+      ]
+    },
+    {
+      "tag": "usage",
+      "content": [
+        {
+          "text": "\nlifecycle_deprecated(x)\n"
+        }
+      ]
+    },
+    {
+      "tag": "arguments",
+      "content": [
+        {
+          "text": "\n"
+        },
+        {
+          "item": {
+            "label": [
+              {
+                "text": "x"
+              }
+            ],
+            "content": [
+              {
+                "text": "An input value. Note: lifecycle badges in arguments are not\ndetected by the lifecycle extraction (following pkgdown convention)."
+              }
+            ]
+          }
+        },
+        {
+          "text": "\n"
+        }
+      ]
+    },
+    {
+      "tag": "details",
+      "content": [
+        {
+          "text": "\nMore details about the deprecated function.\n\nUse "
+        },
+        {
+          "code": [
+            {
+              "text": "new_function()"
+            }
+          ]
+        },
+        {
+          "text": " instead.\n"
+        }
+      ]
+    },
+    {
+      "tag": "value",
+      "content": [
+        {
+          "text": "\nReturns the input unchanged.\n"
+        }
+      ]
+    },
+    {
+      "tag": "seealso",
+      "content": [
+        {
+          "text": "\n"
+        },
+        {
+          "code": [
+            {
+              "link": {
+                "package": null,
+                "topic": "new_function",
+                "text": null
+              }
+            }
+          ]
+        },
+        {
+          "text": " for the replacement.\n"
+        }
+      ]
+    },
+    {
+      "tag": "examples",
+      "content": [
+        {
+          "text": "\n"
+        },
+        {
+          "dontRun": [
+            {
+              "text": "\n# This function is deprecated\nlifecycle_deprecated(1)\n"
+            }
+          ]
+        },
+        {
+          "text": "\n"
+        }
+      ]
+    },
+    {
+      "tag": "keyword",
+      "content": [
+        {
+          "text": "internal"
+        }
+      ]
+    }
+  ]
+}

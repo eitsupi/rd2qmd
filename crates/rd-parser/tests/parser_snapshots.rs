@@ -41,3 +41,4 @@ snapshot_test!(examples);
 snapshot_test!(sections);
 snapshot_test!(nested);
 snapshot_test!(figures);
+snapshot_test!(lifecycle);

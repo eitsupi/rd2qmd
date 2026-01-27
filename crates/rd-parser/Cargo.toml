@@ -8,6 +8,7 @@ license.workspace = true
 [features]
 default = []
 json = ["dep:serde_json"]
+lifecycle = []
 
 [dependencies]
 thiserror.workspace = true

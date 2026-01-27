@@ -19,10 +19,19 @@
 //! let doc = parse(source).unwrap();
 //! assert_eq!(doc.sections.len(), 3);
 //! ```
+//!
+//! # Features
+//!
+//! - `json`: Enable JSON serialization/deserialization for `RdDocument`
+//! - `lifecycle`: Enable lifecycle badge extraction from Rd documents
 
 pub mod ast;
 pub mod lexer;
 pub mod parser;
+
+// Feature-gated modules that extend RdDocument with additional methods
+#[cfg(feature = "lifecycle")]
+mod lifecycle;
 
 // Re-export main types for convenient access
 pub use ast::{DescribeItem, RdDocument, RdNode, RdSection, SectionTag, SpecialChar};
