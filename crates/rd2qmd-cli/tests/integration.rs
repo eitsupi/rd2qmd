@@ -132,3 +132,37 @@ fn test_directory_conversion() {
 
     insta::assert_yaml_snapshot!("directory_files", files);
 }
+
+#[test]
+fn test_init_config() {
+    let output_file = std::env::temp_dir().join("rd2qmd_test_init_config.toml");
+    let _ = fs::remove_file(&output_file);
+
+    let status = Command::new(rd2qmd_binary())
+        .arg("init")
+        .arg("-o")
+        .arg(&output_file)
+        .status()
+        .expect("Failed to run rd2qmd init");
+
+    assert!(status.success(), "rd2qmd init failed");
+
+    let content = fs::read_to_string(&output_file).expect("Failed to read config file");
+    let _ = fs::remove_file(&output_file);
+
+    insta::assert_snapshot!("init_config_toml", content);
+}
+
+#[test]
+fn test_init_schema() {
+    let output = Command::new(rd2qmd_binary())
+        .arg("init")
+        .arg("--schema")
+        .output()
+        .expect("Failed to run rd2qmd init --schema");
+
+    assert!(output.status.success(), "rd2qmd init --schema failed");
+
+    let schema = String::from_utf8(output.stdout).expect("Invalid UTF-8");
+    insta::assert_snapshot!("init_schema_json", schema);
+}

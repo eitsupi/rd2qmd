@@ -1,7 +1,10 @@
 //! rd2qmd: CLI tool to convert Rd files to Quarto Markdown
 
+mod config;
+
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
+use config::Config;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -166,6 +169,14 @@ struct Cli {
     /// Contains topic names, files, titles, aliases, and lifecycle stages
     #[arg(long, value_name = "FILE")]
     topic_index: Option<PathBuf>,
+
+    /// Path to configuration file (default: _rd2qmd.toml in current directory)
+    #[arg(long, value_name = "FILE")]
+    config: Option<PathBuf>,
+
+    /// Ignore configuration file
+    #[arg(long)]
+    no_config: bool,
 }
 
 /// Subcommands
@@ -177,6 +188,12 @@ enum Commands {
     /// containing topic metadata (name, file, title, aliases, lifecycle).
     /// Use with jq for filtering: rd2qmd index man/ | jq '.topics[]'
     Index(IndexArgs),
+
+    /// Initialize a configuration file (_rd2qmd.toml)
+    ///
+    /// Creates a new configuration file with all options commented out.
+    /// Includes schema directive for editor support (tombi, taplo, etc.)
+    Init(InitArgs),
 }
 
 /// Arguments for the index subcommand
@@ -194,6 +211,22 @@ struct IndexArgs {
     recursive: bool,
 }
 
+/// Arguments for the init subcommand
+#[derive(Args, Debug)]
+struct InitArgs {
+    /// Output path for configuration file (default: _rd2qmd.toml)
+    #[arg(short, long, default_value = "_rd2qmd.toml")]
+    output: PathBuf,
+
+    /// Overwrite existing file
+    #[arg(long)]
+    force: bool,
+
+    /// Output JSON schema to stdout instead of creating config file
+    #[arg(long)]
+    schema: bool,
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -201,40 +234,56 @@ fn main() -> Result<()> {
     if let Some(subcommand) = cli.subcommand {
         return match subcommand {
             Commands::Index(args) => run_index_command(&args),
+            Commands::Init(args) => run_init_command(&args),
         };
     }
 
+    // Load configuration file
+    let config = load_config(&cli)?;
+
+    // Merge: CLI > Config > Default (before moving cli.input)
+    // Format: CLI has default, so check if it was explicitly set or use config
+    let format = merge_format(&cli, &config);
+    let use_frontmatter = merge_frontmatter(&cli, &config);
+    let use_pagetitle = merge_pagetitle(&cli, &config);
+    let unresolved_link_url = merge_unresolved_link_url(&cli, &config);
+
     // Regular conversion mode - input is required
-    let input = match cli.input {
-        Some(path) => path,
+    let input = match &cli.input {
+        Some(path) => path.clone(),
         None => {
             anyhow::bail!("Input path is required. Run 'rd2qmd --help' for usage.");
         }
     };
 
-    let use_frontmatter = cli.frontmatter && !cli.no_frontmatter;
-    let use_pagetitle = !cli.no_pagetitle;
-    let unresolved_link_url = if cli.no_unresolved_link_url {
-        None
-    } else {
-        Some(cli.unresolved_link_url.clone())
-    };
-
     // Determine output extension and quarto_code_blocks based on format
-    let output_extension = match cli.format {
+    let output_extension = match format {
         OutputFormat::Qmd => "qmd",
         OutputFormat::Md => "md",
         OutputFormat::Rmd => "Rmd",
     };
-    let quarto_code_blocks = cli
-        .quarto_code_blocks
-        .unwrap_or(matches!(cli.format, OutputFormat::Qmd | OutputFormat::Rmd));
 
-    // Convert CLI arguments table format to internal ArgumentsFormat
-    let arguments_format = match cli.arguments_table {
-        ArgumentsTableFormat::Pipe => ArgumentsFormat::PipeTable,
-        ArgumentsTableFormat::Grid => ArgumentsFormat::GridTable,
+    // quarto_code_blocks: CLI > Config > auto (based on format)
+    let quarto_code_blocks = cli.quarto_code_blocks.or(config.code.quarto_code_blocks).unwrap_or(
+        matches!(format, OutputFormat::Qmd | OutputFormat::Rmd),
+    );
+
+    // exec_dontrun: CLI > Config > false
+    let exec_dontrun = if cli.exec_dontrun {
+        true
+    } else {
+        config.code.exec_dontrun.unwrap_or(false)
     };
+
+    // exec_donttest: CLI > Config > true (default is to execute donttest)
+    let exec_donttest = if cli.no_exec_donttest {
+        false
+    } else {
+        config.code.exec_donttest.unwrap_or(true)
+    };
+
+    // Convert arguments table format: CLI > Config > Grid
+    let arguments_format = merge_arguments_format(&cli, &config);
 
     if input.is_file() {
         // Single file conversion (no alias resolution)
@@ -246,8 +295,8 @@ fn main() -> Result<()> {
             use_pagetitle,
             quarto_code_blocks,
             unresolved_link_url.as_deref(),
-            cli.exec_dontrun,
-            !cli.no_exec_donttest,
+            exec_dontrun,
+            exec_donttest,
             arguments_format,
             cli.verbose,
             cli.quiet,
@@ -255,17 +304,12 @@ fn main() -> Result<()> {
     } else if input.is_dir() {
         // Build external package URL options
         #[cfg(feature = "external-links")]
-        let external_link_options = if cli.no_external_links {
-            None
-        } else {
-            Some(ExternalLinkOptions {
-                lib_paths: cli.r_lib_paths.clone(),
-                cache_dir: cli.cache_dir.clone(),
-                fallback_url: Some(cli.external_package_fallback.clone()),
-            })
-        };
+        let external_link_options = merge_external_link_options(&cli, &config);
         #[cfg(not(feature = "external-links"))]
-        let external_link_options: Option<ExternalLinkOptions> = None;
+        let external_link_options: Option<ExternalLinkOptions> = {
+            let _ = &config; // Suppress unused warning
+            None
+        };
 
         // Directory conversion (with alias resolution via rd2qmd-package)
         convert_directory(
@@ -278,8 +322,8 @@ fn main() -> Result<()> {
             quarto_code_blocks,
             unresolved_link_url,
             external_link_options,
-            cli.exec_dontrun,
-            !cli.no_exec_donttest,
+            exec_dontrun,
+            exec_donttest,
             cli.topic_index.as_deref(),
             cli.verbose,
             cli.quiet,
@@ -683,4 +727,441 @@ fn run_index_command(args: &IndexArgs) -> Result<()> {
     println!("{}", json);
 
     Ok(())
+}
+
+/// Run the init subcommand: generate configuration file
+fn run_init_command(args: &InitArgs) -> Result<()> {
+    // Handle --schema flag: output JSON schema to stdout
+    if args.schema {
+        let schema = Config::json_schema_string()?;
+        println!("{}", schema);
+        return Ok(());
+    }
+
+    if args.output.exists() && !args.force {
+        anyhow::bail!(
+            "Configuration file already exists: {}\nUse --force to overwrite.",
+            args.output.display()
+        );
+    }
+
+    let config = Config::sample();
+    let config_content = config.to_toml_with_schema()?;
+
+    fs::write(&args.output, &config_content)
+        .with_context(|| format!("Failed to write configuration file: {}", args.output.display()))?;
+
+    eprintln!("Created configuration file: {}", args.output.display());
+    Ok(())
+}
+
+// ============================================================================
+// Configuration loading and merging helpers
+// ============================================================================
+
+/// Load configuration file based on CLI options
+fn load_config(cli: &Cli) -> Result<Config> {
+    if cli.no_config {
+        return Ok(Config::default());
+    }
+
+    if let Some(path) = &cli.config {
+        return Config::load(path);
+    }
+
+    // Try to load from current directory
+    let cwd = std::env::current_dir().context("Failed to get current directory")?;
+    Ok(Config::load_from_dir(&cwd)?.unwrap_or_default())
+}
+
+/// Merge format: CLI default vs config
+///
+/// Since clap has a default value, we can't tell if the user explicitly set it.
+/// We use a heuristic: if config specifies a format, use it unless CLI is non-default.
+/// This means config wins when CLI uses default (qmd).
+fn merge_format(cli: &Cli, config: &Config) -> OutputFormat {
+    // If config specifies a format, check if CLI is using the default
+    if let Some(ref fmt) = config.output.format {
+        // Only use config if CLI appears to be using default
+        // This is a heuristic - we assume if CLI is Qmd (default), config should win
+        if cli.format == OutputFormat::Qmd {
+            return match fmt.to_lowercase().as_str() {
+                "md" => OutputFormat::Md,
+                "rmd" => OutputFormat::Rmd,
+                _ => OutputFormat::Qmd,
+            };
+        }
+    }
+    cli.format
+}
+
+/// Merge frontmatter setting
+fn merge_frontmatter(cli: &Cli, config: &Config) -> bool {
+    // CLI --no-frontmatter explicitly disables
+    if cli.no_frontmatter {
+        return false;
+    }
+    // Config value if specified, otherwise CLI default (true)
+    config.output.frontmatter.unwrap_or(cli.frontmatter)
+}
+
+/// Merge pagetitle setting
+fn merge_pagetitle(cli: &Cli, config: &Config) -> bool {
+    // CLI --no-pagetitle explicitly disables
+    if cli.no_pagetitle {
+        return false;
+    }
+    // Config value if specified, otherwise default (true)
+    config.output.pagetitle.unwrap_or(true)
+}
+
+/// Merge unresolved link URL
+fn merge_unresolved_link_url(cli: &Cli, config: &Config) -> Option<String> {
+    // CLI --no-unresolved-link-url explicitly disables
+    if cli.no_unresolved_link_url {
+        return None;
+    }
+    // Config value if specified, otherwise CLI default
+    Some(
+        config
+            .links
+            .unresolved_url
+            .clone()
+            .unwrap_or_else(|| cli.unresolved_link_url.clone()),
+    )
+}
+
+/// Merge arguments table format
+fn merge_arguments_format(cli: &Cli, config: &Config) -> ArgumentsFormat {
+    // If config specifies a format, check if CLI is using the default
+    if let Some(ref fmt) = config.output.arguments_table {
+        if cli.arguments_table == ArgumentsTableFormat::Grid {
+            return match fmt.to_lowercase().as_str() {
+                "pipe" => ArgumentsFormat::PipeTable,
+                _ => ArgumentsFormat::GridTable,
+            };
+        }
+    }
+    match cli.arguments_table {
+        ArgumentsTableFormat::Pipe => ArgumentsFormat::PipeTable,
+        ArgumentsTableFormat::Grid => ArgumentsFormat::GridTable,
+    }
+}
+
+/// Merge external link options (only with external-links feature)
+#[cfg(feature = "external-links")]
+fn merge_external_link_options(cli: &Cli, config: &Config) -> Option<ExternalLinkOptions> {
+    // CLI --no-external-links explicitly disables
+    if cli.no_external_links {
+        return None;
+    }
+
+    // Config can disable external links
+    if let Some(false) = config.external.enabled {
+        return None;
+    }
+
+    // Merge lib_paths: CLI takes precedence if specified
+    let lib_paths = if !cli.r_lib_paths.is_empty() {
+        cli.r_lib_paths.clone()
+    } else {
+        config.external.lib_paths.clone().unwrap_or_default()
+    };
+
+    // Merge cache_dir: CLI takes precedence
+    let cache_dir = cli.cache_dir.clone().or(config.external.cache_dir.clone());
+
+    // Merge fallback_url: CLI takes precedence
+    let fallback_url = Some(
+        config
+            .external
+            .fallback_url
+            .clone()
+            .unwrap_or_else(|| cli.external_package_fallback.clone()),
+    );
+
+    Some(ExternalLinkOptions {
+        lib_paths,
+        cache_dir,
+        fallback_url,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Create a default CLI for testing
+    fn default_cli() -> Cli {
+        Cli {
+            subcommand: None,
+            input: None,
+            output: None,
+            format: OutputFormat::Qmd,
+            jobs: None,
+            recursive: false,
+            frontmatter: true,
+            no_frontmatter: false,
+            no_pagetitle: false,
+            quarto_code_blocks: None,
+            unresolved_link_url: "https://rdrr.io/r/base/{topic}.html".to_string(),
+            no_unresolved_link_url: false,
+            #[cfg(feature = "external-links")]
+            r_lib_paths: vec![],
+            #[cfg(feature = "external-links")]
+            cache_dir: None,
+            #[cfg(feature = "external-links")]
+            no_external_links: false,
+            #[cfg(feature = "external-links")]
+            external_package_fallback: "https://rdrr.io/pkg/{package}/man/{topic}.html".to_string(),
+            verbose: false,
+            quiet: false,
+            exec_dontrun: false,
+            no_exec_donttest: false,
+            arguments_table: ArgumentsTableFormat::Grid,
+            topic_index: None,
+            config: None,
+            no_config: false,
+        }
+    }
+
+    #[test]
+    fn test_merge_format_no_config() {
+        let cli = default_cli();
+        let config = Config::default();
+        assert_eq!(merge_format(&cli, &config), OutputFormat::Qmd);
+    }
+
+    #[test]
+    fn test_merge_format_config_overrides_default() {
+        let cli = default_cli();
+        let config = Config {
+            output: config::OutputConfig {
+                format: Some("md".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert_eq!(merge_format(&cli, &config), OutputFormat::Md);
+    }
+
+    #[test]
+    fn test_merge_format_cli_overrides_config() {
+        let mut cli = default_cli();
+        cli.format = OutputFormat::Rmd;
+        let config = Config {
+            output: config::OutputConfig {
+                format: Some("md".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        // CLI is not default (Qmd), so CLI wins
+        assert_eq!(merge_format(&cli, &config), OutputFormat::Rmd);
+    }
+
+    #[test]
+    fn test_merge_frontmatter_no_config() {
+        let cli = default_cli();
+        let config = Config::default();
+        assert!(merge_frontmatter(&cli, &config));
+    }
+
+    #[test]
+    fn test_merge_frontmatter_config_disables() {
+        let cli = default_cli();
+        let config = Config {
+            output: config::OutputConfig {
+                frontmatter: Some(false),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(!merge_frontmatter(&cli, &config));
+    }
+
+    #[test]
+    fn test_merge_frontmatter_cli_no_frontmatter() {
+        let mut cli = default_cli();
+        cli.no_frontmatter = true;
+        let config = Config {
+            output: config::OutputConfig {
+                frontmatter: Some(true),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        // --no-frontmatter should override config
+        assert!(!merge_frontmatter(&cli, &config));
+    }
+
+    #[test]
+    fn test_merge_pagetitle_no_config() {
+        let cli = default_cli();
+        let config = Config::default();
+        assert!(merge_pagetitle(&cli, &config));
+    }
+
+    #[test]
+    fn test_merge_pagetitle_config_disables() {
+        let cli = default_cli();
+        let config = Config {
+            output: config::OutputConfig {
+                pagetitle: Some(false),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(!merge_pagetitle(&cli, &config));
+    }
+
+    #[test]
+    fn test_merge_pagetitle_cli_no_pagetitle() {
+        let mut cli = default_cli();
+        cli.no_pagetitle = true;
+        let config = Config {
+            output: config::OutputConfig {
+                pagetitle: Some(true),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        // --no-pagetitle should override config
+        assert!(!merge_pagetitle(&cli, &config));
+    }
+
+    #[test]
+    fn test_merge_unresolved_link_url_no_config() {
+        let cli = default_cli();
+        let config = Config::default();
+        let url = merge_unresolved_link_url(&cli, &config);
+        assert_eq!(url, Some("https://rdrr.io/r/base/{topic}.html".to_string()));
+    }
+
+    #[test]
+    fn test_merge_unresolved_link_url_config_overrides() {
+        let cli = default_cli();
+        let config = Config {
+            links: config::LinksConfig {
+                unresolved_url: Some("https://example.com/{topic}".to_string()),
+            },
+            ..Default::default()
+        };
+        let url = merge_unresolved_link_url(&cli, &config);
+        assert_eq!(url, Some("https://example.com/{topic}".to_string()));
+    }
+
+    #[test]
+    fn test_merge_unresolved_link_url_cli_disables() {
+        let mut cli = default_cli();
+        cli.no_unresolved_link_url = true;
+        let config = Config {
+            links: config::LinksConfig {
+                unresolved_url: Some("https://example.com/{topic}".to_string()),
+            },
+            ..Default::default()
+        };
+        // --no-unresolved-link-url should disable
+        assert_eq!(merge_unresolved_link_url(&cli, &config), None);
+    }
+
+    #[test]
+    fn test_merge_arguments_format_no_config() {
+        let cli = default_cli();
+        let config = Config::default();
+        assert_eq!(merge_arguments_format(&cli, &config), ArgumentsFormat::GridTable);
+    }
+
+    #[test]
+    fn test_merge_arguments_format_config_overrides() {
+        let cli = default_cli();
+        let config = Config {
+            output: config::OutputConfig {
+                arguments_table: Some("pipe".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert_eq!(merge_arguments_format(&cli, &config), ArgumentsFormat::PipeTable);
+    }
+
+    #[test]
+    fn test_merge_arguments_format_cli_overrides() {
+        let mut cli = default_cli();
+        cli.arguments_table = ArgumentsTableFormat::Pipe;
+        let config = Config {
+            output: config::OutputConfig {
+                arguments_table: Some("grid".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        // CLI is not default (Grid), so CLI wins
+        assert_eq!(merge_arguments_format(&cli, &config), ArgumentsFormat::PipeTable);
+    }
+
+    #[cfg(feature = "external-links")]
+    #[test]
+    fn test_merge_external_link_options_disabled_by_cli() {
+        let mut cli = default_cli();
+        cli.no_external_links = true;
+        let config = Config {
+            external: config::ExternalConfig {
+                enabled: Some(true),
+                lib_paths: Some(vec![std::path::PathBuf::from("/usr/lib/R")]),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(merge_external_link_options(&cli, &config).is_none());
+    }
+
+    #[cfg(feature = "external-links")]
+    #[test]
+    fn test_merge_external_link_options_disabled_by_config() {
+        let cli = default_cli();
+        let config = Config {
+            external: config::ExternalConfig {
+                enabled: Some(false),
+                lib_paths: Some(vec![std::path::PathBuf::from("/usr/lib/R")]),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(merge_external_link_options(&cli, &config).is_none());
+    }
+
+    #[cfg(feature = "external-links")]
+    #[test]
+    fn test_merge_external_link_options_lib_paths_from_config() {
+        let cli = default_cli();
+        let config = Config {
+            external: config::ExternalConfig {
+                enabled: Some(true),
+                lib_paths: Some(vec![std::path::PathBuf::from("/usr/lib/R")]),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let opts = merge_external_link_options(&cli, &config).unwrap();
+        assert_eq!(opts.lib_paths, vec![std::path::PathBuf::from("/usr/lib/R")]);
+    }
+
+    #[cfg(feature = "external-links")]
+    #[test]
+    fn test_merge_external_link_options_cli_overrides_lib_paths() {
+        let mut cli = default_cli();
+        cli.r_lib_paths = vec![std::path::PathBuf::from("/home/user/R")];
+        let config = Config {
+            external: config::ExternalConfig {
+                enabled: Some(true),
+                lib_paths: Some(vec![std::path::PathBuf::from("/usr/lib/R")]),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let opts = merge_external_link_options(&cli, &config).unwrap();
+        // CLI lib_paths should override config
+        assert_eq!(opts.lib_paths, vec![std::path::PathBuf::from("/home/user/R")]);
+    }
 }

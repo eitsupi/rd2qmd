@@ -1,0 +1,22 @@
+---
+source: crates/rd2qmd-cli/tests/integration.rs
+expression: content
+---
+#:schema https://raw.githubusercontent.com/eitsupi/rd2qmd/main/crates/rd2qmd-cli/schema/rd2qmd.schema.json
+
+[output]
+format = "qmd"
+frontmatter = true
+pagetitle = true
+arguments_table = "grid"
+
+[code]
+exec_dontrun = false
+exec_donttest = true
+
+[links]
+unresolved_url = "https://rdrr.io/r/base/{topic}.html"
+
+[external]
+enabled = true
+fallback_url = "https://rdrr.io/pkg/{package}/man/{topic}.html"

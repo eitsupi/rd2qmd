@@ -1,0 +1,153 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Config",
+  "description": "Root configuration structure",
+  "type": "object",
+  "properties": {
+    "code": {
+      "description": "Code block configuration",
+      "allOf": [
+        {
+          "$ref": "#/definitions/CodeConfig"
+        }
+      ]
+    },
+    "external": {
+      "description": "External package link resolution configuration",
+      "allOf": [
+        {
+          "$ref": "#/definitions/ExternalConfig"
+        }
+      ]
+    },
+    "links": {
+      "description": "Link resolution configuration",
+      "allOf": [
+        {
+          "$ref": "#/definitions/LinksConfig"
+        }
+      ]
+    },
+    "output": {
+      "description": "Output format configuration",
+      "allOf": [
+        {
+          "$ref": "#/definitions/OutputConfig"
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "CodeConfig": {
+      "description": "Code block configuration",
+      "type": "object",
+      "properties": {
+        "exec_dontrun": {
+          "description": "Make \\dontrun{} example code executable ({r} blocks) (default: false)",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "exec_donttest": {
+          "description": "Make \\donttest{} example code executable (default: true)",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "quarto_code_blocks": {
+          "description": "Use Quarto {r} code blocks instead of plain r blocks (auto-set based on format if not specified)",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      }
+    },
+    "ExternalConfig": {
+      "description": "External package link resolution configuration",
+      "type": "object",
+      "properties": {
+        "cache_dir": {
+          "description": "Cache directory for pkgdown.yml files (default: system temp directory)",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "enabled": {
+          "description": "Enable external package link resolution (default: true)",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "fallback_url": {
+          "description": "Fallback URL pattern for packages without pkgdown sites. Use {package} and {topic} as placeholders. (default: \"https://rdrr.io/pkg/{package}/man/{topic}.html\")",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lib_paths": {
+          "description": "R library paths to search for external packages",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "LinksConfig": {
+      "description": "Link resolution configuration",
+      "type": "object",
+      "properties": {
+        "unresolved_url": {
+          "description": "URL pattern for unresolved links. Use {topic} as placeholder for the topic name. (default: \"https://rdrr.io/r/base/{topic}.html\")",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "OutputConfig": {
+      "description": "Output format configuration",
+      "type": "object",
+      "properties": {
+        "arguments_table": {
+          "description": "Table format for Arguments section: \"grid\" (Pandoc grid table) or \"pipe\" (default: \"grid\")",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "format": {
+          "description": "Output format: \"qmd\" (Quarto Markdown), \"md\" (standard Markdown), or \"rmd\" (R Markdown)",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "frontmatter": {
+          "description": "Add YAML frontmatter with title (default: true)",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "pagetitle": {
+          "description": "Add pkgdown-style pagetitle metadata (\"<title> — <name>\") (default: true)",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

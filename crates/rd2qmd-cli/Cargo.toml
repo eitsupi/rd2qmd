@@ -19,6 +19,9 @@ rd2qmd-package.workspace = true
 clap.workspace = true
 anyhow.workspace = true
 serde_json.workspace = true
+serde.workspace = true
+toml.workspace = true
+schemars.workspace = true
 
 [dev-dependencies]
 insta.workspace = true
