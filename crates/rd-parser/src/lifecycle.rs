@@ -144,7 +144,7 @@ impl FromStr for Lifecycle {
             "deprecated" => Ok(Lifecycle::Deprecated),
             "maturing" => Ok(Lifecycle::Maturing),
             "questioning" => Ok(Lifecycle::Questioning),
-            "soft-deprecated" | "softdeprecated" => Ok(Lifecycle::SoftDeprecated),
+            "soft-deprecated" => Ok(Lifecycle::SoftDeprecated),
             "defunct" => Ok(Lifecycle::Defunct),
             "retired" => Ok(Lifecycle::Retired),
             _ => Err(ParseLifecycleError {
@@ -478,11 +478,10 @@ A function with a non-lifecycle figure.
             "soft-deprecated".parse::<Lifecycle>(),
             Ok(Lifecycle::SoftDeprecated)
         );
-        assert_eq!(
-            "softdeprecated".parse::<Lifecycle>(),
-            Ok(Lifecycle::SoftDeprecated)
-        );
         assert_eq!("defunct".parse::<Lifecycle>(), Ok(Lifecycle::Defunct));
+
+        // "softdeprecated" (no hyphen) should be rejected
+        assert!("softdeprecated".parse::<Lifecycle>().is_err());
         assert_eq!("retired".parse::<Lifecycle>(), Ok(Lifecycle::Retired));
 
         // Case insensitive
