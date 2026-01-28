@@ -219,23 +219,24 @@ rd2qmd ggplot2/man/ -o docs/ -f md
 
 rd2qmd is designed to be fast. Here are benchmark results converting ggplot2's documentation (228 Rd files, 734 aliases, 16 external package references):
 
-| Configuration                      | 1 job | 2 jobs | 4 jobs |
-|------------------------------------|-------|--------|--------|
-| Without external link resolution   | 0.19s | 0.16s  | 0.13s  |
-| With external links (warm cache)   | 0.80s | 0.74s  | 0.71s  |
-| With external links (cold cache)   | ~1.0s | -      | -      |
+| Configuration                      | 1 job  | 2 jobs | 4 jobs |
+|------------------------------------|--------|--------|--------|
+| Without external link resolution   | ~0.2s  | ~0.2s  | ~0.2s  |
+| With external links (warm cache)   | ~1.0s  | ~0.9s  | ~0.8s  |
+| With external links (cold cache)   | ~1.0s  | -      | -      |
 
 Notes:
 
 - External link resolution fetches pkgdown.yml from package websites on first run (cold cache)
 - Cached results are reused on subsequent runs (warm cache)
-- In CI environments with 2 cores, expect ~0.16s without external links or ~0.74s with cached external links
+- Actual times vary by environment; parallel speedup depends on I/O characteristics
 
 Run your own benchmark:
 
 ```bash
 git clone --depth 1 https://github.com/tidyverse/ggplot2 /tmp/ggplot2
-cargo run --release --example benchmark -- /tmp/ggplot2/man --r-lib-path $(Rscript -e 'cat(.libPaths()[1])')
+cargo run --release --example benchmark -- /tmp/ggplot2/man \
+  $(Rscript -e 'cat(paste("--r-lib-path", .libPaths(), collapse=" "))')
 ```
 
 ## Roadmap
