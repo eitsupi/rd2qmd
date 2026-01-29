@@ -1022,4 +1022,74 @@ test(x, y = TRUE)
             panic!("Expected DontShow node, got {:?}", content[0]);
         }
     }
+
+    // ========================================================================
+    // Tests for \figure tag parsing
+    // ========================================================================
+
+    #[test]
+    fn test_figure_simple_no_options() {
+        // Form 1: \figure{filename} - no second argument
+        let doc = parse(r#"\description{\figure{Rlogo.svg}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Figure { file, options } = &content[0] {
+            assert_eq!(file, "Rlogo.svg");
+            assert!(options.is_none());
+        } else {
+            panic!("Expected Figure node, got {:?}", content[0]);
+        }
+    }
+
+    #[test]
+    fn test_figure_simple_with_alt_text() {
+        // Form 2: \figure{filename}{alternate text}
+        let doc = parse(r#"\description{\figure{Rlogo.svg}{R logo}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Figure { file, options } = &content[0] {
+            assert_eq!(file, "Rlogo.svg");
+            assert_eq!(options, &Some("R logo".to_string()));
+        } else {
+            panic!("Expected Figure node, got {:?}", content[0]);
+        }
+    }
+
+    #[test]
+    fn test_figure_expert_form() {
+        // Form 3: \figure{filename}{options: string}
+        let doc = parse(r#"\description{\figure{Rlogo.svg}{options: width=100 alt="R logo"}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Figure { file, options } = &content[0] {
+            assert_eq!(file, "Rlogo.svg");
+            assert_eq!(options, &Some("options: width=100 alt=\"R logo\"".to_string()));
+        } else {
+            panic!("Expected Figure node, got {:?}", content[0]);
+        }
+    }
+
+    #[test]
+    fn test_figure_lifecycle_badge_style() {
+        // Lifecycle badge format with single quotes
+        let doc = parse(r#"\description{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Figure { file, options } = &content[0] {
+            assert_eq!(file, "lifecycle-deprecated.svg");
+            assert_eq!(options, &Some("options: alt='[Deprecated]'".to_string()));
+        } else {
+            panic!("Expected Figure node, got {:?}", content[0]);
+        }
+    }
+
+    #[test]
+    fn test_figure_with_bracket_arg_fallback() {
+        // Bracket syntax fallback: \figure[alt]{filename}
+        let doc = parse(r#"\description{\figure[R logo]{Rlogo.svg}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Figure { file, options } = &content[0] {
+            assert_eq!(file, "Rlogo.svg");
+            // Bracket arg becomes options when no brace arg is present
+            assert_eq!(options, &Some("R logo".to_string()));
+        } else {
+            panic!("Expected Figure node, got {:?}", content[0]);
+        }
+    }
 }

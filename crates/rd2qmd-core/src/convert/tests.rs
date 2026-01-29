@@ -1257,3 +1257,214 @@ Use a flag instead.}
 
     insta::assert_snapshot!(qmd);
 }
+
+// ============================================================================
+// Integration tests for \figure tag conversion
+// ============================================================================
+
+#[test]
+fn test_figure_simple_form_alt_text() {
+    // Simple form (form 2): \figure{filename}{alternate text}
+    // The second argument should be used directly as alt text
+    let rd = r#"
+\name{test}
+\title{Test}
+\description{
+See the logo: \figure{Rlogo.svg}{R logo}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let mdast = rd_to_mdast(&doc);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+
+    // Should contain ![R logo](Rlogo.svg)
+    assert!(
+        qmd.contains("![R logo](Rlogo.svg)"),
+        "Expected simple form alt text 'R logo', got:\n{qmd}"
+    );
+}
+
+#[test]
+fn test_figure_expert_form_alt_text() {
+    // Expert form (form 3): \figure{filename}{options: alt="..."}
+    let rd = r#"
+\name{test}
+\title{Test}
+\description{
+See the logo: \figure{Rlogo.svg}{options: width=100 alt="R logo image"}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let mdast = rd_to_mdast(&doc);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+
+    // Should contain ![R logo image](Rlogo.svg)
+    assert!(
+        qmd.contains("![R logo image](Rlogo.svg)"),
+        "Expected expert form alt text 'R logo image', got:\n{qmd}"
+    );
+}
+
+#[test]
+fn test_figure_expert_form_no_alt_fallback_to_filename() {
+    // Expert form without alt attribute should fall back to filename
+    let rd = r#"
+\name{test}
+\title{Test}
+\description{
+See: \figure{diagram.png}{options: width=100}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let mdast = rd_to_mdast(&doc);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+
+    // Should contain ![diagram.png](diagram.png) - filename as fallback
+    assert!(
+        qmd.contains("![diagram.png](diagram.png)"),
+        "Expected filename fallback 'diagram.png', got:\n{qmd}"
+    );
+}
+
+#[test]
+fn test_figure_no_second_arg_fallback_to_filename() {
+    // Form 1: \figure{filename} - no second argument, filename as alt
+    let rd = r#"
+\name{test}
+\title{Test}
+\description{
+See: \figure{diagram.png}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let mdast = rd_to_mdast(&doc);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+
+    // Should contain ![diagram.png](diagram.png) - filename as fallback
+    assert!(
+        qmd.contains("![diagram.png](diagram.png)"),
+        "Expected filename fallback 'diagram.png', got:\n{qmd}"
+    );
+}
+
+// ============================================================================
+// Unit tests for extract_figure_alt
+// ============================================================================
+
+/// Tests for `extract_figure_alt` function which handles the three forms of \figure:
+/// 1. Simple form without second arg - handled by caller (filename fallback)
+/// 2. Simple form: `\figure{file}{alternate text}` - entire string is alt
+/// 3. Expert form: `\figure{file}{options: ...}` - parse HTML attributes for alt
+
+#[test]
+fn test_extract_figure_alt_simple_form() {
+    // Simple form: entire string is the alternate text
+    assert_eq!(
+        Converter::extract_figure_alt("R logo"),
+        Some("R logo".to_string())
+    );
+    assert_eq!(
+        Converter::extract_figure_alt("Description of the image"),
+        Some("Description of the image".to_string())
+    );
+}
+
+#[test]
+fn test_extract_figure_alt_expert_form_double_quotes() {
+    // Expert form with double quotes (official documentation example)
+    assert_eq!(
+        Converter::extract_figure_alt("options: width=100 alt=\"R logo\""),
+        Some("R logo".to_string())
+    );
+    assert_eq!(
+        Converter::extract_figure_alt("options: alt=\"[Deprecated]\""),
+        Some("[Deprecated]".to_string())
+    );
+}
+
+#[test]
+fn test_extract_figure_alt_expert_form_single_quotes() {
+    // Expert form with single quotes (lifecycle badge style)
+    assert_eq!(
+        Converter::extract_figure_alt("options: alt='[Deprecated]'"),
+        Some("[Deprecated]".to_string())
+    );
+    assert_eq!(
+        Converter::extract_figure_alt("options: alt='[Experimental]'"),
+        Some("[Experimental]".to_string())
+    );
+}
+
+#[test]
+fn test_extract_figure_alt_expert_form_no_alt() {
+    // Expert form without alt attribute - should return None (caller uses filename)
+    assert_eq!(
+        Converter::extract_figure_alt("options: width=100"),
+        None
+    );
+    assert_eq!(
+        Converter::extract_figure_alt("options: width=50%"),
+        None
+    );
+}
+
+#[test]
+fn test_extract_figure_alt_expert_form_multiple_attributes() {
+    // Expert form with multiple attributes
+    assert_eq!(
+        Converter::extract_figure_alt("options: width=100 alt=\"Description\" height=50"),
+        Some("Description".to_string())
+    );
+    assert_eq!(
+        Converter::extract_figure_alt("options: class='badge' alt='[Superseded]' style='margin:0'"),
+        Some("[Superseded]".to_string())
+    );
+}
+
+#[test]
+fn test_extract_figure_alt_expert_form_special_characters() {
+    // Alt text with special characters
+    assert_eq!(
+        Converter::extract_figure_alt("options: alt='[Experimental - β version]'"),
+        Some("[Experimental - β version]".to_string())
+    );
+    assert_eq!(
+        Converter::extract_figure_alt("options: alt=\"A & B < C\""),
+        Some("A & B < C".to_string())
+    );
+}
+
+#[test]
+fn test_extract_figure_alt_expert_form_empty_alt() {
+    // Empty alt attribute
+    assert_eq!(
+        Converter::extract_figure_alt("options: alt=''"),
+        Some("".to_string())
+    );
+    assert_eq!(
+        Converter::extract_figure_alt("options: alt=\"\""),
+        Some("".to_string())
+    );
+}
+
+#[test]
+fn test_extract_figure_alt_expert_form_empty_options() {
+    // "options:" with nothing after
+    assert_eq!(Converter::extract_figure_alt("options:"), None);
+    assert_eq!(Converter::extract_figure_alt("options: "), None);
+}
+
+#[test]
+fn test_extract_figure_alt_simple_form_with_options_like_text() {
+    // Simple form that happens to contain "options" but not as prefix
+    // This should be treated as simple form (entire string is alt)
+    assert_eq!(
+        Converter::extract_figure_alt("See options for details"),
+        Some("See options for details".to_string())
+    );
+    // Without the colon, it's simple form
+    assert_eq!(
+        Converter::extract_figure_alt("options are shown"),
+        Some("options are shown".to_string())
+    );
+}

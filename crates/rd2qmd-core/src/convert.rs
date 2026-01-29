@@ -974,24 +974,51 @@ impl Converter {
         })
     }
 
-    /// Extract alt text from figure options string
-    /// Handles formats like "options: alt='[Deprecated]'" or "alt='text'"
+    /// Extract alt text from figure options string.
+    ///
+    /// According to "Writing R Extensions", `\figure` has three forms:
+    /// 1. `\figure{filename}` - no second argument, use filename as alt
+    /// 2. `\figure{filename}{alternate text}` - second argument IS the alt text
+    /// 3. `\figure{filename}{options: string}` - expert form, string contains HTML attributes
+    ///
+    /// This function handles forms 2 and 3. Form 1 is handled by the caller (filename fallback).
+    ///
+    /// For form 3 (expert), the "options:" prefix must be exact and followed by a space.
+    /// The remaining string is parsed as HTML attributes to find `alt="..."` or `alt='...'`.
+    ///
+    /// TODO: The distinction between simple form (2) and expert form (3) should be made
+    /// in the parser, not here. The "options:" prefix is a syntactic feature that doesn't
+    /// depend on output format. Consider refactoring to use a structured AST like:
+    /// `enum FigureOptions { AltText(String), ExpertOptions(String) }`
+    /// See: https://cran.r-project.org/doc/manuals/r-devel/R-exts.html#Figures
     fn extract_figure_alt(options: &str) -> Option<String> {
-        // Try single quotes: alt='...'
-        if let Some(start) = options.find("alt='") {
-            let after_quote = &options[start + 5..];
-            if let Some(end) = after_quote.find('\'') {
-                return Some(after_quote[..end].to_string());
+        // Expert form: starts with "options:" followed by space
+        if let Some(rest) = options.strip_prefix("options:") {
+            let rest = rest.trim_start();
+            if rest.is_empty() {
+                return None;
             }
-        }
-        // Try double quotes: alt="..."
-        if let Some(start) = options.find("alt=\"") {
-            let after_quote = &options[start + 5..];
-            if let Some(end) = after_quote.find('"') {
-                return Some(after_quote[..end].to_string());
+            // Parse HTML attributes to find alt
+            // Try single quotes: alt='...'
+            if let Some(start) = rest.find("alt='") {
+                let after_quote = &rest[start + 5..];
+                if let Some(end) = after_quote.find('\'') {
+                    return Some(after_quote[..end].to_string());
+                }
             }
+            // Try double quotes: alt="..."
+            if let Some(start) = rest.find("alt=\"") {
+                let after_quote = &rest[start + 5..];
+                if let Some(end) = after_quote.find('"') {
+                    return Some(after_quote[..end].to_string());
+                }
+            }
+            // Expert form without alt attribute - return None (caller uses filename)
+            return None;
         }
-        None
+
+        // Simple form: the entire string is the alternate text
+        Some(options.to_string())
     }
 
     fn extract_text(&self, nodes: &[RdNode]) -> String {
