@@ -12,7 +12,7 @@ external-links = ["dep:r-description", "dep:saphyr", "dep:reqwest", "dep:url"]
 
 [dependencies]
 rd2qmd-core = { workspace = true }
-rd-parser = { workspace = true, features = ["lifecycle"] }
+rd-parser = { workspace = true, features = ["lifecycle", "roxygen"] }
 thiserror = { workspace = true }
 rayon = { workspace = true }
 serde = { workspace = true }
