@@ -850,6 +850,7 @@ dependencies = [
  "anyhow",
  "clap",
  "insta",
+ "rd-parser",
  "rd2qmd-core",
  "rd2qmd-package",
  "schemars",

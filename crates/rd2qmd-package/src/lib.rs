@@ -247,9 +247,8 @@ fn extract_topic_info(file: &Path, output_extension: &str) -> Result<TopicInfo> 
         .map(|s| extract_text(&s.content))
         .unwrap_or_default();
 
-    // Extract metadata using shared function, then add source_files
-    let mut metadata = extract_rd_metadata(&doc);
-    metadata.source_files = roxygen.source_files;
+    // Extract metadata using shared function
+    let metadata = extract_rd_metadata(&doc, roxygen.source_files);
 
     // Determine output filename
     let basename = file.file_stem().and_then(|s| s.to_str()).unwrap_or("");
@@ -359,8 +358,9 @@ fn convert_single_file(
             None
         };
 
-        // Extract Rd metadata
-        let metadata = extract_rd_metadata(&doc);
+        // Extract Rd metadata, including source files from roxygen2 comments
+        let roxygen = rd_parser::parse_roxygen_comments(&content);
+        let metadata = extract_rd_metadata(&doc, roxygen.source_files);
 
         // Build writer options
         let writer_options = WriterOptions {
@@ -479,8 +479,10 @@ fn extract_text(nodes: &[RdNode]) -> String {
     result.trim().to_string()
 }
 
-/// Extract Rd metadata (lifecycle, aliases, keywords, concepts) from a document
-fn extract_rd_metadata(doc: &RdDocument) -> RdMetadata {
+/// Extract Rd metadata (lifecycle, aliases, keywords, concepts, source_files) from a document
+///
+/// The `source_files` parameter should be extracted from roxygen2 comments in the Rd file header.
+fn extract_rd_metadata(doc: &RdDocument, source_files: Vec<String>) -> RdMetadata {
     // Extract lifecycle
     let lifecycle = doc.lifecycle().map(|l| l.as_str().to_string());
 
@@ -519,7 +521,7 @@ fn extract_rd_metadata(doc: &RdDocument) -> RdMetadata {
         aliases,
         keywords,
         concepts,
-        source_files: vec![], // Populated separately from roxygen comments
+        source_files,
     }
 }
 

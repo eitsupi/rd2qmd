@@ -660,8 +660,9 @@ fn convert_rd_to_qmd(
         None
     };
 
-    // Extract Rd metadata
-    let metadata = extract_rd_metadata(&doc);
+    // Extract Rd metadata, including source files from roxygen2 comments
+    let roxygen = rd_parser::parse_roxygen_comments(rd_content);
+    let metadata = extract_rd_metadata(&doc, roxygen.source_files);
 
     let options = WriterOptions {
         frontmatter: if use_frontmatter {
@@ -697,8 +698,10 @@ fn extract_text(nodes: &[rd2qmd_core::RdNode]) -> String {
     result.trim().to_string()
 }
 
-/// Extract Rd metadata (lifecycle, aliases, keywords, concepts) from a document
-fn extract_rd_metadata(doc: &rd2qmd_core::RdDocument) -> RdMetadata {
+/// Extract Rd metadata (lifecycle, aliases, keywords, concepts, source_files) from a document
+///
+/// The `source_files` parameter should be extracted from roxygen2 comments in the Rd file header.
+fn extract_rd_metadata(doc: &rd2qmd_core::RdDocument, source_files: Vec<String>) -> RdMetadata {
     // Extract lifecycle
     let lifecycle = doc.lifecycle().map(|l| l.as_str().to_string());
 
@@ -737,7 +740,7 @@ fn extract_rd_metadata(doc: &rd2qmd_core::RdDocument) -> RdMetadata {
         aliases,
         keywords,
         concepts,
-        source_files: vec![], // Not available in single-file mode
+        source_files,
     }
 }
 

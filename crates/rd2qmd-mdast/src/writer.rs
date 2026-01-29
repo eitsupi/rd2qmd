@@ -93,13 +93,13 @@ impl<'a> Writer<'a> {
         self.output.push_str("---\n");
         if let Some(title) = &fm.title {
             self.output
-                .push_str(&format!("title: \"{}\"\n", escape_yaml_string(title)));
+                .push_str(&format!(r#"title: "{}""#, escape_yaml_string(title)));
+            self.output.push('\n');
         }
         if let Some(pagetitle) = &fm.pagetitle {
-            self.output.push_str(&format!(
-                "pagetitle: \"{}\"\n",
-                escape_yaml_string(pagetitle)
-            ));
+            self.output
+                .push_str(&format!(r#"pagetitle: "{}""#, escape_yaml_string(pagetitle)));
+            self.output.push('\n');
         }
         if let Some(format) = &fm.format {
             self.output.push_str(&format!("format: {}\n", format));
@@ -115,21 +115,32 @@ impl<'a> Writer<'a> {
                 self.output.push_str("aliases:\n");
                 for alias in &metadata.aliases {
                     self.output
-                        .push_str(&format!("  - \"{}\"\n", escape_yaml_string(alias)));
+                        .push_str(&format!(r#"  - "{}""#, escape_yaml_string(alias)));
+                    self.output.push('\n');
                 }
             }
             if !metadata.keywords.is_empty() {
                 self.output.push_str("keywords:\n");
                 for keyword in &metadata.keywords {
                     self.output
-                        .push_str(&format!("  - \"{}\"\n", escape_yaml_string(keyword)));
+                        .push_str(&format!(r#"  - "{}""#, escape_yaml_string(keyword)));
+                    self.output.push('\n');
                 }
             }
             if !metadata.concepts.is_empty() {
                 self.output.push_str("concepts:\n");
                 for concept in &metadata.concepts {
                     self.output
-                        .push_str(&format!("  - \"{}\"\n", escape_yaml_string(concept)));
+                        .push_str(&format!(r#"  - "{}""#, escape_yaml_string(concept)));
+                    self.output.push('\n');
+                }
+            }
+            if !metadata.source_files.is_empty() {
+                self.output.push_str("source-files:\n");
+                for source_file in &metadata.source_files {
+                    self.output
+                        .push_str(&format!(r#"  - "{}""#, escape_yaml_string(source_file)));
+                    self.output.push('\n');
                 }
             }
         }
@@ -1024,5 +1035,30 @@ mod tests {
         assert!(!qmd.contains("aliases:"));
         assert!(!qmd.contains("keywords:"));
         assert!(!qmd.contains("concepts:"));
+        assert!(!qmd.contains("source-files:"));
+    }
+
+    #[test]
+    fn test_frontmatter_with_source_files() {
+        let root = Root::new(vec![Node::paragraph(vec![Node::text("Content")])]);
+        let opts = WriterOptions {
+            frontmatter: Some(Frontmatter {
+                title: Some("coord_map".to_string()),
+                pagetitle: None,
+                format: None,
+                metadata: Some(RdMetadata {
+                    lifecycle: None,
+                    aliases: vec![],
+                    keywords: vec![],
+                    concepts: vec![],
+                    source_files: vec!["R/coord-map.R".to_string(), "R/coord-quickmap.R".to_string()],
+                }),
+            }),
+            ..Default::default()
+        };
+        let qmd = mdast_to_qmd(&root, &opts);
+        assert!(qmd.contains("source-files:\n"));
+        assert!(qmd.contains(r#"  - "R/coord-map.R""#));
+        assert!(qmd.contains(r#"  - "R/coord-quickmap.R""#));
     }
 }
