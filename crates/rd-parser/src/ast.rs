@@ -119,6 +119,25 @@ impl SectionTag {
     }
 }
 
+/// Options for \figure tag
+///
+/// The \figure tag has three forms per "Writing R Extensions":
+/// 1. `\figure{filename}` - No options (use filename as alt fallback)
+/// 2. `\figure{filename}{alternate text}` - Simple form: entire string is alt text
+/// 3. `\figure{filename}{options: string}` - Expert form: HTML/LaTeX attributes
+///
+/// Reference: https://cran.r-project.org/doc/manuals/r-devel/R-exts.html#Figures
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FigureOptions {
+    /// Simple form (2): The entire second argument is alternate text
+    /// e.g., `\figure{file.png}{R logo}`
+    AltText(String),
+    /// Expert form (3): HTML/LaTeX attributes string (without "options:" prefix)
+    /// e.g., `\figure{file.png}{options: width=100 alt="R logo"}` -> `width=100 alt="R logo"`
+    ExpertOptions(String),
+}
+
 /// A node in the Rd AST (can be block or inline)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -261,7 +280,7 @@ pub enum RdNode {
     /// Figure/image (\figure{file}{options})
     Figure {
         file: String,
-        options: Option<String>,
+        options: Option<FigureOptions>,
     },
 
     /// S3 method declaration in usage (\method{func}{class})

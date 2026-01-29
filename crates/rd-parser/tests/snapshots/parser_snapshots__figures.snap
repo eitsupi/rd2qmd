@@ -46,7 +46,9 @@ expression: ast_json
         {
           "figure": {
             "file": "diagram.svg",
-            "options": "options: width=50%"
+            "options": {
+              "expertOptions": "width=50%"
+            }
           }
         },
         {
@@ -55,7 +57,9 @@ expression: ast_json
         {
           "figure": {
             "file": "lifecycle-experimental.svg",
-            "options": "options: alt=\"Experimental lifecycle badge\""
+            "options": {
+              "expertOptions": "alt=\"Experimental lifecycle badge\""
+            }
           }
         },
         {

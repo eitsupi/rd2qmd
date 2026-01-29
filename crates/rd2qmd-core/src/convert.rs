@@ -2,7 +2,7 @@
 //!
 //! Converts an Rd document into an mdast tree for Markdown output.
 
-use rd_parser::{DescribeItem, RdDocument, RdNode, RdSection, SectionTag, SpecialChar};
+use rd_parser::{DescribeItem, FigureOptions, RdDocument, RdNode, RdSection, SectionTag, SpecialChar};
 use rd2qmd_mdast::{
     Align, DefinitionDescription, DefinitionList, DefinitionTerm, Html, Image, Node, Root, Table,
     TableCell, TableRow,
@@ -883,10 +883,13 @@ impl Converter {
                 value: html.clone(),
             })),
             RdNode::Figure { file, options } => {
-                let alt = options
-                    .as_ref()
-                    .and_then(|opts| Self::extract_figure_alt(opts))
-                    .unwrap_or_else(|| file.clone());
+                let alt = match options {
+                    Some(FigureOptions::AltText(text)) => text.clone(),
+                    Some(FigureOptions::ExpertOptions(attrs)) => {
+                        Self::extract_alt_from_attrs(attrs).unwrap_or_else(|| file.clone())
+                    }
+                    None => file.clone(),
+                };
                 Some(Node::Image(Image {
                     url: file.clone(),
                     title: None,
@@ -974,51 +977,32 @@ impl Converter {
         })
     }
 
-    /// Extract alt text from figure options string.
+    /// Extract alt text from HTML attributes string (Expert form).
     ///
-    /// According to "Writing R Extensions", `\figure` has three forms:
-    /// 1. `\figure{filename}` - no second argument, use filename as alt
-    /// 2. `\figure{filename}{alternate text}` - second argument IS the alt text
-    /// 3. `\figure{filename}{options: string}` - expert form, string contains HTML attributes
+    /// This function handles the expert form where the parser has already stripped
+    /// the "options:" prefix, leaving just the HTML/LaTeX attributes string.
     ///
-    /// This function handles forms 2 and 3. Form 1 is handled by the caller (filename fallback).
-    ///
-    /// For form 3 (expert), the "options:" prefix must be exact and followed by a space.
-    /// The remaining string is parsed as HTML attributes to find `alt="..."` or `alt='...'`.
-    ///
-    /// TODO: The distinction between simple form (2) and expert form (3) should be made
-    /// in the parser, not here. The "options:" prefix is a syntactic feature that doesn't
-    /// depend on output format. Consider refactoring to use a structured AST like:
-    /// `enum FigureOptions { AltText(String), ExpertOptions(String) }`
-    /// See: https://cran.r-project.org/doc/manuals/r-devel/R-exts.html#Figures
-    fn extract_figure_alt(options: &str) -> Option<String> {
-        // Expert form: starts with "options:" followed by space
-        if let Some(rest) = options.strip_prefix("options:") {
-            let rest = rest.trim_start();
-            if rest.is_empty() {
-                return None;
-            }
-            // Parse HTML attributes to find alt
-            // Try single quotes: alt='...'
-            if let Some(start) = rest.find("alt='") {
-                let after_quote = &rest[start + 5..];
-                if let Some(end) = after_quote.find('\'') {
-                    return Some(after_quote[..end].to_string());
-                }
-            }
-            // Try double quotes: alt="..."
-            if let Some(start) = rest.find("alt=\"") {
-                let after_quote = &rest[start + 5..];
-                if let Some(end) = after_quote.find('"') {
-                    return Some(after_quote[..end].to_string());
-                }
-            }
-            // Expert form without alt attribute - return None (caller uses filename)
+    /// Reference: https://cran.r-project.org/doc/manuals/r-devel/R-exts.html#Figures
+    fn extract_alt_from_attrs(attrs: &str) -> Option<String> {
+        if attrs.is_empty() {
             return None;
         }
-
-        // Simple form: the entire string is the alternate text
-        Some(options.to_string())
+        // Try single quotes: alt='...'
+        if let Some(start) = attrs.find("alt='") {
+            let after_quote = &attrs[start + 5..];
+            if let Some(end) = after_quote.find('\'') {
+                return Some(after_quote[..end].to_string());
+            }
+        }
+        // Try double quotes: alt="..."
+        if let Some(start) = attrs.find("alt=\"") {
+            let after_quote = &attrs[start + 5..];
+            if let Some(end) = after_quote.find('"') {
+                return Some(after_quote[..end].to_string());
+            }
+        }
+        // No alt attribute found
+        None
     }
 
     fn extract_text(&self, nodes: &[RdNode]) -> String {

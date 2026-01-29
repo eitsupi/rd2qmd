@@ -2,7 +2,7 @@
 //!
 //! Recursive descent parser that converts a token stream into an Rd AST.
 
-use crate::ast::{DescribeItem, RdDocument, RdNode, RdSection, SectionTag, SpecialChar};
+use crate::ast::{DescribeItem, FigureOptions, RdDocument, RdNode, RdSection, SectionTag, SpecialChar};
 use crate::lexer::{Lexer, Token, TokenKind};
 use thiserror::Error;
 
@@ -783,6 +783,13 @@ impl Parser {
     }
 
     /// Parse \figure{file}{options}
+    ///
+    /// The \figure tag has three forms per "Writing R Extensions":
+    /// 1. `\figure{filename}` - No options
+    /// 2. `\figure{filename}{alternate text}` - Simple form
+    /// 3. `\figure{filename}{options: string}` - Expert form
+    ///
+    /// Reference: https://cran.r-project.org/doc/manuals/r-devel/R-exts.html#Figures
     fn parse_figure(&mut self, opt_arg: Option<String>) -> ParseResult<Option<RdNode>> {
         self.skip_whitespace();
         self.expect(&TokenKind::OpenBrace)?;
@@ -791,7 +798,7 @@ impl Parser {
 
         // Check for optional second brace argument (options)
         self.skip_whitespace();
-        let options = if self.check(&TokenKind::OpenBrace) {
+        let raw_options = if self.check(&TokenKind::OpenBrace) {
             self.advance(); // consume {
             let opts = self.parse_text_until_close_brace()?;
             self.expect(&TokenKind::CloseBrace)?;
@@ -800,7 +807,26 @@ impl Parser {
             opt_arg // Fallback to bracket arg if provided
         };
 
+        // Parse options into structured form
+        let options = raw_options.map(|opts| Self::parse_figure_options(&opts));
+
         Ok(Some(RdNode::Figure { file, options }))
+    }
+
+    /// Parse figure options string into structured form
+    ///
+    /// Expert form: starts with "options:" followed by at least one whitespace
+    /// Simple form: everything else (the entire string is alternate text)
+    fn parse_figure_options(opts: &str) -> FigureOptions {
+        // Check for expert form: "options:" followed by whitespace
+        if let Some(rest) = opts.strip_prefix("options:") {
+            // Must have at least one whitespace after "options:"
+            if rest.starts_with(char::is_whitespace) {
+                return FigureOptions::ExpertOptions(rest.trim_start().to_string());
+            }
+        }
+        // Simple form: entire string is alt text
+        FigureOptions::AltText(opts.to_string())
     }
 
     /// Parse unknown macro generically
@@ -1047,7 +1073,7 @@ test(x, y = TRUE)
         let content = &doc.sections[0].content;
         if let RdNode::Figure { file, options } = &content[0] {
             assert_eq!(file, "Rlogo.svg");
-            assert_eq!(options, &Some("R logo".to_string()));
+            assert_eq!(options, &Some(FigureOptions::AltText("R logo".to_string())));
         } else {
             panic!("Expected Figure node, got {:?}", content[0]);
         }
@@ -1056,11 +1082,12 @@ test(x, y = TRUE)
     #[test]
     fn test_figure_expert_form() {
         // Form 3: \figure{filename}{options: string}
+        // Note: "options:" prefix is stripped, remaining string is stored
         let doc = parse(r#"\description{\figure{Rlogo.svg}{options: width=100 alt="R logo"}}"#).unwrap();
         let content = &doc.sections[0].content;
         if let RdNode::Figure { file, options } = &content[0] {
             assert_eq!(file, "Rlogo.svg");
-            assert_eq!(options, &Some("options: width=100 alt=\"R logo\"".to_string()));
+            assert_eq!(options, &Some(FigureOptions::ExpertOptions(r#"width=100 alt="R logo""#.to_string())));
         } else {
             panic!("Expected Figure node, got {:?}", content[0]);
         }
@@ -1069,11 +1096,12 @@ test(x, y = TRUE)
     #[test]
     fn test_figure_lifecycle_badge_style() {
         // Lifecycle badge format with single quotes
+        // Note: "options:" prefix is stripped
         let doc = parse(r#"\description{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}"#).unwrap();
         let content = &doc.sections[0].content;
         if let RdNode::Figure { file, options } = &content[0] {
             assert_eq!(file, "lifecycle-deprecated.svg");
-            assert_eq!(options, &Some("options: alt='[Deprecated]'".to_string()));
+            assert_eq!(options, &Some(FigureOptions::ExpertOptions("alt='[Deprecated]'".to_string())));
         } else {
             panic!("Expected Figure node, got {:?}", content[0]);
         }
@@ -1086,8 +1114,34 @@ test(x, y = TRUE)
         let content = &doc.sections[0].content;
         if let RdNode::Figure { file, options } = &content[0] {
             assert_eq!(file, "Rlogo.svg");
-            // Bracket arg becomes options when no brace arg is present
-            assert_eq!(options, &Some("R logo".to_string()));
+            // Bracket arg becomes options when no brace arg is present (treated as simple form)
+            assert_eq!(options, &Some(FigureOptions::AltText("R logo".to_string())));
+        } else {
+            panic!("Expected Figure node, got {:?}", content[0]);
+        }
+    }
+
+    #[test]
+    fn test_figure_options_starting_with_options_word() {
+        // Edge case: text starting with "options" but not "options:" should be simple form
+        let doc = parse(r#"\description{\figure{file.png}{options are shown here}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Figure { file, options } = &content[0] {
+            assert_eq!(file, "file.png");
+            assert_eq!(options, &Some(FigureOptions::AltText("options are shown here".to_string())));
+        } else {
+            panic!("Expected Figure node, got {:?}", content[0]);
+        }
+    }
+
+    #[test]
+    fn test_figure_options_colon_no_space() {
+        // Edge case: "options:" without space should be simple form (per spec: must be followed by space)
+        let doc = parse(r#"\description{\figure{file.png}{options:nospace}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Figure { file, options } = &content[0] {
+            assert_eq!(file, "file.png");
+            assert_eq!(options, &Some(FigureOptions::AltText("options:nospace".to_string())));
         } else {
             panic!("Expected Figure node, got {:?}", content[0]);
         }

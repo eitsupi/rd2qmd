@@ -53,7 +53,9 @@ expression: ast_json
                     {
                       "figure": {
                         "file": "lifecycle-deprecated.svg",
-                        "options": "options: alt='[Deprecated]'"
+                        "options": {
+                          "expertOptions": "alt='[Deprecated]'"
+                        }
                       }
                     }
                   ]

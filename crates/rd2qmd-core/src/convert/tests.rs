@@ -1348,123 +1348,93 @@ See: \figure{diagram.png}
 }
 
 // ============================================================================
-// Unit tests for extract_figure_alt
+// Unit tests for extract_alt_from_attrs
 // ============================================================================
 
-/// Tests for `extract_figure_alt` function which handles the three forms of \figure:
-/// 1. Simple form without second arg - handled by caller (filename fallback)
-/// 2. Simple form: `\figure{file}{alternate text}` - entire string is alt
-/// 3. Expert form: `\figure{file}{options: ...}` - parse HTML attributes for alt
+/// Tests for `extract_alt_from_attrs` function which extracts alt text from
+/// HTML attributes string (Expert form only).
+///
+/// Note: The parser now distinguishes between simple form and expert form.
+/// - Simple form (FigureOptions::AltText): entire string is alt text
+/// - Expert form (FigureOptions::ExpertOptions): "options:" prefix is stripped by parser
+///
+/// This function only handles the expert form where we need to parse HTML attributes.
 
 #[test]
-fn test_extract_figure_alt_simple_form() {
-    // Simple form: entire string is the alternate text
-    assert_eq!(
-        Converter::extract_figure_alt("R logo"),
-        Some("R logo".to_string())
-    );
-    assert_eq!(
-        Converter::extract_figure_alt("Description of the image"),
-        Some("Description of the image".to_string())
-    );
-}
-
-#[test]
-fn test_extract_figure_alt_expert_form_double_quotes() {
+fn test_extract_alt_from_attrs_double_quotes() {
     // Expert form with double quotes (official documentation example)
+    // Note: "options:" prefix is already stripped by parser
     assert_eq!(
-        Converter::extract_figure_alt("options: width=100 alt=\"R logo\""),
+        Converter::extract_alt_from_attrs(r#"width=100 alt="R logo""#),
         Some("R logo".to_string())
     );
     assert_eq!(
-        Converter::extract_figure_alt("options: alt=\"[Deprecated]\""),
+        Converter::extract_alt_from_attrs(r#"alt="[Deprecated]""#),
         Some("[Deprecated]".to_string())
     );
 }
 
 #[test]
-fn test_extract_figure_alt_expert_form_single_quotes() {
+fn test_extract_alt_from_attrs_single_quotes() {
     // Expert form with single quotes (lifecycle badge style)
     assert_eq!(
-        Converter::extract_figure_alt("options: alt='[Deprecated]'"),
+        Converter::extract_alt_from_attrs("alt='[Deprecated]'"),
         Some("[Deprecated]".to_string())
     );
     assert_eq!(
-        Converter::extract_figure_alt("options: alt='[Experimental]'"),
+        Converter::extract_alt_from_attrs("alt='[Experimental]'"),
         Some("[Experimental]".to_string())
     );
 }
 
 #[test]
-fn test_extract_figure_alt_expert_form_no_alt() {
+fn test_extract_alt_from_attrs_no_alt() {
     // Expert form without alt attribute - should return None (caller uses filename)
-    assert_eq!(
-        Converter::extract_figure_alt("options: width=100"),
-        None
-    );
-    assert_eq!(
-        Converter::extract_figure_alt("options: width=50%"),
-        None
-    );
+    assert_eq!(Converter::extract_alt_from_attrs("width=100"), None);
+    assert_eq!(Converter::extract_alt_from_attrs("width=50 height=30"), None);
 }
 
 #[test]
-fn test_extract_figure_alt_expert_form_multiple_attributes() {
+fn test_extract_alt_from_attrs_multiple_attributes() {
     // Expert form with multiple attributes
     assert_eq!(
-        Converter::extract_figure_alt("options: width=100 alt=\"Description\" height=50"),
+        Converter::extract_alt_from_attrs(r#"width=100 alt="Description" height=50"#),
         Some("Description".to_string())
     );
     assert_eq!(
-        Converter::extract_figure_alt("options: class='badge' alt='[Superseded]' style='margin:0'"),
+        Converter::extract_alt_from_attrs("class='badge' alt='[Superseded]' style='margin:0'"),
         Some("[Superseded]".to_string())
     );
 }
 
 #[test]
-fn test_extract_figure_alt_expert_form_special_characters() {
+fn test_extract_alt_from_attrs_special_characters() {
     // Alt text with special characters
     assert_eq!(
-        Converter::extract_figure_alt("options: alt='[Experimental - β version]'"),
+        Converter::extract_alt_from_attrs("alt='[Experimental - β version]'"),
         Some("[Experimental - β version]".to_string())
     );
     assert_eq!(
-        Converter::extract_figure_alt("options: alt=\"A & B < C\""),
+        Converter::extract_alt_from_attrs(r#"alt="A & B < C""#),
         Some("A & B < C".to_string())
     );
 }
 
 #[test]
-fn test_extract_figure_alt_expert_form_empty_alt() {
+fn test_extract_alt_from_attrs_empty_alt() {
     // Empty alt attribute
     assert_eq!(
-        Converter::extract_figure_alt("options: alt=''"),
+        Converter::extract_alt_from_attrs("alt=''"),
         Some("".to_string())
     );
     assert_eq!(
-        Converter::extract_figure_alt("options: alt=\"\""),
+        Converter::extract_alt_from_attrs(r#"alt="""#),
         Some("".to_string())
     );
 }
 
 #[test]
-fn test_extract_figure_alt_expert_form_empty_options() {
-    // "options:" with nothing after
-    assert_eq!(Converter::extract_figure_alt("options:"), None);
-    assert_eq!(Converter::extract_figure_alt("options: "), None);
-}
-
-#[test]
-fn test_extract_figure_alt_simple_form_with_options_like_text() {
-    // Simple form that happens to contain "options" but not as prefix
-    // This should be treated as simple form (entire string is alt)
-    assert_eq!(
-        Converter::extract_figure_alt("See options for details"),
-        Some("See options for details".to_string())
-    );
-    // Without the colon, it's simple form
-    assert_eq!(
-        Converter::extract_figure_alt("options are shown"),
-        Some("options are shown".to_string())
-    );
+fn test_extract_alt_from_attrs_empty_string() {
+    // Empty string should return None
+    assert_eq!(Converter::extract_alt_from_attrs(""), None);
 }

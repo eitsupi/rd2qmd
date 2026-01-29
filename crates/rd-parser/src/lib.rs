@@ -37,7 +37,7 @@ mod lifecycle;
 mod roxygen;
 
 // Re-export main types for convenient access
-pub use ast::{DescribeItem, RdDocument, RdNode, RdSection, SectionTag, SpecialChar};
+pub use ast::{DescribeItem, FigureOptions, RdDocument, RdNode, RdSection, SectionTag, SpecialChar};
 pub use lexer::{Lexer, Span, Token, TokenKind};
 pub use parser::{ParseError, ParseResult, Parser, parse};
 
