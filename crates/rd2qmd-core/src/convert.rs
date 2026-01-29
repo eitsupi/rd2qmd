@@ -756,22 +756,13 @@ impl Converter {
                 match (package, &self.options.link_extension) {
                     // External package link
                     (Some(pkg), _) => {
-                        // Extract just the package name (before colon if present)
-                        // e.g., "rlang:dyn-dots" -> "rlang"
-                        let pkg_name = pkg.split(':').next().unwrap_or(pkg);
-
-                        // Extract the actual topic from the pkg string if it contains ':'
-                        // e.g., "rlang:dyn-dots" -> topic is "dyn-dots"
-                        let actual_topic = if pkg.contains(':') {
-                            pkg.split(':').nth(1).unwrap_or(topic)
-                        } else {
-                            topic
-                        };
-
+                        // Package name is already parsed by the parser (no colon)
+                        // For \link[pkg]{topic}: text is None, use pkg::topic format
+                        // For \link[pkg:bar]{foo}: text is Some, use the display_text
                         let display = if text.is_some() {
                             display_text
                         } else {
-                            format!("{}::{}", pkg_name, actual_topic)
+                            format!("{}::{}", pkg, topic)
                         };
 
                         // Check if we have a URL for this external package
@@ -779,10 +770,10 @@ impl Converter {
                             .options
                             .external_package_urls
                             .as_ref()
-                            .and_then(|map| map.get(pkg_name))
+                            .and_then(|map| map.get(pkg.as_str()))
                         {
                             let url =
-                                format!("{}/{}.html", base_url.trim_end_matches('/'), actual_topic);
+                                format!("{}/{}.html", base_url.trim_end_matches('/'), topic);
                             Some(Node::link(url, vec![Node::inline_code(display)]))
                         } else {
                             // No URL found - just inline code

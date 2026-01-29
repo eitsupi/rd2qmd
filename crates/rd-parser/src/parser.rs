@@ -642,35 +642,26 @@ impl Parser {
         Ok(Some(RdNode::Href { url, text }))
     }
 
-    /// Parse \link[pkg]{topic} or \link[=dest]{text}
+    /// Parse \link[pkg]{topic}, \link[pkg:bar]{text}, or \link[=dest]{text}
     fn parse_link(&mut self, opt_arg: Option<String>) -> ParseResult<Option<RdNode>> {
         self.skip_whitespace();
-        let topic_or_text = self.parse_braced_content()?;
+        let content = self.parse_braced_content()?;
 
         let (package, topic, text) = if let Some(opt) = opt_arg {
             if let Some(dest) = opt.strip_prefix('=') {
                 // \link[=dest]{text} form
-                (None, dest.to_string(), Some(topic_or_text))
+                (None, dest.to_string(), Some(content))
+            } else if let Some((pkg, topic_part)) = opt.split_once(':') {
+                // \link[pkg:bar]{text} form - content is display text
+                (Some(pkg.to_string()), topic_part.to_string(), Some(content))
             } else {
                 // \link[pkg]{topic} form
-                let topic = topic_or_text
-                    .first()
-                    .map(|n| match n {
-                        RdNode::Text(s) => s.clone(),
-                        _ => String::new(),
-                    })
-                    .unwrap_or_default();
+                let topic = Self::extract_text_from_nodes(&content);
                 (Some(opt), topic, None)
             }
         } else {
             // \link{topic} form
-            let topic = topic_or_text
-                .first()
-                .map(|n| match n {
-                    RdNode::Text(s) => s.clone(),
-                    _ => String::new(),
-                })
-                .unwrap_or_default();
+            let topic = Self::extract_text_from_nodes(&content);
             (None, topic, None)
         };
 
@@ -679,6 +670,17 @@ impl Parser {
             topic,
             text,
         }))
+    }
+
+    /// Extract text content from nodes (used for link topic extraction)
+    fn extract_text_from_nodes(nodes: &[RdNode]) -> String {
+        nodes
+            .first()
+            .map(|n| match n {
+                RdNode::Text(s) => s.clone(),
+                _ => String::new(),
+            })
+            .unwrap_or_default()
     }
 
     /// Parse \eqn{latex}{ascii} or \deqn{latex}{ascii}
@@ -1144,6 +1146,100 @@ test(x, y = TRUE)
             assert_eq!(options, &Some(FigureOptions::AltText("options:nospace".to_string())));
         } else {
             panic!("Expected Figure node, got {:?}", content[0]);
+        }
+    }
+
+    // Link parsing tests
+
+    #[test]
+    fn test_link_simple() {
+        // Form 1: \link{topic}
+        let doc = parse(r#"\description{\link{foo}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Link { package, topic, text } = &content[0] {
+            assert_eq!(package, &None);
+            assert_eq!(topic, "foo");
+            assert_eq!(text, &None);
+        } else {
+            panic!("Expected Link node, got {:?}", content[0]);
+        }
+    }
+
+    #[test]
+    fn test_link_with_package() {
+        // Form 2: \link[pkg]{topic}
+        let doc = parse(r#"\description{\link[dplyr]{filter}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Link { package, topic, text } = &content[0] {
+            assert_eq!(package, &Some("dplyr".to_string()));
+            assert_eq!(topic, "filter");
+            assert_eq!(text, &None);
+        } else {
+            panic!("Expected Link node, got {:?}", content[0]);
+        }
+    }
+
+    #[test]
+    fn test_link_with_package_and_topic() {
+        // Form 3: \link[pkg:bar]{text} - topic comes from pkg:bar, brace content is display text
+        let doc = parse(r#"\description{\link[rlang:abort]{abort function}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Link { package, topic, text } = &content[0] {
+            assert_eq!(package, &Some("rlang".to_string()));
+            assert_eq!(topic, "abort");
+            assert!(text.is_some());
+            // Display text should be "abort function"
+            if let Some(text_nodes) = text {
+                if let RdNode::Text(s) = &text_nodes[0] {
+                    assert_eq!(s, "abort function");
+                } else {
+                    panic!("Expected Text node in display text");
+                }
+            }
+        } else {
+            panic!("Expected Link node, got {:?}", content[0]);
+        }
+    }
+
+    #[test]
+    fn test_link_with_equals_dest() {
+        // Form 4: \link[=dest]{text} - link to dest, display text
+        let doc = parse(r#"\description{\link[=as_polars_series]{as_polars_series()}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Link { package, topic, text } = &content[0] {
+            assert_eq!(package, &None);
+            assert_eq!(topic, "as_polars_series");
+            assert!(text.is_some());
+            if let Some(text_nodes) = text {
+                if let RdNode::Text(s) = &text_nodes[0] {
+                    assert_eq!(s, "as_polars_series()");
+                } else {
+                    panic!("Expected Text node in display text");
+                }
+            }
+        } else {
+            panic!("Expected Link node, got {:?}", content[0]);
+        }
+    }
+
+    #[test]
+    fn test_link_pkg_topic_with_hyphen() {
+        // Real-world case: \link[rlang:dyn-dots]{dynamic dots}
+        let doc = parse(r#"\description{\link[rlang:dyn-dots]{dynamic dots}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Link { package, topic, text } = &content[0] {
+            assert_eq!(package, &Some("rlang".to_string()));
+            assert_eq!(topic, "dyn-dots");
+            assert!(text.is_some());
+            if let Some(text_nodes) = text {
+                if let RdNode::Text(s) = &text_nodes[0] {
+                    assert_eq!(s, "dynamic dots");
+                } else {
+                    panic!("Expected Text node in display text");
+                }
+            }
+        } else {
+            panic!("Expected Link node, got {:?}", content[0]);
         }
     }
 }
