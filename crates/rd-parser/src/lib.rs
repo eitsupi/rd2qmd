@@ -24,6 +24,7 @@
 //!
 //! - `json`: Enable JSON serialization/deserialization for `RdDocument`
 //! - `lifecycle`: Enable lifecycle badge extraction from Rd documents
+//! - `roxygen`: Enable extraction of roxygen2 metadata (source file paths)
 
 pub mod ast;
 pub mod lexer;
@@ -32,6 +33,8 @@ pub mod parser;
 // Feature-gated modules that extend RdDocument with additional methods
 #[cfg(feature = "lifecycle")]
 mod lifecycle;
+#[cfg(feature = "roxygen")]
+mod roxygen;
 
 // Re-export main types for convenient access
 pub use ast::{DescribeItem, RdDocument, RdNode, RdSection, SectionTag, SpecialChar};
@@ -41,3 +44,7 @@ pub use parser::{ParseError, ParseResult, Parser, parse};
 // Re-export lifecycle types when the feature is enabled
 #[cfg(feature = "lifecycle")]
 pub use lifecycle::{Lifecycle, ParseLifecycleError};
+
+// Re-export roxygen types when the feature is enabled
+#[cfg(feature = "roxygen")]
+pub use roxygen::{RoxygenMetadata, parse_roxygen_comments};

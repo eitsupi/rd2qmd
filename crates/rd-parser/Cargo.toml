@@ -9,6 +9,7 @@ license.workspace = true
 default = []
 json = ["dep:serde_json"]
 lifecycle = []
+roxygen = []
 
 [dependencies]
 thiserror.workspace = true
