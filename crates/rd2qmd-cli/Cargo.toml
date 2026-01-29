@@ -10,9 +10,8 @@ name = "rd2qmd"
 path = "src/main.rs"
 
 [dependencies]
-rd2qmd-core.workspace = true
+rd2qmd-core = { workspace = true, features = ["lifecycle", "roxygen"] }
 rd2qmd-package = { workspace = true, features = ["external-links"] }
-rd-parser = { workspace = true, features = ["roxygen"] }
 clap.workspace = true
 anyhow.workspace = true
 serde_json.workspace = true

@@ -1,0 +1,11 @@
+---
+source: crates/rd2qmd-core/src/lib.rs
+expression: result
+---
+# Slow
+
+## Examples
+
+```r
+Sys.sleep(10)
+```

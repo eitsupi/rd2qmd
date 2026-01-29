@@ -1,0 +1,9 @@
+---
+source: crates/rd2qmd-core/src/lib.rs
+expression: result
+---
+# Caller
+
+## Description
+
+Uses `unknown_func`.

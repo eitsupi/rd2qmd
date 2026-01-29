@@ -850,7 +850,6 @@ dependencies = [
  "anyhow",
  "clap",
  "insta",
- "rd-parser",
  "rd2qmd-core",
  "rd2qmd-package",
  "schemars",
@@ -885,7 +884,6 @@ version = "0.1.0"
 dependencies = [
  "r-description",
  "rayon",
- "rd-parser",
  "rd2qmd-core",
  "reqwest",
  "saphyr",

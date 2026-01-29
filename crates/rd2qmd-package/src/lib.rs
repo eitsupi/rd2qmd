@@ -22,8 +22,8 @@ pub use external_links::{
 
 use rayon::prelude::*;
 use rd2qmd_core::{
-    ConverterOptions, Frontmatter, RdDocument, RdMetadata, RdNode, SectionTag, WriterOptions,
-    mdast_to_qmd, parse, rd_to_mdast_with_options,
+    ConverterOptions, Frontmatter, RdMetadata, SectionTag, WriterOptions, extract_rd_metadata,
+    extract_text, mdast_to_qmd, parse, parse_roxygen_comments, rd_to_mdast_with_options,
 };
 use serde::Serialize;
 use std::collections::HashMap;
@@ -228,7 +228,7 @@ fn extract_topic_info(file: &Path, output_extension: &str) -> Result<TopicInfo> 
     let content = fs::read_to_string(file)?;
 
     // Extract roxygen2 metadata (source files) from header comments
-    let roxygen = rd_parser::parse_roxygen_comments(&content);
+    let roxygen = parse_roxygen_comments(&content);
 
     let doc = parse(&content).map_err(|e| PackageError::Parse {
         file: file.to_path_buf(),
@@ -359,7 +359,7 @@ fn convert_single_file(
         };
 
         // Extract Rd metadata, including source files from roxygen2 comments
-        let roxygen = rd_parser::parse_roxygen_comments(&content);
+        let roxygen = parse_roxygen_comments(&content);
         let metadata = extract_rd_metadata(&doc, roxygen.source_files);
 
         // Build writer options
@@ -464,64 +464,161 @@ fn build_alias_index(files: &[PathBuf]) -> Result<HashMap<String, String>> {
     Ok(index)
 }
 
-/// Extract plain text from Rd nodes
-fn extract_text(nodes: &[RdNode]) -> String {
-    let mut result = String::new();
-    for node in nodes {
-        match node {
-            RdNode::Text(s) => result.push_str(s),
-            RdNode::Code(children) | RdNode::Emph(children) | RdNode::Strong(children) => {
-                result.push_str(&extract_text(children));
-            }
-            _ => {}
-        }
-    }
-    result.trim().to_string()
+// ============================================================================
+// Package Converter Builder
+// ============================================================================
+
+/// Options for external link resolution during package conversion
+#[cfg(feature = "external-links")]
+#[derive(Debug, Clone, Default)]
+pub struct ExternalLinkOptions {
+    /// R library paths to search for installed packages
+    pub lib_paths: Vec<PathBuf>,
+    /// Cache directory for pkgdown.yml files
+    pub cache_dir: Option<PathBuf>,
+    /// Fallback URL pattern for packages without pkgdown sites
+    /// Use {package} and {topic} as placeholders
+    pub fallback_url: Option<String>,
 }
 
-/// Extract Rd metadata (lifecycle, aliases, keywords, concepts, source_files) from a document
+/// Result of a package conversion
 ///
-/// The `source_files` parameter should be extracted from roxygen2 comments in the Rd file header.
-fn extract_rd_metadata(doc: &RdDocument, source_files: Vec<String>) -> RdMetadata {
-    // Extract lifecycle
-    let lifecycle = doc.lifecycle().map(|l| l.as_str().to_string());
+/// This includes both the conversion results and any external link resolution fallbacks.
+/// When external link resolution is not used, `fallbacks` will be empty.
+#[derive(Debug)]
+pub struct FullConvertResult {
+    /// Basic conversion result
+    pub conversion: ConvertResult,
+    /// External package URL resolution fallbacks (package name -> reason)
+    /// Empty when external link resolution is not enabled or not used.
+    #[cfg(feature = "external-links")]
+    pub fallbacks: HashMap<String, FallbackReason>,
+}
 
-    // Extract aliases
-    let mut aliases: Vec<String> = doc
-        .get_sections(&SectionTag::Alias)
-        .iter()
-        .map(|s| extract_text(&s.content))
-        .filter(|s| !s.is_empty())
-        .collect();
-    aliases.sort();
-    aliases.dedup();
+/// Builder for package conversion
+///
+/// This provides a fluent API for converting R packages to Quarto Markdown.
+///
+/// # Example
+///
+/// ```ignore
+/// use rd2qmd_package::{RdPackage, PackageConvertOptions, PackageConverter};
+/// use std::path::PathBuf;
+///
+/// let package = RdPackage::from_directory(Path::new("man"), false)?;
+/// let options = PackageConvertOptions {
+///     output_dir: PathBuf::from("output"),
+///     output_extension: "qmd".to_string(),
+///     ..Default::default()
+/// };
+///
+/// // Basic conversion
+/// let result = PackageConverter::new(&package, options).convert()?;
+/// println!("Converted {} files", result.conversion.success_count);
+/// ```
+///
+/// With external link resolution (requires `external-links` feature):
+///
+/// ```ignore
+/// use rd2qmd_package::{ExternalLinkOptions, PackageConverter};
+///
+/// let result = PackageConverter::new(&package, options)
+///     .with_external_links(ExternalLinkOptions {
+///         lib_paths: vec![PathBuf::from("/usr/local/lib/R/site-library")],
+///         ..Default::default()
+///     })
+///     .convert()?;
+///
+/// for (pkg, reason) in &result.fallbacks {
+///     println!("Warning: {} used fallback URL ({:?})", pkg, reason);
+/// }
+/// ```
+pub struct PackageConverter<'a> {
+    package: &'a RdPackage,
+    options: PackageConvertOptions,
+    #[cfg(feature = "external-links")]
+    external_opts: Option<ExternalLinkOptions>,
+}
 
-    // Extract keywords
-    let mut keywords: Vec<String> = doc
-        .get_sections(&SectionTag::Keyword)
-        .iter()
-        .map(|s| extract_text(&s.content))
-        .filter(|s| !s.is_empty())
-        .collect();
-    keywords.sort();
-    keywords.dedup();
+impl<'a> PackageConverter<'a> {
+    /// Create a new package converter
+    pub fn new(package: &'a RdPackage, options: PackageConvertOptions) -> Self {
+        Self {
+            package,
+            options,
+            #[cfg(feature = "external-links")]
+            external_opts: None,
+        }
+    }
 
-    // Extract concepts
-    let mut concepts: Vec<String> = doc
-        .get_sections(&SectionTag::Concept)
-        .iter()
-        .map(|s| extract_text(&s.content))
-        .filter(|s| !s.is_empty())
-        .collect();
-    concepts.sort();
-    concepts.dedup();
+    /// Enable external link resolution
+    ///
+    /// When enabled, the converter will:
+    /// 1. Collect external package references from `\link[pkg]{topic}` patterns
+    /// 2. Resolve package documentation URLs from installed packages or pkgdown sites
+    /// 3. Use fallback URLs for packages that cannot be resolved
+    #[cfg(feature = "external-links")]
+    pub fn with_external_links(mut self, opts: ExternalLinkOptions) -> Self {
+        self.external_opts = Some(opts);
+        self
+    }
 
-    RdMetadata {
-        lifecycle,
-        aliases,
-        keywords,
-        concepts,
-        source_files,
+    /// Execute the conversion
+    ///
+    /// Returns a `FullConvertResult` containing:
+    /// - `conversion`: The basic conversion result (success count, failed files, output files)
+    /// - `fallbacks`: External package URL resolution fallbacks (empty if external links not used)
+    pub fn convert(self) -> Result<FullConvertResult> {
+        #[cfg(feature = "external-links")]
+        {
+            self.convert_with_external_links()
+        }
+
+        #[cfg(not(feature = "external-links"))]
+        {
+            let conversion = convert_package(self.package, &self.options)?;
+            Ok(FullConvertResult { conversion })
+        }
+    }
+
+    #[cfg(feature = "external-links")]
+    fn convert_with_external_links(mut self) -> Result<FullConvertResult> {
+        let mut fallbacks = HashMap::new();
+
+        // Resolve external package URLs if options are provided
+        if let Some(ext_opts) = self.external_opts
+            && !ext_opts.lib_paths.is_empty()
+        {
+            // Collect external package references
+            let external_packages = collect_external_packages(self.package);
+
+            if !external_packages.is_empty() {
+                // Resolve URLs
+                let mut resolver = PackageUrlResolver::new(PackageUrlResolverOptions {
+                    lib_paths: ext_opts.lib_paths,
+                    cache_dir: ext_opts.cache_dir,
+                    fallback_url: ext_opts.fallback_url,
+                    enable_http: true,
+                });
+                let resolve_result = resolver.resolve_packages(&external_packages);
+
+                // Store fallbacks for reporting
+                fallbacks = resolve_result.fallbacks;
+
+                // Set external package URLs in options
+                if !resolve_result.urls.is_empty() {
+                    self.options.external_package_urls = Some(resolve_result.urls);
+                }
+            }
+        }
+
+        // Convert package
+        let conversion = convert_package(self.package, &self.options)?;
+
+        Ok(FullConvertResult {
+            conversion,
+            fallbacks,
+        })
     }
 }
 
@@ -719,5 +816,319 @@ An old deprecated function.
         assert_eq!(topics[1]["name"], "baz");
         assert!(topics[1].get("lifecycle").is_none());
         assert!(topics[1].get("source_files").is_none());
+    }
+
+    // ========================================================================
+    // PackageConverter Builder tests
+    // ========================================================================
+
+    #[test]
+    fn test_package_converter_basic() {
+        let dir = tempdir().unwrap();
+        let out_dir = tempdir().unwrap();
+
+        // Create test Rd files
+        let rd1 = r#"\name{alpha}
+\alias{alpha}
+\title{Alpha Function}
+\description{The alpha function.}
+"#;
+        let rd2 = r#"\name{beta}
+\alias{beta}
+\title{Beta Function}
+\description{The beta function.}
+"#;
+        fs::write(dir.path().join("alpha.Rd"), rd1).unwrap();
+        fs::write(dir.path().join("beta.Rd"), rd2).unwrap();
+
+        let package = RdPackage::from_directory(dir.path(), false).unwrap();
+        let options = PackageConvertOptions {
+            output_dir: out_dir.path().to_path_buf(),
+            output_extension: "qmd".to_string(),
+            frontmatter: true,
+            pagetitle: false,
+            quarto_code_blocks: true,
+            parallel_jobs: Some(1),
+            unresolved_link_url: None,
+            external_package_urls: None,
+            exec_dontrun: false,
+            exec_donttest: true,
+        };
+
+        let result = PackageConverter::new(&package, options).convert().unwrap();
+
+        assert_eq!(result.conversion.success_count, 2);
+        assert!(result.conversion.failed_files.is_empty());
+        assert_eq!(result.conversion.output_files.len(), 2);
+
+        // Check output files exist
+        assert!(out_dir.path().join("alpha.qmd").exists());
+        assert!(out_dir.path().join("beta.qmd").exists());
+
+        // Check content
+        let alpha_content = fs::read_to_string(out_dir.path().join("alpha.qmd")).unwrap();
+        assert!(alpha_content.contains("title: \"Alpha Function\""));
+        assert!(alpha_content.contains("# Alpha Function"));
+
+        // Fallbacks should be empty when external links not used
+        assert!(result.fallbacks.is_empty());
+    }
+
+    #[test]
+    fn test_package_converter_with_alias_resolution() {
+        let dir = tempdir().unwrap();
+        let out_dir = tempdir().unwrap();
+
+        // Create Rd files that reference each other
+        let rd_main = r#"\name{main_func}
+\alias{main_func}
+\alias{mf}
+\title{Main Function}
+\description{See \link{helper_func} for details.}
+"#;
+        let rd_helper = r#"\name{helper_func}
+\alias{helper_func}
+\title{Helper Function}
+\description{A helper for \link{mf}.}
+"#;
+        fs::write(dir.path().join("main_func.Rd"), rd_main).unwrap();
+        fs::write(dir.path().join("helper_func.Rd"), rd_helper).unwrap();
+
+        let package = RdPackage::from_directory(dir.path(), false).unwrap();
+        let options = PackageConvertOptions {
+            output_dir: out_dir.path().to_path_buf(),
+            output_extension: "qmd".to_string(),
+            frontmatter: false,
+            pagetitle: false,
+            quarto_code_blocks: true,
+            parallel_jobs: Some(1),
+            unresolved_link_url: None,
+            external_package_urls: None,
+            exec_dontrun: false,
+            exec_donttest: true,
+        };
+
+        let result = PackageConverter::new(&package, options).convert().unwrap();
+        assert_eq!(result.conversion.success_count, 2);
+
+        // Check alias resolution works (links use [`text`](url) format)
+        let main_content = fs::read_to_string(out_dir.path().join("main_func.qmd")).unwrap();
+        assert!(main_content.contains("[`helper_func`](helper_func.qmd)"));
+
+        let helper_content = fs::read_to_string(out_dir.path().join("helper_func.qmd")).unwrap();
+        // "mf" alias should resolve to main_func
+        assert!(helper_content.contains("[`mf`](main_func.qmd)"));
+    }
+
+    #[test]
+    fn test_package_converter_md_output() {
+        let dir = tempdir().unwrap();
+        let out_dir = tempdir().unwrap();
+
+        let rd = r#"\name{test}
+\alias{test}
+\title{Test}
+\description{Test function.}
+\examples{
+x <- 1
+}
+"#;
+        fs::write(dir.path().join("test.Rd"), rd).unwrap();
+
+        let package = RdPackage::from_directory(dir.path(), false).unwrap();
+        let options = PackageConvertOptions {
+            output_dir: out_dir.path().to_path_buf(),
+            output_extension: "md".to_string(),
+            frontmatter: true,
+            pagetitle: true,
+            quarto_code_blocks: false, // Plain markdown
+            parallel_jobs: Some(1),
+            unresolved_link_url: None,
+            external_package_urls: None,
+            exec_dontrun: false,
+            exec_donttest: true,
+        };
+
+        let result = PackageConverter::new(&package, options).convert().unwrap();
+        assert_eq!(result.conversion.success_count, 1);
+
+        // Check .md extension
+        assert!(out_dir.path().join("test.md").exists());
+
+        let content = fs::read_to_string(out_dir.path().join("test.md")).unwrap();
+        // Should have pagetitle
+        assert!(content.contains("pagetitle: \"Test — test\""));
+        // Should use plain code blocks, not {r}
+        assert!(content.contains("```r"));
+        assert!(!content.contains("```{r}"));
+    }
+
+    #[test]
+    fn test_package_converter_handles_parse_errors_at_load_time() {
+        let dir = tempdir().unwrap();
+
+        // One valid file
+        let rd_good = r#"\name{good}
+\alias{good}
+\title{Good}
+\description{Works fine.}
+"#;
+        // One invalid file (unclosed brace)
+        let rd_bad = r#"\name{bad
+\title{Bad}
+"#;
+        fs::write(dir.path().join("good.Rd"), rd_good).unwrap();
+        fs::write(dir.path().join("bad.Rd"), rd_bad).unwrap();
+
+        // from_directory fails when any file has parse errors (during alias index building)
+        let result = RdPackage::from_directory(dir.path(), false);
+        assert!(result.is_err());
+
+        // The error should be a parse error
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("bad.Rd"));
+    }
+
+    #[test]
+    fn test_package_converter_with_unresolved_link_url() {
+        let dir = tempdir().unwrap();
+        let out_dir = tempdir().unwrap();
+
+        let rd = r#"\name{caller}
+\alias{caller}
+\title{Caller}
+\description{Uses \link{unknown_external}.}
+"#;
+        fs::write(dir.path().join("caller.Rd"), rd).unwrap();
+
+        let package = RdPackage::from_directory(dir.path(), false).unwrap();
+        let options = PackageConvertOptions {
+            output_dir: out_dir.path().to_path_buf(),
+            output_extension: "qmd".to_string(),
+            frontmatter: false,
+            pagetitle: false,
+            quarto_code_blocks: true,
+            parallel_jobs: Some(1),
+            unresolved_link_url: Some("https://rdrr.io/r/base/{topic}.html".to_string()),
+            external_package_urls: None,
+            exec_dontrun: false,
+            exec_donttest: true,
+        };
+
+        let result = PackageConverter::new(&package, options).convert().unwrap();
+        assert_eq!(result.conversion.success_count, 1);
+
+        let content = fs::read_to_string(out_dir.path().join("caller.qmd")).unwrap();
+        // Link text has backticks
+        assert!(content.contains("[`unknown_external`](https://rdrr.io/r/base/unknown_external.html)"));
+    }
+
+    #[test]
+    fn test_package_converter_with_external_package_urls() {
+        let dir = tempdir().unwrap();
+        let out_dir = tempdir().unwrap();
+
+        let rd = r#"\name{tidyverse_user}
+\alias{tidyverse_user}
+\title{Tidyverse User}
+\description{Uses \link[dplyr]{mutate} and \link[ggplot2]{ggplot}.}
+"#;
+        fs::write(dir.path().join("tidyverse_user.Rd"), rd).unwrap();
+
+        let mut external_urls = std::collections::HashMap::new();
+        external_urls.insert(
+            "dplyr".to_string(),
+            "https://dplyr.tidyverse.org/reference".to_string(),
+        );
+        external_urls.insert(
+            "ggplot2".to_string(),
+            "https://ggplot2.tidyverse.org/reference".to_string(),
+        );
+
+        let package = RdPackage::from_directory(dir.path(), false).unwrap();
+        let options = PackageConvertOptions {
+            output_dir: out_dir.path().to_path_buf(),
+            output_extension: "qmd".to_string(),
+            frontmatter: false,
+            pagetitle: false,
+            quarto_code_blocks: true,
+            parallel_jobs: Some(1),
+            unresolved_link_url: None,
+            external_package_urls: Some(external_urls),
+            exec_dontrun: false,
+            exec_donttest: true,
+        };
+
+        let result = PackageConverter::new(&package, options).convert().unwrap();
+        assert_eq!(result.conversion.success_count, 1);
+
+        let content = fs::read_to_string(out_dir.path().join("tidyverse_user.qmd")).unwrap();
+        // Link text uses [`package::topic`] format
+        assert!(content.contains("[`dplyr::mutate`](https://dplyr.tidyverse.org/reference/mutate.html)"));
+        assert!(content.contains("[`ggplot2::ggplot`](https://ggplot2.tidyverse.org/reference/ggplot.html)"));
+    }
+
+    #[test]
+    fn test_package_converter_empty_directory() {
+        let dir = tempdir().unwrap();
+        let out_dir = tempdir().unwrap();
+
+        let package = RdPackage::from_directory(dir.path(), false).unwrap();
+        assert!(package.files.is_empty());
+
+        let options = PackageConvertOptions {
+            output_dir: out_dir.path().to_path_buf(),
+            output_extension: "qmd".to_string(),
+            frontmatter: false,
+            pagetitle: false,
+            quarto_code_blocks: true,
+            parallel_jobs: Some(1),
+            unresolved_link_url: None,
+            external_package_urls: None,
+            exec_dontrun: false,
+            exec_donttest: true,
+        };
+
+        let result = PackageConverter::new(&package, options).convert().unwrap();
+
+        assert_eq!(result.conversion.success_count, 0);
+        assert!(result.conversion.failed_files.is_empty());
+        assert!(result.conversion.output_files.is_empty());
+    }
+
+    #[test]
+    fn test_full_convert_result_structure() {
+        let dir = tempdir().unwrap();
+        let out_dir = tempdir().unwrap();
+
+        let rd = r#"\name{simple}
+\alias{simple}
+\title{Simple}
+\description{A simple function.}
+"#;
+        fs::write(dir.path().join("simple.Rd"), rd).unwrap();
+
+        let package = RdPackage::from_directory(dir.path(), false).unwrap();
+        let options = PackageConvertOptions {
+            output_dir: out_dir.path().to_path_buf(),
+            output_extension: "qmd".to_string(),
+            frontmatter: false,
+            pagetitle: false,
+            quarto_code_blocks: true,
+            parallel_jobs: Some(1),
+            unresolved_link_url: None,
+            external_package_urls: None,
+            exec_dontrun: false,
+            exec_donttest: true,
+        };
+
+        let result = PackageConverter::new(&package, options).convert().unwrap();
+
+        // Check FullConvertResult fields
+        assert_eq!(result.conversion.success_count, 1);
+        assert!(result.conversion.failed_files.is_empty());
+        assert_eq!(result.conversion.output_files.len(), 1);
+        // Fallbacks are empty when not using external links feature
+        assert!(result.fallbacks.is_empty());
     }
 }

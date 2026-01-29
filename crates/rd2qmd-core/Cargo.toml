@@ -5,6 +5,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = []
+lifecycle = ["rd-parser/lifecycle"]
+roxygen = ["rd-parser/roxygen"]
+
 [dependencies]
 rd2qmd-mdast.workspace = true
 rd-parser = { workspace = true, features = ["json"] }

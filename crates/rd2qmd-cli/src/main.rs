@@ -8,14 +8,10 @@ use config::Config;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use rd2qmd_core::{
-    ArgumentsFormat, ConverterOptions, Frontmatter, RdMetadata, SectionTag, WriterOptions,
-    mdast_to_qmd, parse, rd_to_mdast_with_options,
-};
+use rd2qmd_core::{ArgumentsFormat, RdConverter};
 use rd2qmd_package::{
-    FallbackReason, PackageConvertOptions, PackageUrlResolver, PackageUrlResolverOptions,
-    RdPackage, TopicIndexOptions, collect_external_packages, convert_package,
-    generate_topic_index,
+    ExternalLinkOptions as PackageExternalLinkOptions, FallbackReason, FullConvertResult,
+    PackageConvertOptions, PackageConverter, RdPackage, TopicIndexOptions, generate_topic_index,
 };
 
 /// Options for external package link resolution
@@ -355,18 +351,23 @@ fn convert_single_file(
     let content = fs::read_to_string(input)
         .with_context(|| format!("Failed to read: {}", input.display()))?;
 
-    let qmd = convert_rd_to_qmd(
-        &content,
-        output_extension,
-        use_frontmatter,
-        use_pagetitle,
-        quarto_code_blocks,
-        None,
-        unresolved_link_url,
-        exec_dontrun,
-        exec_donttest,
-        arguments_format,
-    )?;
+    // Build converter using RdConverter builder pattern
+    let mut converter = RdConverter::new(&content)
+        .output_extension(output_extension)
+        .frontmatter(use_frontmatter)
+        .pagetitle(use_pagetitle)
+        .quarto_code_blocks(quarto_code_blocks)
+        .exec_dontrun(exec_dontrun)
+        .exec_donttest(exec_donttest)
+        .arguments_format(arguments_format);
+
+    if let Some(url) = unresolved_link_url {
+        converter = converter.unresolved_link_url(url);
+    }
+
+    let qmd = converter
+        .convert()
+        .map_err(|e| anyhow::anyhow!("Parse error: {}", e))?;
 
     if let Some(parent) = output_path.parent() {
         fs::create_dir_all(parent)
@@ -429,103 +430,6 @@ fn convert_directory(
         );
     }
 
-    // Resolve external package URLs if enabled
-    let external_package_urls = if let Some(opts) = external_link_options {
-        if opts.lib_paths.is_empty() {
-            if verbose {
-                eprintln!("No R library paths specified, skipping external link resolution");
-            }
-            None
-        } else {
-            if verbose {
-                eprintln!("Collecting external package references...");
-            }
-            let external_packages = collect_external_packages(&package);
-            if verbose {
-                eprintln!(
-                    "Found {} external packages: {:?}",
-                    external_packages.len(),
-                    external_packages
-                );
-            }
-
-            if external_packages.is_empty() {
-                None
-            } else {
-                if verbose {
-                    eprintln!("Resolving external package URLs...");
-                }
-                let mut resolver = PackageUrlResolver::new(PackageUrlResolverOptions {
-                    lib_paths: opts.lib_paths,
-                    cache_dir: opts.cache_dir,
-                    fallback_url: opts.fallback_url,
-                    enable_http: true,
-                });
-                let resolve_result = resolver.resolve_packages(&external_packages);
-                if verbose {
-                    eprintln!("Resolved {} package URLs", resolve_result.urls.len());
-                }
-
-                // Display fallback warnings
-                if !quiet && !resolve_result.fallbacks.is_empty() {
-                    // Group fallbacks by reason
-                    let not_installed: Vec<_> = resolve_result
-                        .fallbacks
-                        .iter()
-                        .filter(|(_, r)| **r == FallbackReason::NotInstalled)
-                        .map(|(pkg, _)| pkg.as_str())
-                        .collect();
-                    let no_pkgdown: Vec<_> = resolve_result
-                        .fallbacks
-                        .iter()
-                        .filter(|(_, r)| **r == FallbackReason::NoPkgdownSite)
-                        .map(|(pkg, _)| pkg.as_str())
-                        .collect();
-
-                    if verbose {
-                        // Detailed warnings with package names
-                        for pkg in &not_installed {
-                            eprintln!(
-                                "Warning: package '{}' is not installed, using fallback URL",
-                                pkg
-                            );
-                        }
-                        for pkg in &no_pkgdown {
-                            eprintln!(
-                                "Warning: package '{}' has no pkgdown site, using fallback URL",
-                                pkg
-                            );
-                        }
-                    } else {
-                        // Summary warnings
-                        if !not_installed.is_empty() {
-                            eprintln!(
-                                "Warning: {} package(s) not installed, using fallback URLs: {}",
-                                not_installed.len(),
-                                not_installed.join(", ")
-                            );
-                        }
-                        if !no_pkgdown.is_empty() {
-                            eprintln!(
-                                "Warning: {} package(s) have no pkgdown site, using fallback URLs: {}",
-                                no_pkgdown.len(),
-                                no_pkgdown.join(", ")
-                            );
-                        }
-                    }
-                }
-
-                if resolve_result.urls.is_empty() {
-                    None
-                } else {
-                    Some(resolve_result.urls)
-                }
-            }
-        }
-    } else {
-        None
-    };
-
     // Configure conversion options
     let options = PackageConvertOptions {
         output_dir,
@@ -535,14 +439,43 @@ fn convert_directory(
         quarto_code_blocks,
         parallel_jobs: jobs,
         unresolved_link_url,
-        external_package_urls,
+        external_package_urls: None, // Will be set by convert_package_with_external_links
         exec_dontrun,
         exec_donttest,
     };
 
-    // Convert package
-    let result =
-        convert_package(&package, &options).with_context(|| "Package conversion failed")?;
+    // Convert external link options
+    // Build converter
+    let mut converter = PackageConverter::new(&package, options);
+
+    // Add external link resolution if configured
+    if let Some(opts) = external_link_options {
+        if opts.lib_paths.is_empty() {
+            if verbose {
+                eprintln!("No R library paths specified, skipping external link resolution");
+            }
+        } else {
+            if verbose {
+                eprintln!("External link resolution enabled");
+            }
+            converter = converter.with_external_links(PackageExternalLinkOptions {
+                lib_paths: opts.lib_paths,
+                cache_dir: opts.cache_dir,
+                fallback_url: opts.fallback_url,
+            });
+        }
+    }
+
+    // Execute conversion
+    let FullConvertResult {
+        conversion: result,
+        fallbacks,
+    } = converter.convert().with_context(|| "Package conversion failed")?;
+
+    // Display fallback warnings
+    if !quiet && !fallbacks.is_empty() {
+        display_fallback_warnings(&fallbacks, verbose);
+    }
 
     // Print output files
     if !quiet {
@@ -595,135 +528,56 @@ fn convert_directory(
     Ok(())
 }
 
-/// Core conversion function for single file
-#[allow(clippy::too_many_arguments)]
-fn convert_rd_to_qmd(
-    rd_content: &str,
-    output_extension: &str,
-    use_frontmatter: bool,
-    use_pagetitle: bool,
-    quarto_code_blocks: bool,
-    alias_map: Option<std::collections::HashMap<String, String>>,
-    unresolved_link_url: Option<&str>,
-    exec_dontrun: bool,
-    exec_donttest: bool,
-    arguments_format: ArgumentsFormat,
-) -> Result<String> {
-    let doc = parse(rd_content).map_err(|e| anyhow::anyhow!("Parse error: {}", e))?;
+/// Display fallback warnings for external package URL resolution
+fn display_fallback_warnings(
+    fallbacks: &std::collections::HashMap<String, FallbackReason>,
+    verbose: bool,
+) {
+    // Group fallbacks by reason
+    let not_installed: Vec<_> = fallbacks
+        .iter()
+        .filter(|(_, r)| **r == FallbackReason::NotInstalled)
+        .map(|(pkg, _)| pkg.as_str())
+        .collect();
+    let no_pkgdown: Vec<_> = fallbacks
+        .iter()
+        .filter(|(_, r)| **r == FallbackReason::NoPkgdownSite)
+        .map(|(pkg, _)| pkg.as_str())
+        .collect();
 
-    let converter_options = ConverterOptions {
-        link_extension: Some(output_extension.to_string()),
-        alias_map,
-        unresolved_link_url: unresolved_link_url.map(|s| s.to_string()),
-        external_package_urls: None, // Single file mode doesn't resolve external packages
-        exec_dontrun,
-        exec_donttest,
-        quarto_code_blocks,
-        arguments_format,
-    };
-    let mdast = rd_to_mdast_with_options(&doc, &converter_options);
-
-    // Extract title and name for frontmatter
-    let title = doc
-        .get_section(&rd2qmd_core::SectionTag::Title)
-        .map(|s| extract_text(&s.content));
-    let name = doc
-        .get_section(&rd2qmd_core::SectionTag::Name)
-        .map(|s| extract_text(&s.content));
-
-    // Build pagetitle in pkgdown style: "<title> — <name>"
-    let pagetitle = if use_pagetitle {
-        match (&title, &name) {
-            (Some(t), Some(n)) => Some(format!("{} \u{2014} {}", t, n)),
-            _ => None,
+    if verbose {
+        // Detailed warnings with package names
+        for pkg in &not_installed {
+            eprintln!(
+                "Warning: package '{}' is not installed, using fallback URL",
+                pkg
+            );
+        }
+        for pkg in &no_pkgdown {
+            eprintln!(
+                "Warning: package '{}' has no pkgdown site, using fallback URL",
+                pkg
+            );
         }
     } else {
-        None
-    };
-
-    // Extract Rd metadata, including source files from roxygen2 comments
-    let roxygen = rd_parser::parse_roxygen_comments(rd_content);
-    let metadata = extract_rd_metadata(&doc, roxygen.source_files);
-
-    let options = WriterOptions {
-        frontmatter: if use_frontmatter {
-            Some(Frontmatter {
-                title,
-                pagetitle,
-                format: None,
-                metadata: Some(metadata),
-            })
-        } else {
-            None
-        },
-        quarto_code_blocks,
-    };
-
-    Ok(mdast_to_qmd(&mdast, &options))
-}
-
-/// Extract plain text from Rd nodes
-fn extract_text(nodes: &[rd2qmd_core::RdNode]) -> String {
-    use rd2qmd_core::RdNode;
-
-    let mut result = String::new();
-    for node in nodes {
-        match node {
-            RdNode::Text(s) => result.push_str(s),
-            RdNode::Code(children) | RdNode::Emph(children) | RdNode::Strong(children) => {
-                result.push_str(&extract_text(children));
-            }
-            _ => {}
+        // Summary warnings
+        if !not_installed.is_empty() {
+            eprintln!(
+                "Warning: {} package(s) not installed, using fallback URLs: {}",
+                not_installed.len(),
+                not_installed.join(", ")
+            );
+        }
+        if !no_pkgdown.is_empty() {
+            eprintln!(
+                "Warning: {} package(s) have no pkgdown site, using fallback URLs: {}",
+                no_pkgdown.len(),
+                no_pkgdown.join(", ")
+            );
         }
     }
-    result.trim().to_string()
 }
 
-/// Extract Rd metadata (lifecycle, aliases, keywords, concepts, source_files) from a document
-///
-/// The `source_files` parameter should be extracted from roxygen2 comments in the Rd file header.
-fn extract_rd_metadata(doc: &rd2qmd_core::RdDocument, source_files: Vec<String>) -> RdMetadata {
-    // Extract lifecycle
-    let lifecycle = doc.lifecycle().map(|l| l.as_str().to_string());
-
-    // Extract aliases
-    let mut aliases: Vec<String> = doc
-        .get_sections(&SectionTag::Alias)
-        .iter()
-        .map(|s| extract_text(&s.content))
-        .filter(|s| !s.is_empty())
-        .collect();
-    aliases.sort();
-    aliases.dedup();
-
-    // Extract keywords
-    let mut keywords: Vec<String> = doc
-        .get_sections(&SectionTag::Keyword)
-        .iter()
-        .map(|s| extract_text(&s.content))
-        .filter(|s| !s.is_empty())
-        .collect();
-    keywords.sort();
-    keywords.dedup();
-
-    // Extract concepts
-    let mut concepts: Vec<String> = doc
-        .get_sections(&SectionTag::Concept)
-        .iter()
-        .map(|s| extract_text(&s.content))
-        .filter(|s| !s.is_empty())
-        .collect();
-    concepts.sort();
-    concepts.dedup();
-
-    RdMetadata {
-        lifecycle,
-        aliases,
-        keywords,
-        concepts,
-        source_files,
-    }
-}
 
 /// Run the index subcommand: generate topic index JSON to stdout
 fn run_index_command(args: &IndexArgs) -> Result<()> {
@@ -866,13 +720,13 @@ fn merge_unresolved_link_url(cli: &Cli, config: &Config) -> Option<String> {
 /// Merge arguments table format
 fn merge_arguments_format(cli: &Cli, config: &Config) -> ArgumentsFormat {
     // If config specifies a format, check if CLI is using the default
-    if let Some(ref fmt) = config.output.arguments_table {
-        if cli.arguments_table == ArgumentsTableFormat::Grid {
-            return match fmt.to_lowercase().as_str() {
-                "pipe" => ArgumentsFormat::PipeTable,
-                _ => ArgumentsFormat::GridTable,
-            };
-        }
+    if let Some(ref fmt) = config.output.arguments_table
+        && cli.arguments_table == ArgumentsTableFormat::Grid
+    {
+        return match fmt.to_lowercase().as_str() {
+            "pipe" => ArgumentsFormat::PipeTable,
+            _ => ArgumentsFormat::GridTable,
+        };
     }
     match cli.arguments_table {
         ArgumentsTableFormat::Pipe => ArgumentsFormat::PipeTable,
