@@ -1,11 +1,12 @@
 ---
 source: crates/rd2qmd-cli/tests/integration.rs
-assertion_line: 91
 expression: output
 ---
 ---
 title: "Example control macros test"
 pagetitle: "Example control macros test — example_control"
+aliases:
+  - "example_control"
 ---
 
 # Example control macros test

@@ -3,6 +3,7 @@
 //! Converts an mdast tree into a Quarto Markdown string.
 
 use crate::mdast::{Align, Node, Root};
+use serde::Serialize;
 
 /// Options for the QMD writer
 #[derive(Debug, Clone, Default)]
@@ -20,6 +21,32 @@ pub struct Frontmatter {
     /// Page title for browser tab/SEO (pkgdown style: "<title> — <name>")
     pub pagetitle: Option<String>,
     pub format: Option<String>,
+    /// Rd metadata (lifecycle, aliases, keywords, concepts)
+    pub metadata: Option<RdMetadata>,
+}
+
+/// Metadata extracted from Rd documentation
+///
+/// This struct is shared between topic index generation and frontmatter output.
+/// For frontmatter, the writer converts lifecycle to string via `as_str()`.
+/// For topic index, serde serializes lifecycle as lowercase string.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct RdMetadata {
+    /// Lifecycle stage (deprecated, experimental, superseded, stable)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lifecycle: Option<String>,
+    /// Aliases for this topic (from \alias{})
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<String>,
+    /// Keywords for this topic (from \keyword{})
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub keywords: Vec<String>,
+    /// Concepts for this topic (from \concept{})
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub concepts: Vec<String>,
+    /// Source R files that generated this Rd file (from roxygen2 comments)
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub source_files: Vec<String>,
 }
 
 /// Convert mdast to Quarto Markdown
@@ -76,6 +103,35 @@ impl<'a> Writer<'a> {
         }
         if let Some(format) = &fm.format {
             self.output.push_str(&format!("format: {}\n", format));
+        }
+        // Write Rd metadata fields
+        // TODO: Add configuration to control which metadata fields are output
+        if let Some(metadata) = &fm.metadata {
+            if let Some(lifecycle) = &metadata.lifecycle {
+                self.output
+                    .push_str(&format!("lifecycle: {}\n", lifecycle));
+            }
+            if !metadata.aliases.is_empty() {
+                self.output.push_str("aliases:\n");
+                for alias in &metadata.aliases {
+                    self.output
+                        .push_str(&format!("  - \"{}\"\n", escape_yaml_string(alias)));
+                }
+            }
+            if !metadata.keywords.is_empty() {
+                self.output.push_str("keywords:\n");
+                for keyword in &metadata.keywords {
+                    self.output
+                        .push_str(&format!("  - \"{}\"\n", escape_yaml_string(keyword)));
+                }
+            }
+            if !metadata.concepts.is_empty() {
+                self.output.push_str("concepts:\n");
+                for concept in &metadata.concepts {
+                    self.output
+                        .push_str(&format!("  - \"{}\"\n", escape_yaml_string(concept)));
+                }
+            }
         }
         self.output.push_str("---\n\n");
     }
@@ -868,12 +924,13 @@ mod tests {
                 title: Some("My Document".to_string()),
                 pagetitle: None,
                 format: Some("html".to_string()),
+                metadata: None,
             }),
             ..Default::default()
         };
         let qmd = mdast_to_qmd(&root, &opts);
         assert!(qmd.starts_with("---\n"));
-        assert!(qmd.contains("title: \"My Document\""));
+        assert!(qmd.contains(r#"title: "My Document""#));
         assert!(qmd.contains("format: html"));
     }
 
@@ -885,13 +942,14 @@ mod tests {
                 title: Some("Order rows using column values".to_string()),
                 pagetitle: Some("Order rows using column values — arrange".to_string()),
                 format: None,
+                metadata: None,
             }),
             ..Default::default()
         };
         let qmd = mdast_to_qmd(&root, &opts);
         assert!(qmd.starts_with("---\n"));
-        assert!(qmd.contains("title: \"Order rows using column values\""));
-        assert!(qmd.contains("pagetitle: \"Order rows using column values — arrange\""));
+        assert!(qmd.contains(r#"title: "Order rows using column values""#));
+        assert!(qmd.contains(r#"pagetitle: "Order rows using column values — arrange""#));
     }
 
     #[test]
@@ -899,13 +957,72 @@ mod tests {
         let root = Root::new(vec![Node::paragraph(vec![Node::text("Content")])]);
         let opts = WriterOptions {
             frontmatter: Some(Frontmatter {
-                title: Some("Title with \"quotes\" and \\backslash".to_string()),
+                title: Some(r#"Title with "quotes" and \backslash"#.to_string()),
                 pagetitle: None,
                 format: None,
+                metadata: None,
             }),
             ..Default::default()
         };
         let qmd = mdast_to_qmd(&root, &opts);
-        assert!(qmd.contains("title: \"Title with \\\"quotes\\\" and \\\\backslash\""));
+        assert!(qmd.contains(r#"title: "Title with \"quotes\" and \\backslash""#));
+    }
+
+    #[test]
+    fn test_frontmatter_with_metadata() {
+        let root = Root::new(vec![Node::paragraph(vec![Node::text("Content")])]);
+        let opts = WriterOptions {
+            frontmatter: Some(Frontmatter {
+                title: Some("My Function".to_string()),
+                pagetitle: None,
+                format: None,
+                metadata: Some(RdMetadata {
+                    lifecycle: Some("deprecated".to_string()),
+                    aliases: vec!["my_func".to_string(), "MyFunc".to_string()],
+                    keywords: vec!["misc".to_string(), "internal".to_string()],
+                    concepts: vec!["data manipulation".to_string()],
+                    source_files: vec![],
+                }),
+            }),
+            ..Default::default()
+        };
+        let qmd = mdast_to_qmd(&root, &opts);
+        assert!(qmd.starts_with("---\n"));
+        assert!(qmd.contains(r#"title: "My Function""#));
+        assert!(qmd.contains("lifecycle: deprecated"));
+        assert!(qmd.contains("aliases:"));
+        assert!(qmd.contains(r#"  - "my_func""#));
+        assert!(qmd.contains(r#"  - "MyFunc""#));
+        assert!(qmd.contains("keywords:"));
+        assert!(qmd.contains(r#"  - "misc""#));
+        assert!(qmd.contains(r#"  - "internal""#));
+        assert!(qmd.contains("concepts:"));
+        assert!(qmd.contains(r#"  - "data manipulation""#));
+    }
+
+    #[test]
+    fn test_frontmatter_metadata_empty_vectors_omitted() {
+        let root = Root::new(vec![Node::paragraph(vec![Node::text("Content")])]);
+        let opts = WriterOptions {
+            frontmatter: Some(Frontmatter {
+                title: Some("Function".to_string()),
+                pagetitle: None,
+                format: None,
+                metadata: Some(RdMetadata {
+                    lifecycle: Some("stable".to_string()),
+                    aliases: vec![],
+                    keywords: vec![],
+                    concepts: vec![],
+                    source_files: vec![],
+                }),
+            }),
+            ..Default::default()
+        };
+        let qmd = mdast_to_qmd(&root, &opts);
+        assert!(qmd.contains("lifecycle: stable"));
+        // Empty vectors should not appear
+        assert!(!qmd.contains("aliases:"));
+        assert!(!qmd.contains("keywords:"));
+        assert!(!qmd.contains("concepts:"));
     }
 }

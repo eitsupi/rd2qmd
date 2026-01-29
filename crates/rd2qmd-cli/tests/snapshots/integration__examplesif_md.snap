@@ -5,6 +5,8 @@ expression: output
 ---
 title: "Test @examplesIf pattern"
 pagetitle: "Test @examplesIf pattern — examplesif"
+aliases:
+  - "examplesif"
 ---
 
 # Test @examplesIf pattern

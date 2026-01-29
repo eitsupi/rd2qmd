@@ -4,6 +4,8 @@ expression: output
 ---
 ---
 title: "A Simple Function"
+aliases:
+  - "simple"
 ---
 
 # A Simple Function

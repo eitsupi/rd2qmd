@@ -9,8 +9,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use rd2qmd_core::{
-    ArgumentsFormat, ConverterOptions, Frontmatter, WriterOptions, mdast_to_qmd, parse,
-    rd_to_mdast_with_options,
+    ArgumentsFormat, ConverterOptions, Frontmatter, RdMetadata, SectionTag, WriterOptions,
+    mdast_to_qmd, parse, rd_to_mdast_with_options,
 };
 use rd2qmd_package::{
     PackageConvertOptions, RdPackage, TopicIndexOptions, convert_package, generate_topic_index,
@@ -660,12 +660,16 @@ fn convert_rd_to_qmd(
         None
     };
 
+    // Extract Rd metadata
+    let metadata = extract_rd_metadata(&doc);
+
     let options = WriterOptions {
         frontmatter: if use_frontmatter {
             Some(Frontmatter {
                 title,
                 pagetitle,
                 format: None,
+                metadata: Some(metadata),
             })
         } else {
             None
@@ -691,6 +695,50 @@ fn extract_text(nodes: &[rd2qmd_core::RdNode]) -> String {
         }
     }
     result.trim().to_string()
+}
+
+/// Extract Rd metadata (lifecycle, aliases, keywords, concepts) from a document
+fn extract_rd_metadata(doc: &rd2qmd_core::RdDocument) -> RdMetadata {
+    // Extract lifecycle
+    let lifecycle = doc.lifecycle().map(|l| l.as_str().to_string());
+
+    // Extract aliases
+    let mut aliases: Vec<String> = doc
+        .get_sections(&SectionTag::Alias)
+        .iter()
+        .map(|s| extract_text(&s.content))
+        .filter(|s| !s.is_empty())
+        .collect();
+    aliases.sort();
+    aliases.dedup();
+
+    // Extract keywords
+    let mut keywords: Vec<String> = doc
+        .get_sections(&SectionTag::Keyword)
+        .iter()
+        .map(|s| extract_text(&s.content))
+        .filter(|s| !s.is_empty())
+        .collect();
+    keywords.sort();
+    keywords.dedup();
+
+    // Extract concepts
+    let mut concepts: Vec<String> = doc
+        .get_sections(&SectionTag::Concept)
+        .iter()
+        .map(|s| extract_text(&s.content))
+        .filter(|s| !s.is_empty())
+        .collect();
+    concepts.sort();
+    concepts.dedup();
+
+    RdMetadata {
+        lifecycle,
+        aliases,
+        keywords,
+        concepts,
+        source_files: vec![], // Not available in single-file mode
+    }
 }
 
 /// Run the index subcommand: generate topic index JSON to stdout

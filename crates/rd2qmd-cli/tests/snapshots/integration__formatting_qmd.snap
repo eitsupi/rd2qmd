@@ -1,11 +1,12 @@
 ---
 source: crates/rd2qmd-cli/tests/integration.rs
-assertion_line: 70
 expression: output
 ---
 ---
 title: "Formatting Examples"
 pagetitle: "Formatting Examples — formatting"
+aliases:
+  - "formatting"
 ---
 
 # Formatting Examples

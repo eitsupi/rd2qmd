@@ -21,10 +21,9 @@ pub use external_links::{
 };
 
 use rayon::prelude::*;
-use rd_parser::Lifecycle;
 use rd2qmd_core::{
-    ConverterOptions, Frontmatter, RdNode, SectionTag, WriterOptions, mdast_to_qmd, parse,
-    rd_to_mdast_with_options,
+    ConverterOptions, Frontmatter, RdDocument, RdMetadata, RdNode, SectionTag, WriterOptions,
+    mdast_to_qmd, parse, rd_to_mdast_with_options,
 };
 use serde::Serialize;
 use std::collections::HashMap;
@@ -157,14 +156,9 @@ pub struct TopicInfo {
     pub file: String,
     /// Topic title (from \title{})
     pub title: String,
-    /// Aliases for this topic (from \alias{})
-    pub aliases: Vec<String>,
-    /// Lifecycle stage, if present
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub lifecycle: Option<Lifecycle>,
-    /// Source R files that generated this Rd file (from roxygen2 comments)
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub source_files: Vec<String>,
+    /// Rd metadata (lifecycle, aliases, keywords, concepts, source_files)
+    #[serde(flatten)]
+    pub metadata: RdMetadata,
 }
 
 /// Index of all topics in a package
@@ -253,18 +247,9 @@ fn extract_topic_info(file: &Path, output_extension: &str) -> Result<TopicInfo> 
         .map(|s| extract_text(&s.content))
         .unwrap_or_default();
 
-    // Extract aliases
-    let mut aliases: Vec<String> = doc
-        .get_sections(&SectionTag::Alias)
-        .iter()
-        .map(|s| extract_text(&s.content))
-        .filter(|s| !s.is_empty())
-        .collect();
-    aliases.sort();
-    aliases.dedup();
-
-    // Extract lifecycle
-    let lifecycle = doc.lifecycle();
+    // Extract metadata using shared function, then add source_files
+    let mut metadata = extract_rd_metadata(&doc);
+    metadata.source_files = roxygen.source_files;
 
     // Determine output filename
     let basename = file.file_stem().and_then(|s| s.to_str()).unwrap_or("");
@@ -274,9 +259,7 @@ fn extract_topic_info(file: &Path, output_extension: &str) -> Result<TopicInfo> 
         name,
         file: output_file,
         title,
-        aliases,
-        lifecycle,
-        source_files: roxygen.source_files,
+        metadata,
     })
 }
 
@@ -376,6 +359,9 @@ fn convert_single_file(
             None
         };
 
+        // Extract Rd metadata
+        let metadata = extract_rd_metadata(&doc);
+
         // Build writer options
         let writer_options = WriterOptions {
             frontmatter: if options.frontmatter {
@@ -383,6 +369,7 @@ fn convert_single_file(
                     title,
                     pagetitle,
                     format: None,
+                    metadata: Some(metadata),
                 })
             } else {
                 None
@@ -492,6 +479,50 @@ fn extract_text(nodes: &[RdNode]) -> String {
     result.trim().to_string()
 }
 
+/// Extract Rd metadata (lifecycle, aliases, keywords, concepts) from a document
+fn extract_rd_metadata(doc: &RdDocument) -> RdMetadata {
+    // Extract lifecycle
+    let lifecycle = doc.lifecycle().map(|l| l.as_str().to_string());
+
+    // Extract aliases
+    let mut aliases: Vec<String> = doc
+        .get_sections(&SectionTag::Alias)
+        .iter()
+        .map(|s| extract_text(&s.content))
+        .filter(|s| !s.is_empty())
+        .collect();
+    aliases.sort();
+    aliases.dedup();
+
+    // Extract keywords
+    let mut keywords: Vec<String> = doc
+        .get_sections(&SectionTag::Keyword)
+        .iter()
+        .map(|s| extract_text(&s.content))
+        .filter(|s| !s.is_empty())
+        .collect();
+    keywords.sort();
+    keywords.dedup();
+
+    // Extract concepts
+    let mut concepts: Vec<String> = doc
+        .get_sections(&SectionTag::Concept)
+        .iter()
+        .map(|s| extract_text(&s.content))
+        .filter(|s| !s.is_empty())
+        .collect();
+    concepts.sort();
+    concepts.dedup();
+
+    RdMetadata {
+        lifecycle,
+        aliases,
+        keywords,
+        concepts,
+        source_files: vec![], // Populated separately from roxygen comments
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -579,19 +610,19 @@ An old deprecated function.
         let new_topic = index.topics.iter().find(|t| t.name == "new_func").unwrap();
         assert_eq!(new_topic.file, "new_func.qmd");
         assert_eq!(new_topic.title, "New Function");
-        assert!(new_topic.aliases.contains(&"new_func".to_string()));
-        assert!(new_topic.lifecycle.is_none());
+        assert!(new_topic.metadata.aliases.contains(&"new_func".to_string()));
+        assert!(new_topic.metadata.lifecycle.is_none());
 
         let old_topic = index.topics.iter().find(|t| t.name == "old_func").unwrap();
         assert_eq!(old_topic.file, "old_func.qmd");
         assert_eq!(old_topic.title, "Old Function");
-        assert!(old_topic.aliases.contains(&"old_func".to_string()));
-        assert!(old_topic.aliases.contains(&"legacy_func".to_string()));
-        assert_eq!(old_topic.lifecycle, Some(Lifecycle::Deprecated));
+        assert!(old_topic.metadata.aliases.contains(&"old_func".to_string()));
+        assert!(old_topic.metadata.aliases.contains(&"legacy_func".to_string()));
+        assert_eq!(old_topic.metadata.lifecycle, Some("deprecated".to_string()));
 
         // Both are hand-written, so no source_files
-        assert!(new_topic.source_files.is_empty());
-        assert!(old_topic.source_files.is_empty());
+        assert!(new_topic.metadata.source_files.is_empty());
+        assert!(old_topic.metadata.source_files.is_empty());
     }
 
     #[test]
@@ -627,13 +658,13 @@ An old deprecated function.
         // Roxygen-generated topic has source_files
         let coord_topic = index.topics.iter().find(|t| t.name == "coord_map").unwrap();
         assert_eq!(
-            coord_topic.source_files,
+            coord_topic.metadata.source_files,
             vec!["R/coord-map.R", "R/coord-quickmap.R"]
         );
 
         // Manual topic has no source_files
         let manual_topic = index.topics.iter().find(|t| t.name == "manual").unwrap();
-        assert!(manual_topic.source_files.is_empty());
+        assert!(manual_topic.metadata.source_files.is_empty());
     }
 
     #[test]
@@ -644,17 +675,25 @@ An old deprecated function.
                     name: "foo".to_string(),
                     file: "foo.qmd".to_string(),
                     title: "Foo Function".to_string(),
-                    aliases: vec!["foo".to_string(), "bar".to_string()],
-                    lifecycle: Some(Lifecycle::Deprecated),
-                    source_files: vec!["R/foo.R".to_string(), "R/bar.R".to_string()],
+                    metadata: RdMetadata {
+                        lifecycle: Some("deprecated".to_string()),
+                        aliases: vec!["foo".to_string(), "bar".to_string()],
+                        keywords: vec![],
+                        concepts: vec![],
+                        source_files: vec!["R/foo.R".to_string(), "R/bar.R".to_string()],
+                    },
                 },
                 TopicInfo {
                     name: "baz".to_string(),
                     file: "baz.qmd".to_string(),
                     title: "Baz Function".to_string(),
-                    aliases: vec!["baz".to_string()],
-                    lifecycle: None,
-                    source_files: vec![], // Empty - should be omitted from JSON
+                    metadata: RdMetadata {
+                        lifecycle: None,
+                        aliases: vec!["baz".to_string()],
+                        keywords: vec![],
+                        concepts: vec![],
+                        source_files: vec![], // Empty - should be omitted from JSON
+                    },
                 },
             ],
         };
@@ -666,7 +705,7 @@ An old deprecated function.
         let topics = parsed["topics"].as_array().unwrap();
         assert_eq!(topics.len(), 2);
 
-        // First topic has lifecycle and source_files
+        // First topic has lifecycle and source_files (flattened from metadata)
         assert_eq!(topics[0]["name"], "foo");
         assert_eq!(topics[0]["lifecycle"], "deprecated");
         assert_eq!(
