@@ -423,13 +423,31 @@ impl Converter {
     }
 
     /// Convert RdNode content to Markdown text for use in grid table cells.
-    /// Preserves block structure (paragraphs, lists) as Markdown.
+    ///
+    /// # Why this exists (separate from the main writer)
+    ///
+    /// Grid tables are built using the `tabled` library, which operates on raw strings.
+    /// Unlike the main mdast writer (`rd2qmd_mdast::writer`), which writes to a single
+    /// global output string, we need to convert AST subtrees to standalone markdown strings
+    /// for each table cell.
+    ///
+    /// The main writer cannot easily produce markdown for a subtree because:
+    /// 1. It maintains global state (line position, blank line tracking)
+    /// 2. It writes directly to an output buffer, not returning strings
+    ///
+    /// Ideally, we could refactor to either:
+    /// - Make the writer able to serialize subtrees to strings
+    /// - Use a table library that accepts AST nodes directly
+    ///
+    /// For now, `nodes_to_markdown` and `inline_nodes_to_markdown` exist as a separate
+    /// code path specifically for grid table cell content.
     fn convert_to_markdown_text(&mut self, content: &[RdNode]) -> String {
         let nodes = self.convert_content(content);
         self.nodes_to_markdown(&nodes)
     }
 
-    /// Convert mdast nodes to Markdown text string.
+    /// Convert mdast nodes to Markdown text string (for grid table cells).
+    /// See `convert_to_markdown_text` for why this exists.
     fn nodes_to_markdown(&self, nodes: &[Node]) -> String {
         let mut result = String::new();
 
@@ -489,7 +507,10 @@ impl Converter {
         result
     }
 
-    /// Convert inline mdast nodes to Markdown text.
+    /// Convert inline mdast nodes to Markdown text (for grid table cells).
+    ///
+    /// This handles inline elements like text, code, emphasis, links, and images.
+    /// See `convert_to_markdown_text` for why this separate code path exists.
     fn inline_nodes_to_markdown(&self, nodes: &[Node]) -> String {
         let mut result = String::new();
 
@@ -522,6 +543,18 @@ impl Converter {
                     result.push('$');
                     result.push_str(&m.value);
                     result.push('$');
+                }
+                Node::Image(img) => {
+                    result.push_str("![");
+                    result.push_str(&img.alt);
+                    result.push_str("](");
+                    result.push_str(&img.url);
+                    if let Some(title) = &img.title {
+                        result.push_str(" \"");
+                        result.push_str(title);
+                        result.push('"');
+                    }
+                    result.push(')');
                 }
                 Node::Break => result.push_str("  \n"),
                 Node::Html(h) => result.push_str(&h.value),

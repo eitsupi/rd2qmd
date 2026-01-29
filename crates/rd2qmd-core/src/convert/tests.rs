@@ -1220,3 +1220,40 @@ fn test_arguments_grid_table_with_list_snapshot() {
     let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
     insta::assert_snapshot!(qmd);
 }
+
+#[test]
+fn test_arguments_grid_table_with_lifecycle_badge_snapshot() {
+    // Regression test: lifecycle badge images inside href in grid table cells
+    // should preserve the image alt text (e.g., [Experimental], [Deprecated])
+    let rd = r#"
+\name{test}
+\title{Test Function}
+\arguments{
+\item{engine}{The engine name. One of:
+\itemize{
+\item \code{"streaming"}: \ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#experimental}{\figure{lifecycle-experimental.svg}{options: alt='[Experimental]'}}}{\strong{[Experimental]}} Use streaming.
+}}
+\item{type_coercion}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}}
+Use a flag instead.}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = ConverterOptions {
+        arguments_format: ArgumentsFormat::GridTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+
+    // Verify that lifecycle badge alt text is preserved
+    assert!(
+        qmd.contains("[![[Experimental]]"),
+        "Expected lifecycle badge with [Experimental] alt text"
+    );
+    assert!(
+        qmd.contains("[![[Deprecated]]"),
+        "Expected lifecycle badge with [Deprecated] alt text"
+    );
+
+    insta::assert_snapshot!(qmd);
+}
