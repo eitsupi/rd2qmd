@@ -16,10 +16,10 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use rd2qmd_package::{PackageConvertOptions, RdPackage, convert_package};
-
-#[cfg(feature = "external-links")]
-use rd2qmd_package::{PackageUrlResolver, PackageUrlResolverOptions, collect_external_packages};
+use rd2qmd_package::{
+    PackageConvertOptions, PackageUrlResolver, PackageUrlResolverOptions, RdPackage,
+    collect_external_packages, convert_package,
+};
 
 #[derive(Parser, Debug)]
 #[command(name = "benchmark")]
@@ -29,12 +29,10 @@ struct Args {
     man_dir: PathBuf,
 
     /// R library path for external link resolution (can be specified multiple times)
-    #[cfg(feature = "external-links")]
     #[arg(long = "r-lib-path", value_name = "PATH")]
     r_lib_paths: Vec<PathBuf>,
 
     /// Cache directory for pkgdown.yml files
-    #[cfg(feature = "external-links")]
     #[arg(long, value_name = "DIR")]
     cache_dir: Option<PathBuf>,
 
@@ -80,7 +78,6 @@ fn main() -> Result<()> {
     println!();
 
     // Benchmark with external links if r-lib-path is provided
-    #[cfg(feature = "external-links")]
     if !args.r_lib_paths.is_empty() {
         // Collect external packages
         println!("Collecting external package references...");
@@ -158,7 +155,6 @@ fn run_benchmark(
     Ok(times)
 }
 
-#[cfg(feature = "external-links")]
 fn run_benchmark_with_url_resolution(
     package: &RdPackage,
     output_dir: &std::path::Path,
@@ -206,7 +202,6 @@ fn run_single_benchmark(
     Ok(())
 }
 
-#[cfg(feature = "external-links")]
 fn resolve_external_urls(
     packages: &std::collections::HashSet<String>,
     lib_paths: &[PathBuf],

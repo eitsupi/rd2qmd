@@ -13,12 +13,9 @@ use rd2qmd_core::{
     mdast_to_qmd, parse, rd_to_mdast_with_options,
 };
 use rd2qmd_package::{
-    PackageConvertOptions, RdPackage, TopicIndexOptions, convert_package, generate_topic_index,
-};
-
-#[cfg(feature = "external-links")]
-use rd2qmd_package::{
-    FallbackReason, PackageUrlResolver, PackageUrlResolverOptions, collect_external_packages,
+    FallbackReason, PackageConvertOptions, PackageUrlResolver, PackageUrlResolverOptions,
+    RdPackage, TopicIndexOptions, collect_external_packages, convert_package,
+    generate_topic_index,
 };
 
 /// Options for external package link resolution
@@ -120,23 +117,19 @@ struct Cli {
     no_unresolved_link_url: bool,
 
     /// R library path to search for external packages (can be specified multiple times)
-    #[cfg(feature = "external-links")]
     #[arg(long = "r-lib-path", value_name = "PATH")]
     r_lib_paths: Vec<PathBuf>,
 
     /// Cache directory for pkgdown.yml files (default: system temp directory)
-    #[cfg(feature = "external-links")]
     #[arg(long, value_name = "DIR")]
     cache_dir: Option<PathBuf>,
 
     /// Disable external package link resolution
-    #[cfg(feature = "external-links")]
     #[arg(long)]
     no_external_links: bool,
 
     /// Fallback URL pattern for external packages without pkgdown sites
     /// Use {package} and {topic} as placeholders
-    #[cfg(feature = "external-links")]
     #[arg(
         long,
         value_name = "URL_PATTERN",
@@ -303,13 +296,7 @@ fn main() -> Result<()> {
         )?;
     } else if input.is_dir() {
         // Build external package URL options
-        #[cfg(feature = "external-links")]
         let external_link_options = merge_external_link_options(&cli, &config);
-        #[cfg(not(feature = "external-links"))]
-        let external_link_options: Option<ExternalLinkOptions> = {
-            let _ = &config; // Suppress unused warning
-            None
-        };
 
         // Directory conversion (with alias resolution via rd2qmd-package)
         convert_directory(
@@ -443,7 +430,6 @@ fn convert_directory(
     }
 
     // Resolve external package URLs if enabled
-    #[cfg(feature = "external-links")]
     let external_package_urls = if let Some(opts) = external_link_options {
         if opts.lib_paths.is_empty() {
             if verbose {
@@ -537,11 +523,6 @@ fn convert_directory(
             }
         }
     } else {
-        None
-    };
-    #[cfg(not(feature = "external-links"))]
-    let external_package_urls: Option<HashMap<String, String>> = {
-        let _ = external_link_options; // Suppress unused warning
         None
     };
 
@@ -899,8 +880,7 @@ fn merge_arguments_format(cli: &Cli, config: &Config) -> ArgumentsFormat {
     }
 }
 
-/// Merge external link options (only with external-links feature)
-#[cfg(feature = "external-links")]
+/// Merge external link options
 fn merge_external_link_options(cli: &Cli, config: &Config) -> Option<ExternalLinkOptions> {
     // CLI --no-external-links explicitly disables
     if cli.no_external_links {
@@ -957,13 +937,9 @@ mod tests {
             quarto_code_blocks: None,
             unresolved_link_url: "https://rdrr.io/r/base/{topic}.html".to_string(),
             no_unresolved_link_url: false,
-            #[cfg(feature = "external-links")]
             r_lib_paths: vec![],
-            #[cfg(feature = "external-links")]
             cache_dir: None,
-            #[cfg(feature = "external-links")]
             no_external_links: false,
-            #[cfg(feature = "external-links")]
             external_package_fallback: "https://rdrr.io/pkg/{package}/man/{topic}.html".to_string(),
             verbose: false,
             quiet: false,
@@ -1151,7 +1127,6 @@ mod tests {
         assert_eq!(merge_arguments_format(&cli, &config), ArgumentsFormat::PipeTable);
     }
 
-    #[cfg(feature = "external-links")]
     #[test]
     fn test_merge_external_link_options_disabled_by_cli() {
         let mut cli = default_cli();
@@ -1167,7 +1142,6 @@ mod tests {
         assert!(merge_external_link_options(&cli, &config).is_none());
     }
 
-    #[cfg(feature = "external-links")]
     #[test]
     fn test_merge_external_link_options_disabled_by_config() {
         let cli = default_cli();
@@ -1182,7 +1156,6 @@ mod tests {
         assert!(merge_external_link_options(&cli, &config).is_none());
     }
 
-    #[cfg(feature = "external-links")]
     #[test]
     fn test_merge_external_link_options_lib_paths_from_config() {
         let cli = default_cli();
@@ -1198,7 +1171,6 @@ mod tests {
         assert_eq!(opts.lib_paths, vec![std::path::PathBuf::from("/usr/lib/R")]);
     }
 
-    #[cfg(feature = "external-links")]
     #[test]
     fn test_merge_external_link_options_cli_overrides_lib_paths() {
         let mut cli = default_cli();
