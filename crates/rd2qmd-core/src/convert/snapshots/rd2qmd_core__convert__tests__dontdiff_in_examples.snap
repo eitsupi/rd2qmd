@@ -1,0 +1,16 @@
+---
+source: crates/rd2qmd-core/src/convert/tests.rs
+expression: qmd
+---
+# Dontdiff Test
+
+## Examples
+
+```r
+x <- 1
+
+# Output varies - don't diff
+print(Sys.time())
+
+y <- 2
+```

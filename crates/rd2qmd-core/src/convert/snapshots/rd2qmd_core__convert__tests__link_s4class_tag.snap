@@ -1,0 +1,9 @@
+---
+source: crates/rd2qmd-core/src/convert/tests.rs
+expression: qmd
+---
+# LinkS4class Test
+
+## Description
+
+ See `MyClass-class` and `methods::representation-class`.

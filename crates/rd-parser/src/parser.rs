@@ -238,7 +238,11 @@ impl Parser {
             // Link-like elements
             "href" => self.parse_href(),
             "link" => self.parse_link(opt_arg),
+            "linkS4class" => self.parse_link_s4class(opt_arg),
             "Sexpr" => self.parse_sexpr(opt_arg),
+
+            // DOI link
+            "doi" => self.parse_text_arg().map(|s| Some(RdNode::Doi(s))),
 
             // Equations
             "eqn" => self.parse_equation(false),
@@ -252,6 +256,7 @@ impl Parser {
             // Method declarations (in \usage)
             "method" => self.parse_method(),
             "S4method" => self.parse_s4method(),
+            "S3method" => self.parse_s3method(),
 
             // Item (in lists)
             "item" => self.parse_item(),
@@ -263,6 +268,7 @@ impl Parser {
             "dontrun" => self.parse_inline_nodes().map(|n| Some(RdNode::DontRun(n))),
             "donttest" => self.parse_inline_nodes().map(|n| Some(RdNode::DontTest(n))),
             "dontshow" | "testonly" => self.parse_inline_nodes().map(|n| Some(RdNode::DontShow(n))),
+            "dontdiff" => self.parse_inline_nodes().map(|n| Some(RdNode::DontDiff(n))),
 
             // Unknown macro - store generically
             _ => self.parse_generic_macro(&name),
@@ -782,6 +788,34 @@ impl Parser {
         self.expect(&TokenKind::CloseBrace)?;
 
         Ok(Some(RdNode::S4Method { generic, signature }))
+    }
+
+    /// Parse \S3method{generic}{class} - equivalent to \method
+    fn parse_s3method(&mut self) -> ParseResult<Option<RdNode>> {
+        self.skip_whitespace();
+        self.expect(&TokenKind::OpenBrace)?;
+        let generic = self.parse_text_until_close_brace()?;
+        self.expect(&TokenKind::CloseBrace)?;
+
+        self.skip_whitespace();
+        self.expect(&TokenKind::OpenBrace)?;
+        let class = self.parse_text_until_close_brace()?;
+        self.expect(&TokenKind::CloseBrace)?;
+
+        Ok(Some(RdNode::S3Method { generic, class }))
+    }
+
+    /// Parse \linkS4class[pkg]{classname} - link to S4 class documentation
+    fn parse_link_s4class(&mut self, opt_arg: Option<String>) -> ParseResult<Option<RdNode>> {
+        self.skip_whitespace();
+        self.expect(&TokenKind::OpenBrace)?;
+        let classname = self.parse_text_until_close_brace()?;
+        self.expect(&TokenKind::CloseBrace)?;
+
+        Ok(Some(RdNode::LinkS4Class {
+            package: opt_arg,
+            classname,
+        }))
     }
 
     /// Parse \figure{file}{options}

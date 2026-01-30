@@ -331,6 +331,27 @@ pub enum RdNode {
     /// Used in examples to mark code that is executed but not displayed
     /// Also handles \testonly{} as an alias
     DontShow(Vec<RdNode>),
+
+    /// Don't diff this code (\dontdiff{})
+    /// Used in examples to mark code that should not be diff-checked during testing
+    DontDiff(Vec<RdNode>),
+
+    /// DOI (Digital Object Identifier) link (\doi{})
+    /// Generates a link to https://doi.org/{id}
+    Doi(String),
+
+    /// S3 method declaration in usage (\S3method{generic}{class})
+    /// Equivalent to \method{generic}{class}
+    S3Method { generic: String, class: String },
+
+    /// Link to S4 class documentation (\linkS4class{} or \linkS4class[pkg]{})
+    /// Equivalent to \link[=classname-class]{classname}
+    LinkS4Class {
+        /// Optional package name
+        package: Option<String>,
+        /// S4 class name
+        classname: String,
+    },
 }
 
 /// Description list item

@@ -1,0 +1,100 @@
+---
+source: crates/rd-parser/tests/parser_snapshots.rs
+expression: ast_json
+---
+{
+  "sections": [
+    {
+      "tag": "name",
+      "content": [
+        {
+          "text": "new_tags"
+        }
+      ]
+    },
+    {
+      "tag": "title",
+      "content": [
+        {
+          "text": "New Tags Test"
+        }
+      ]
+    },
+    {
+      "tag": "description",
+      "content": [
+        {
+          "text": "\nTesting new tags: "
+        },
+        {
+          "doi": "10.1234/example.2024"
+        },
+        {
+          "text": ",\n"
+        },
+        {
+          "linkS4Class": {
+            "package": null,
+            "classname": "MyClass"
+          }
+        },
+        {
+          "text": ", and "
+        },
+        {
+          "linkS4Class": {
+            "package": "methods",
+            "classname": "representation"
+          }
+        },
+        {
+          "text": ".\n"
+        }
+      ]
+    },
+    {
+      "tag": "usage",
+      "content": [
+        {
+          "text": "\n"
+        },
+        {
+          "s3Method": {
+            "generic": "print",
+            "class": "myclass"
+          }
+        },
+        {
+          "text": "(x, ...)\n"
+        },
+        {
+          "s3Method": {
+            "generic": "[",
+            "class": "myclass"
+          }
+        },
+        {
+          "text": "(x, i, j)\n"
+        }
+      ]
+    },
+    {
+      "tag": "examples",
+      "content": [
+        {
+          "text": "\n"
+        },
+        {
+          "dontDiff": [
+            {
+              "text": "\n# This output should not be diff-checked\nprint(Sys.time())\n"
+            }
+          ]
+        },
+        {
+          "text": "\nx <- 1\n"
+        }
+      ]
+    }
+  ]
+}

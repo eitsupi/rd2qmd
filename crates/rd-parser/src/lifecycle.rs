@@ -228,7 +228,8 @@ fn find_lifecycle_in_node(node: &RdNode) -> Option<Lifecycle> {
         | RdNode::DQuote(children)
         | RdNode::DontRun(children)
         | RdNode::DontTest(children)
-        | RdNode::DontShow(children) => find_lifecycle_in_nodes(children),
+        | RdNode::DontShow(children)
+        | RdNode::DontDiff(children) => find_lifecycle_in_nodes(children),
 
         RdNode::Itemize(items) | RdNode::Enumerate(items) => find_lifecycle_in_nodes(items),
 
@@ -302,11 +303,14 @@ fn find_lifecycle_in_node(node: &RdNode) -> Option<Lifecycle> {
         | RdNode::Out(_)
         | RdNode::Method { .. }
         | RdNode::S4Method { .. }
+        | RdNode::S3Method { .. }
         | RdNode::Acronym(_)
         | RdNode::Option(_)
         | RdNode::Var(_)
         | RdNode::Env(_)
-        | RdNode::Command(_) => None,
+        | RdNode::Command(_)
+        | RdNode::Doi(_)
+        | RdNode::LinkS4Class { .. } => None,
     }
 }
 

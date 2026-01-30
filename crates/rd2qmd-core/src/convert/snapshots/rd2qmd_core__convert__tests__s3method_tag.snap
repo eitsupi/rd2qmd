@@ -1,0 +1,14 @@
+---
+source: crates/rd2qmd-core/src/convert/tests.rs
+expression: qmd
+---
+# S3method Test
+
+## Usage
+
+```r
+# S3 method for class 'myclass'
+print(x, ...)
+# Default S3 method
+summary(object)
+```

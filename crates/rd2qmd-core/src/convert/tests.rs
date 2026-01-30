@@ -1502,3 +1502,73 @@ y <- "``nested``"
     );
     insta::assert_snapshot!(qmd);
 }
+
+// ========================================================================
+// Tests for new tags: \doi, \dontdiff, \S3method, \linkS4class
+// ========================================================================
+
+#[test]
+fn test_doi_tag() {
+    let rd = r#"
+\name{test}
+\title{DOI Test}
+\description{
+See the paper at \doi{10.1234/example.2024}.
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let mdast = rd_to_mdast(&doc);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_link_s4class_tag() {
+    let rd = r#"
+\name{test}
+\title{LinkS4class Test}
+\description{
+See \linkS4class{MyClass} and \linkS4class[methods]{representation}.
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let mdast = rd_to_mdast(&doc);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_s3method_tag() {
+    let rd = r#"
+\name{test}
+\title{S3method Test}
+\usage{
+\S3method{print}{myclass}(x, ...)
+\S3method{summary}{default}(object)
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let mdast = rd_to_mdast(&doc);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_dontdiff_in_examples() {
+    let rd = r#"
+\name{test}
+\title{Dontdiff Test}
+\examples{
+x <- 1
+\dontdiff{
+# Output varies - don't diff
+print(Sys.time())
+}
+y <- 2
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let mdast = rd_to_mdast(&doc);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}

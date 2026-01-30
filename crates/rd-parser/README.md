@@ -64,13 +64,14 @@ let restored = RdDocument::from_json(&json).unwrap();
 ### Inline Tags
 
 - Formatting: `\code`, `\emph`, `\strong`, `\bold`, `\verb`, `\preformatted`
-- Links: `\href`, `\link`, `\url`, `\email`
+- Links: `\href`, `\link`, `\linkS4class`, `\url`, `\email`, `\doi`
 - Math: `\eqn`, `\deqn`
 - Lists: `\itemize`, `\enumerate`, `\describe`
 - Tables: `\tabular`
 - Special: `\R`, `\dots`, `\ldots`, `\cr`, `\tab`
 - Conditionals: `\if`, `\ifelse`, `\Sexpr`
-- Example control: `\dontrun`, `\donttest`, `\dontshow`, `\testonly`
+- Methods: `\method`, `\S3method`, `\S4method`
+- Example control: `\dontrun`, `\donttest`, `\dontshow`, `\testonly`, `\dontdiff`
 
 ## Reference
 

@@ -46,3 +46,4 @@ snapshot_test!(special_sections);
 snapshot_test!(escapes);
 snapshot_test!(preformatted);
 snapshot_test!(markdown_codeblock);
+snapshot_test!(new_tags);

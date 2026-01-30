@@ -305,6 +305,12 @@ impl Converter {
                         // For non-Quarto formats, skip entirely (code won't be executed anyway)
                     }
                 }
+                RdNode::DontDiff(children) => {
+                    // \dontdiff{} marks code whose output shouldn't be diff-checked.
+                    // The code itself should still execute normally, so treat like regular code.
+                    has_executable = true;
+                    current_code.push_str(&self.extract_text(children));
+                }
                 _ => {
                     // Regular content - accumulate
                     has_executable = true;
@@ -822,6 +828,62 @@ impl Converter {
                 }
             }
             RdNode::Url(url) => Some(Node::link(url.clone(), vec![Node::text(url.clone())])),
+            RdNode::Doi(id) => {
+                let url = format!("https://doi.org/{}", id);
+                let display = format!("doi:{}", id);
+                Some(Node::link(url, vec![Node::text(display)]))
+            }
+            RdNode::LinkS4Class { package, classname } => {
+                // Display text includes -class suffix for clarity
+                let display = if let Some(pkg) = package {
+                    format!("{}::{}-class", pkg, classname)
+                } else {
+                    format!("{}-class", classname)
+                };
+
+                match (package, &self.options.link_extension) {
+                    // External package link
+                    (Some(pkg), _) => {
+                        if let Some(base_url) = self
+                            .options
+                            .external_package_urls
+                            .as_ref()
+                            .and_then(|map| map.get(pkg.as_str()))
+                        {
+                            // Link to classname-class topic
+                            let url = format!(
+                                "{}/{}-class.html",
+                                base_url.trim_end_matches('/'),
+                                classname
+                            );
+                            Some(Node::link(url, vec![Node::inline_code(display)]))
+                        } else {
+                            Some(Node::inline_code(display))
+                        }
+                    }
+                    // Internal link with extension configured
+                    (None, Some(ext)) => {
+                        // The topic name is classname-class
+                        let topic = format!("{}-class", classname);
+                        if let Some(target_file) = self
+                            .options
+                            .alias_map
+                            .as_ref()
+                            .and_then(|map| map.get(&topic))
+                        {
+                            let url = format!("{}.{}", target_file, ext);
+                            Some(Node::link(url, vec![Node::inline_code(display)]))
+                        } else if let Some(pattern) = &self.options.unresolved_link_url {
+                            let url = pattern.replace("{topic}", &topic);
+                            Some(Node::link(url, vec![Node::inline_code(display)]))
+                        } else {
+                            Some(Node::inline_code(display))
+                        }
+                    }
+                    // No extension - just inline code
+                    (None, None) => Some(Node::inline_code(display)),
+                }
+            }
             RdNode::Email(email) => {
                 let mailto = format!("mailto:{}", email);
                 Some(Node::link(mailto, vec![Node::text(email.clone())]))
@@ -908,6 +970,7 @@ impl Converter {
                 generic,
                 signature: _,
             } => Some(Node::text(format!("{}()", generic))),
+            RdNode::S3Method { generic, class: _ } => Some(Node::text(format!("{}()", generic))),
             // Block nodes handled elsewhere
             _ => None,
         }
@@ -1062,6 +1125,35 @@ impl Converter {
                         continue;
                     }
                     result.push_str(generic);
+                }
+                RdNode::S3Method { generic, class } => {
+                    // S3 method: same as Method, add comment like pkgdown
+                    if class == "default" {
+                        result.push_str("# Default S3 method\n");
+                    } else {
+                        result.push_str(&format!("# S3 method for class '{}'\n", class));
+                    }
+                    // Check if this is an infix operator and try to format naturally
+                    if let Some(formatted) = self.try_format_infix_method(generic, nodes, i + 1) {
+                        result.push_str(&formatted.text);
+                        i += formatted.nodes_consumed;
+                        i += 1;
+                        continue;
+                    }
+                    result.push_str(generic);
+                }
+                RdNode::LinkS4Class {
+                    package,
+                    classname,
+                } => {
+                    if let Some(pkg) = package {
+                        result.push_str(&format!("{}::{}", pkg, classname));
+                    } else {
+                        result.push_str(classname);
+                    }
+                }
+                RdNode::Doi(id) => {
+                    result.push_str(&format!("doi:{}", id));
                 }
                 RdNode::Special(ch) => result.push_str(special_char_to_string(*ch)),
                 RdNode::LineBreak => result.push('\n'),
