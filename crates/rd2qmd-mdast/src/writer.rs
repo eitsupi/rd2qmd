@@ -491,11 +491,11 @@ impl<'a> Writer<'a> {
     }
 
     fn write_emphasis(&mut self, e: &crate::mdast::Emphasis) {
-        self.output.push('*');
+        self.output.push('_');
         for child in &e.children {
             self.write_node(child);
         }
-        self.output.push('*');
+        self.output.push('_');
     }
 
     fn write_strong(&mut self, s: &crate::mdast::Strong) {
@@ -785,7 +785,7 @@ mod tests {
             Node::strong(vec![Node::text("bold")]),
         ])]);
         let qmd = mdast_to_qmd(&root, &WriterOptions::default());
-        assert!(qmd.contains("*italic*"));
+        assert!(qmd.contains("_italic_"));
         assert!(qmd.contains("**bold**"));
     }
 
@@ -796,7 +796,7 @@ mod tests {
             Node::emphasis(vec![Node::text("and italic")]),
         ])])]);
         let qmd = mdast_to_qmd(&root, &WriterOptions::default());
-        assert!(qmd.contains("**bold *and italic***"));
+        assert!(qmd.contains("**bold _and italic_**"));
     }
 
     #[test]
