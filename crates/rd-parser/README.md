@@ -63,7 +63,7 @@ let restored = RdDocument::from_json(&json).unwrap();
 
 ### Inline Tags
 
-- Formatting: `\code`, `\emph`, `\strong`, `\bold`, `\verb`, `\preformatted`
+- Formatting: `\code`, `\emph`, `\strong`, `\bold`, `\verb`, `\preformatted`, `\cite`, `\abbr`
 - Links: `\href`, `\link`, `\linkS4class`, `\url`, `\email`, `\doi`
 - Math: `\eqn`, `\deqn`
 - Lists: `\itemize`, `\enumerate`, `\describe`

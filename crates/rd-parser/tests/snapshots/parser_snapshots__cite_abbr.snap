@@ -1,0 +1,70 @@
+---
+source: crates/rd-parser/tests/parser_snapshots.rs
+expression: ast_json
+---
+{
+  "sections": [
+    {
+      "tag": "name",
+      "content": [
+        {
+          "text": "cite_abbr"
+        }
+      ]
+    },
+    {
+      "tag": "title",
+      "content": [
+        {
+          "text": "Citation and Abbreviation Tags Test"
+        }
+      ]
+    },
+    {
+      "tag": "description",
+      "content": [
+        {
+          "text": "\nTesting citation: "
+        },
+        {
+          "cite": "R Core Team (2024)"
+        },
+        {
+          "text": ".\nTesting abbreviations: "
+        },
+        {
+          "abbr": "HTML"
+        },
+        {
+          "text": " and "
+        },
+        {
+          "abbr": "CSS"
+        },
+        {
+          "text": ".\nMixed with other formatting: "
+        },
+        {
+          "emph": [
+            {
+              "text": "emphasized"
+            }
+          ]
+        },
+        {
+          "text": " and "
+        },
+        {
+          "code": [
+            {
+              "text": "code"
+            }
+          ]
+        },
+        {
+          "text": ".\n"
+        }
+      ]
+    }
+  ]
+}

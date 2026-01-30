@@ -910,6 +910,8 @@ impl Converter {
                 Some(Node::text(format!("\"{}\"", text)))
             }
             RdNode::Acronym(s) => Some(Node::text(s.clone())),
+            RdNode::Abbr(s) => Some(Node::text(s.clone())),
+            RdNode::Cite(s) => Some(Node::emphasis(vec![Node::text(s.clone())])),
             RdNode::Dfn(children) => Some(Node::emphasis(self.convert_inline_nodes(children))),
             RdNode::Option(s) => Some(Node::inline_code(s.clone())),
             RdNode::Command(s) => Some(Node::inline_code(s.clone())),

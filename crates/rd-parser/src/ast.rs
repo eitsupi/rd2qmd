@@ -301,6 +301,12 @@ pub enum RdNode {
     /// Acronym (\acronym{})
     Acronym(String),
 
+    /// Abbreviation (\abbr{})
+    Abbr(String),
+
+    /// Citation reference (\cite{})
+    Cite(String),
+
     /// Definition (\dfn{})
     Dfn(Vec<RdNode>),
 

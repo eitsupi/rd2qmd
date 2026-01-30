@@ -305,6 +305,8 @@ fn find_lifecycle_in_node(node: &RdNode) -> Option<Lifecycle> {
         | RdNode::S4Method { .. }
         | RdNode::S3Method { .. }
         | RdNode::Acronym(_)
+        | RdNode::Abbr(_)
+        | RdNode::Cite(_)
         | RdNode::Option(_)
         | RdNode::Var(_)
         | RdNode::Env(_)

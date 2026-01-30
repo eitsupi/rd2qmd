@@ -47,3 +47,4 @@ snapshot_test!(escapes);
 snapshot_test!(preformatted);
 snapshot_test!(markdown_codeblock);
 snapshot_test!(new_tags);
+snapshot_test!(cite_abbr);

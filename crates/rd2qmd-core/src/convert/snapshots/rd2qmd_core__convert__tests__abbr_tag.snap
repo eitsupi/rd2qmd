@@ -1,0 +1,9 @@
+---
+source: crates/rd2qmd-core/src/convert/tests.rs
+expression: qmd
+---
+# Abbr Test
+
+## Description
+
+ The HTML and Rd formats are supported.

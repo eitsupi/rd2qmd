@@ -1572,3 +1572,33 @@ y <- 2
     let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
     insta::assert_snapshot!(qmd);
 }
+
+#[test]
+fn test_cite_tag() {
+    let rd = r#"
+\name{test}
+\title{Cite Test}
+\description{
+See \cite{R Core Team (2024)} for details.
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let mdast = rd_to_mdast(&doc);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_abbr_tag() {
+    let rd = r#"
+\name{test}
+\title{Abbr Test}
+\description{
+The \abbr{HTML} and \abbr{Rd} formats are supported.
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let mdast = rd_to_mdast(&doc);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}

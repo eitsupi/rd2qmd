@@ -234,6 +234,8 @@ impl Parser {
             "option" => self.parse_text_arg().map(|s| Some(RdNode::Option(s))),
             "command" => self.parse_text_arg().map(|s| Some(RdNode::Command(s))),
             "acronym" => self.parse_text_arg().map(|s| Some(RdNode::Acronym(s))),
+            "abbr" => self.parse_text_arg().map(|s| Some(RdNode::Abbr(s))),
+            "cite" => self.parse_text_arg().map(|s| Some(RdNode::Cite(s))),
 
             // Link-like elements
             "href" => self.parse_href(),
