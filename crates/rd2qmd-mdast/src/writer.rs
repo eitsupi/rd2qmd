@@ -275,7 +275,12 @@ impl<'a> Writer<'a> {
 
     fn write_code(&mut self, c: &crate::mdast::Code) {
         self.ensure_newline();
-        self.output.push_str("```");
+
+        // Determine fence length: must be longer than any backtick sequence in content
+        let fence_len = calculate_fence_length(&c.value);
+        let fence: String = std::iter::repeat('`').take(fence_len).collect();
+
+        self.output.push_str(&fence);
         if let Some(lang) = &c.lang {
             // Only use {r} for executable code blocks (Examples section)
             let is_executable = c.meta.as_deref() == Some("executable");
@@ -290,7 +295,8 @@ impl<'a> Writer<'a> {
         if !c.value.ends_with('\n') {
             self.output.push('\n');
         }
-        self.output.push_str("```\n");
+        self.output.push_str(&fence);
+        self.output.push('\n');
         self.at_line_start = true;
     }
 
@@ -591,6 +597,27 @@ fn escape_yaml_string(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
+/// Calculate the minimum fence length needed for a code block.
+///
+/// The fence must be longer than any sequence of consecutive backticks in the content.
+/// Returns at least 3 (the minimum for a valid fenced code block).
+fn calculate_fence_length(content: &str) -> usize {
+    let mut max_backticks = 0;
+    let mut current_run = 0;
+
+    for c in content.chars() {
+        if c == '`' {
+            current_run += 1;
+            max_backticks = max_backticks.max(current_run);
+        } else {
+            current_run = 0;
+        }
+    }
+
+    // Fence must be at least 3 backticks and longer than any run in content
+    3.max(max_backticks + 1)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -648,6 +675,50 @@ mod tests {
         let qmd = mdast_to_qmd(&root, &WriterOptions::default());
         assert!(qmd.contains("```\n"));
         assert!(qmd.contains("some code"));
+    }
+
+    #[test]
+    fn test_code_block_with_triple_backticks() {
+        // Code containing triple backticks needs longer fence
+        let code = "Here is a code block:\n```r\nx <- 1\n```";
+        let root = Root::new(vec![Node::code(Some("markdown".to_string()), code)]);
+        let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+
+        // Should use 4 backticks since content has 3
+        assert!(qmd.contains("````markdown"));
+        assert!(qmd.contains("````\n") || qmd.ends_with("````"));
+    }
+
+    #[test]
+    fn test_code_block_with_many_backticks() {
+        // Code containing 5 backticks needs 6 for fence
+        let code = "`````";
+        let root = Root::new(vec![Node::code(None, code)]);
+        let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+
+        // Should use 6 backticks
+        assert!(qmd.contains("``````\n"));
+    }
+
+    #[test]
+    fn test_calculate_fence_length() {
+        // No backticks -> 3
+        assert_eq!(calculate_fence_length("hello"), 3);
+
+        // 1 backtick -> 3
+        assert_eq!(calculate_fence_length("hello ` world"), 3);
+
+        // 2 backticks -> 3
+        assert_eq!(calculate_fence_length("hello `` world"), 3);
+
+        // 3 backticks -> 4
+        assert_eq!(calculate_fence_length("```"), 4);
+
+        // 3 backticks in middle -> 4
+        assert_eq!(calculate_fence_length("hello\n```r\nx <- 1\n```"), 4);
+
+        // 5 backticks -> 6
+        assert_eq!(calculate_fence_length("`````"), 6);
     }
 
     #[test]

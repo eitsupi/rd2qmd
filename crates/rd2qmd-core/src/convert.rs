@@ -2,7 +2,11 @@
 //!
 //! Converts an Rd document into an mdast tree for Markdown output.
 
-use rd_parser::{DescribeItem, FigureOptions, RdDocument, RdNode, RdSection, SectionTag, SpecialChar};
+use rd_parser::{
+    DescribeItem, FigureOptions, RdDocument, RdNode, RdSection, SectionTag, SpecialChar,
+};
+#[cfg(feature = "roxygen")]
+use crate::roxygen_code_block::try_match_roxygen_code_block;
 use rd2qmd_mdast::{
     Align, DefinitionDescription, DefinitionList, DefinitionTerm, Html, Image, Node, Root, Table,
     TableCell, TableRow,
@@ -637,8 +641,19 @@ impl Converter {
     fn convert_content(&mut self, nodes: &[RdNode]) -> Vec<Node> {
         let mut result = Vec::new();
         let mut current_para: Vec<Node> = Vec::new();
+        let mut i = 0;
 
-        for node in nodes {
+        while i < nodes.len() {
+            // Try to match roxygen2 markdown code block pattern
+            #[cfg(feature = "roxygen")]
+            if let Some(code_block) = try_match_roxygen_code_block(&nodes[i..]) {
+                self.flush_paragraph(&mut current_para, &mut result);
+                result.push(Node::code(code_block.language, code_block.code));
+                i += code_block.nodes_consumed;
+                continue;
+            }
+
+            let node = &nodes[i];
             match node {
                 // Block-level nodes flush the current paragraph
                 RdNode::Itemize(items) => {
@@ -686,8 +701,8 @@ impl Converter {
                 RdNode::Text(s) => {
                     // Check for paragraph breaks (double newline)
                     let parts: Vec<&str> = s.split("\n\n").collect();
-                    for (i, part) in parts.iter().enumerate() {
-                        if i > 0 {
+                    for (j, part) in parts.iter().enumerate() {
+                        if j > 0 {
                             self.flush_paragraph(&mut current_para, &mut result);
                         }
                         if !part.trim().is_empty() {
@@ -701,6 +716,7 @@ impl Converter {
                     }
                 }
             }
+            i += 1;
         }
 
         self.flush_paragraph(&mut current_para, &mut result);

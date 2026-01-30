@@ -1438,3 +1438,67 @@ fn test_extract_alt_from_attrs_empty_string() {
     // Empty string should return None
     assert_eq!(Converter::extract_alt_from_attrs(""), None);
 }
+
+// ============================================================================
+// Roxygen2 markdown code block tests
+// ============================================================================
+
+#[cfg(feature = "roxygen")]
+#[test]
+fn test_roxygen_code_block_conversion_snapshot() {
+    // Test roxygen2 markdown code block pattern:
+    // \if{html}{\out{<div class="sourceCode r">}}\preformatted{...}\if{html}{\out{</div>}}
+    let rd = r#"
+\name{test}
+\title{Roxygen Code Block Test}
+\description{
+Here is an R code block from roxygen2:
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{x <- 1 + 2
+y <- x * 3
+print(y)
+}\if{html}{\out{</div>}}
+
+And some more text after the code block.
+
+Python code block:
+\if{html}{\out{<div class="sourceCode python">}}\preformatted{def greet(name):
+    return f"Hello, {name}!"
+}\if{html}{\out{</div>}}
+
+Code block without language:
+\if{html}{\out{<div class="sourceCode">}}\preformatted{plain text
+block without language
+}\if{html}{\out{</div>}}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let mdast = rd_to_mdast(&doc);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[cfg(feature = "roxygen")]
+#[test]
+fn test_roxygen_code_block_with_backticks_in_content() {
+    // Test that code containing backticks gets proper fence length
+    let rd = r#"
+\name{test}
+\title{Test}
+\description{
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{# Code with backticks
+x <- "`value`"
+y <- "``nested``"
+}\if{html}{\out{</div>}}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let mdast = rd_to_mdast(&doc);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+
+    // The fence should be longer than the longest backtick run in the content
+    assert!(
+        qmd.contains("```"),
+        "Expected code fence with backticks, got:\n{qmd}"
+    );
+    insta::assert_snapshot!(qmd);
+}

@@ -45,3 +45,4 @@ snapshot_test!(lifecycle);
 snapshot_test!(special_sections);
 snapshot_test!(escapes);
 snapshot_test!(preformatted);
+snapshot_test!(markdown_codeblock);

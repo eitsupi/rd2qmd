@@ -10,8 +10,12 @@
 //!
 //! - `lifecycle`: Enable lifecycle stage extraction from Rd documents
 //! - `roxygen`: Enable source file extraction from roxygen2 comments
+//!   and roxygen2 markdown code block handling
 
 pub mod convert;
+
+#[cfg(feature = "roxygen")]
+pub mod roxygen_code_block;
 
 use std::collections::HashMap;
 

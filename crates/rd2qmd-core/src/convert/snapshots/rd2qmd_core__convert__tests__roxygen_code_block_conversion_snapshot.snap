@@ -1,0 +1,31 @@
+---
+source: crates/rd2qmd-core/src/convert/tests.rs
+expression: qmd
+---
+# Roxygen Code Block Test
+
+## Description
+
+ Here is an R code block from roxygen2: 
+
+```r
+x <- 1 + 2
+y <- x * 3
+print(y)
+```
+
+And some more text after the code block.
+
+Python code block: 
+
+```python
+def greet(name):
+    return f"Hello, {name}!"
+```
+
+Code block without language: 
+
+```
+plain text
+block without language
+```

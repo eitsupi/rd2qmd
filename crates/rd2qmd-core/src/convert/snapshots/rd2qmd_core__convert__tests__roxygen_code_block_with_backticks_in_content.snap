@@ -1,0 +1,13 @@
+---
+source: crates/rd2qmd-core/src/convert/tests.rs
+expression: qmd
+---
+# Test
+
+## Description
+
+```r
+# Code with backticks
+x <- "`value`"
+y <- "``nested``"
+```

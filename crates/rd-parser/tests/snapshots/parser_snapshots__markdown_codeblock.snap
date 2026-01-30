@@ -1,0 +1,176 @@
+---
+source: crates/rd-parser/tests/parser_snapshots.rs
+expression: ast_json
+---
+{
+  "sections": [
+    {
+      "tag": "name",
+      "content": [
+        {
+          "text": "markdown_codeblock"
+        }
+      ]
+    },
+    {
+      "tag": "title",
+      "content": [
+        {
+          "text": "Markdown Code Block Examples"
+        }
+      ]
+    },
+    {
+      "tag": "description",
+      "content": [
+        {
+          "text": "\nDemonstrates code blocks from roxygen2 markdown.\n"
+        }
+      ]
+    },
+    {
+      "tag": "details",
+      "content": [
+        {
+          "text": "\nHere is an R code block from roxygen2:\n\n"
+        },
+        {
+          "if": {
+            "format": "html",
+            "content": [
+              {
+                "out": "<div class=\"sourceCode r\">"
+              }
+            ]
+          }
+        },
+        {
+          "preformatted": "x <- 1 + 2\ny <- x * 3\nprint(y)\n"
+        },
+        {
+          "if": {
+            "format": "html",
+            "content": [
+              {
+                "out": "</div>"
+              }
+            ]
+          }
+        },
+        {
+          "text": "\n\nAnd some more text after the code block.\n\nPython code block:\n\n"
+        },
+        {
+          "if": {
+            "format": "html",
+            "content": [
+              {
+                "out": "<div class=\"sourceCode python\">"
+              }
+            ]
+          }
+        },
+        {
+          "preformatted": "def greet(name):\n    return f\"Hello, {name}!\"\n\nprint(greet(\"World\"))\n"
+        },
+        {
+          "if": {
+            "format": "html",
+            "content": [
+              {
+                "out": "</div>"
+              }
+            ]
+          }
+        },
+        {
+          "text": "\n\nYAML configuration:\n\n"
+        },
+        {
+          "if": {
+            "format": "html",
+            "content": [
+              {
+                "out": "<div class=\"sourceCode yaml\">"
+              }
+            ]
+          }
+        },
+        {
+          "preformatted": "name: example\nversion: 1.0\ndependencies:\n  - tidyverse\n  - ggplot2\n"
+        },
+        {
+          "if": {
+            "format": "html",
+            "content": [
+              {
+                "out": "</div>"
+              }
+            ]
+          }
+        },
+        {
+          "text": "\n\nSQL query:\n\n"
+        },
+        {
+          "if": {
+            "format": "html",
+            "content": [
+              {
+                "out": "<div class=\"sourceCode sql\">"
+              }
+            ]
+          }
+        },
+        {
+          "preformatted": "SELECT name, COUNT(*) as count\nFROM users\nWHERE active = 1\nGROUP BY name;\n"
+        },
+        {
+          "if": {
+            "format": "html",
+            "content": [
+              {
+                "out": "</div>"
+              }
+            ]
+          }
+        },
+        {
+          "text": "\n\nCode block without language specifier:\n\n"
+        },
+        {
+          "if": {
+            "format": "html",
+            "content": [
+              {
+                "out": "<div class=\"sourceCode\">"
+              }
+            ]
+          }
+        },
+        {
+          "preformatted": "plain text\nblock without language\n"
+        },
+        {
+          "if": {
+            "format": "html",
+            "content": [
+              {
+                "out": "</div>"
+              }
+            ]
+          }
+        },
+        {
+          "text": "\n\nStandalone preformatted (not from markdown):\n\n"
+        },
+        {
+          "preformatted": "This is a standalone preformatted block\nwithout the if/out wrapper.\n"
+        },
+        {
+          "text": "\n"
+        }
+      ]
+    }
+  ]
+}
