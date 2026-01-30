@@ -1,0 +1,58 @@
+---
+source: crates/rd-parser/tests/parser_snapshots.rs
+expression: ast_json
+---
+{
+  "sections": [
+    {
+      "tag": "name",
+      "content": [
+        {
+          "text": "preformatted"
+        }
+      ]
+    },
+    {
+      "tag": "title",
+      "content": [
+        {
+          "text": "Preformatted Text Examples"
+        }
+      ]
+    },
+    {
+      "tag": "description",
+      "content": [
+        {
+          "text": "\nDemonstrates preformatted and verbatim text blocks.\n"
+        }
+      ]
+    },
+    {
+      "tag": "details",
+      "content": [
+        {
+          "text": "\nPreformatted code block:\n"
+        },
+        {
+          "preformatted": "\nfunction example() {\n    x <- 1 + 2\n    return(x)\n}\n"
+        },
+        {
+          "text": "\n\nUsing verb for inline verbatim: "
+        },
+        {
+          "verb": "x <- 1"
+        },
+        {
+          "text": ".\n\nA code block with special characters:\n"
+        },
+        {
+          "preformatted": "\nx$value <- list(a = 1, b = 2)\n"
+        },
+        {
+          "text": "\n"
+        }
+      ]
+    }
+  ]
+}

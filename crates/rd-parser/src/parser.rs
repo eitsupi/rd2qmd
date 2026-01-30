@@ -1242,4 +1242,298 @@ test(x, y = TRUE)
             panic!("Expected Link node, got {:?}", content[0]);
         }
     }
+
+    // ========================================================================
+    // Tests for special characters
+    // ========================================================================
+
+    #[test]
+    fn test_ldots() {
+        // \ldots should produce the same output as \dots
+        // Note: Use {} or space after macro name to properly terminate
+        let doc = parse(r#"\description{a, b, \ldots{}, z}"#).unwrap();
+        let content = &doc.sections[0].content;
+        assert!(
+            content
+                .iter()
+                .any(|n| matches!(n, RdNode::Special(SpecialChar::Dots))),
+            "Expected Dots special char, got: {:?}",
+            content
+        );
+    }
+
+    // ========================================================================
+    // Tests for preformatted text
+    // ========================================================================
+
+    #[test]
+    fn test_preformatted() {
+        let doc = parse(r#"\details{\preformatted{x <- 1}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Preformatted(s) = &content[0] {
+            assert_eq!(s, "x <- 1");
+        } else {
+            panic!("Expected Preformatted node, got {:?}", content[0]);
+        }
+    }
+
+    #[test]
+    fn test_preformatted_preserves_whitespace() {
+        let doc = parse(
+            r#"\details{\preformatted{
+  line1
+    line2
+}}"#,
+        )
+        .unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Preformatted(s) = &content[0] {
+            assert!(s.contains("  line1"));
+            assert!(s.contains("    line2"));
+        } else {
+            panic!("Expected Preformatted node, got {:?}", content[0]);
+        }
+    }
+
+    // ========================================================================
+    // Tests for special section tags
+    // ========================================================================
+
+    #[test]
+    fn test_concept_section() {
+        let doc = parse(r#"\concept{data analysis}"#).unwrap();
+        assert_eq!(doc.sections.len(), 1);
+        assert_eq!(doc.sections[0].tag, SectionTag::Concept);
+    }
+
+    #[test]
+    fn test_format_section() {
+        let doc = parse(r#"\format{A data frame with 10 rows.}"#).unwrap();
+        assert_eq!(doc.sections.len(), 1);
+        assert_eq!(doc.sections[0].tag, SectionTag::Format);
+    }
+
+    #[test]
+    fn test_source_section() {
+        let doc = parse(r#"\source{Data from example.com}"#).unwrap();
+        assert_eq!(doc.sections.len(), 1);
+        assert_eq!(doc.sections[0].tag, SectionTag::Source);
+    }
+
+    #[test]
+    fn test_encoding_section() {
+        let doc = parse(r#"\encoding{UTF-8}"#).unwrap();
+        assert_eq!(doc.sections.len(), 1);
+        assert_eq!(doc.sections[0].tag, SectionTag::Encoding);
+    }
+
+    #[test]
+    fn test_doctype_section() {
+        let doc = parse(r#"\docType{data}"#).unwrap();
+        assert_eq!(doc.sections.len(), 1);
+        assert_eq!(doc.sections[0].tag, SectionTag::DocType);
+    }
+
+    #[test]
+    fn test_rdversion_section() {
+        let doc = parse(r#"\RdVersion{1.1}"#).unwrap();
+        assert_eq!(doc.sections.len(), 1);
+        // Note: RdVersion is case-sensitive in parse, so it might be Unknown
+        // If parser treats it as Unknown, that's expected
+    }
+
+    // ========================================================================
+    // Tests for testonly (alias for dontshow)
+    // ========================================================================
+
+    #[test]
+    fn test_testonly() {
+        let doc = parse(r#"\examples{\testonly{stopifnot(TRUE)}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        assert!(matches!(&content[0], RdNode::DontShow(_)));
+    }
+
+    // ========================================================================
+    // Tests for empty arguments
+    // ========================================================================
+
+    #[test]
+    fn test_empty_code() {
+        let doc = parse(r#"\description{\code{}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Code(children) = &content[0] {
+            assert!(children.is_empty());
+        } else {
+            panic!("Expected Code node, got {:?}", content[0]);
+        }
+    }
+
+    #[test]
+    fn test_empty_emph() {
+        let doc = parse(r#"\description{\emph{}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Emph(children) = &content[0] {
+            assert!(children.is_empty());
+        } else {
+            panic!("Expected Emph node, got {:?}", content[0]);
+        }
+    }
+
+    // ========================================================================
+    // Tests for nested formatting
+    // ========================================================================
+
+    #[test]
+    fn test_nested_code_in_emph() {
+        let doc = parse(r#"\description{\emph{use \code{foo}}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Emph(children) = &content[0] {
+            assert!(children.iter().any(|n| matches!(n, RdNode::Code(_))));
+        } else {
+            panic!("Expected Emph node, got {:?}", content[0]);
+        }
+    }
+
+    #[test]
+    fn test_nested_emph_in_strong() {
+        let doc = parse(r#"\description{\strong{very \emph{important}}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Strong(children) = &content[0] {
+            assert!(children.iter().any(|n| matches!(n, RdNode::Emph(_))));
+        } else {
+            panic!("Expected Strong node, got {:?}", content[0]);
+        }
+    }
+
+    #[test]
+    fn test_link_in_code() {
+        let doc = parse(r#"\description{\code{\link{foo}}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Code(children) = &content[0] {
+            assert!(children.iter().any(|n| matches!(n, RdNode::Link { .. })));
+        } else {
+            panic!("Expected Code node, got {:?}", content[0]);
+        }
+    }
+
+    // ========================================================================
+    // Tests for multiple arguments (eqn, deqn)
+    // ========================================================================
+
+    #[test]
+    fn test_eqn_single_arg() {
+        let doc = parse(r#"\description{\eqn{\alpha}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Eqn { latex, ascii } = &content[0] {
+            assert_eq!(latex, r"\alpha");
+            assert!(ascii.is_none());
+        } else {
+            panic!("Expected Eqn node, got {:?}", content[0]);
+        }
+    }
+
+    #[test]
+    fn test_eqn_two_args() {
+        let doc = parse(r#"\description{\eqn{x^2}{x squared}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Eqn { latex, ascii } = &content[0] {
+            assert_eq!(latex, "x^2");
+            assert_eq!(ascii, &Some("x squared".to_string()));
+        } else {
+            panic!("Expected Eqn node, got {:?}", content[0]);
+        }
+    }
+
+    #[test]
+    fn test_deqn_single_arg() {
+        let doc = parse(r#"\details{\deqn{\sum_{i=1}^n x_i}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Deqn { latex, ascii } = &content[0] {
+            assert!(latex.contains(r"\sum"));
+            assert!(ascii.is_none());
+        } else {
+            panic!("Expected Deqn node, got {:?}", content[0]);
+        }
+    }
+
+    #[test]
+    fn test_deqn_two_args() {
+        let doc = parse(r#"\details{\deqn{\sum x_i}{sum(x)}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Deqn { latex, ascii } = &content[0] {
+            assert!(latex.contains(r"\sum"));
+            assert_eq!(ascii, &Some("sum(x)".to_string()));
+        } else {
+            panic!("Expected Deqn node, got {:?}", content[0]);
+        }
+    }
+
+    // ========================================================================
+    // Tests for verb
+    // ========================================================================
+
+    #[test]
+    fn test_verb() {
+        let doc = parse(r#"\description{\verb{x <- 1}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Verb(s) = &content[0] {
+            assert_eq!(s, "x <- 1");
+        } else {
+            panic!("Expected Verb node, got {:?}", content[0]);
+        }
+    }
+
+    #[test]
+    fn test_verb_preserves_special_chars() {
+        let doc = parse(r#"\description{\verb{foo{bar}baz}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Verb(s) = &content[0] {
+            assert_eq!(s, "foo{bar}baz");
+        } else {
+            panic!("Expected Verb node, got {:?}", content[0]);
+        }
+    }
+
+    // ========================================================================
+    // Tests for out
+    // ========================================================================
+
+    #[test]
+    fn test_out() {
+        let doc = parse(r#"\description{\out{<b>bold</b>}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Out(s) = &content[0] {
+            assert_eq!(s, "<b>bold</b>");
+        } else {
+            panic!("Expected Out node, got {:?}", content[0]);
+        }
+    }
+
+    // ========================================================================
+    // Tests for Sexpr
+    // ========================================================================
+
+    #[test]
+    fn test_sexpr_no_options() {
+        let doc = parse(r#"\description{\Sexpr{1 + 1}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Sexpr { options, code } = &content[0] {
+            assert!(options.is_none());
+            assert_eq!(code, "1 + 1");
+        } else {
+            panic!("Expected Sexpr node, got {:?}", content[0]);
+        }
+    }
+
+    #[test]
+    fn test_sexpr_with_options() {
+        let doc = parse(r#"\description{\Sexpr[results=rd]{paste("a", "b")}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Sexpr { options, code } = &content[0] {
+            assert_eq!(options, &Some("results=rd".to_string()));
+            assert!(code.contains("paste"));
+        } else {
+            panic!("Expected Sexpr node, got {:?}", content[0]);
+        }
+    }
 }

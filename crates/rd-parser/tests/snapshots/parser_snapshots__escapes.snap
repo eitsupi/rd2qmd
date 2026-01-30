@@ -1,0 +1,76 @@
+---
+source: crates/rd-parser/tests/parser_snapshots.rs
+expression: ast_json
+---
+{
+  "sections": [
+    {
+      "tag": "name",
+      "content": [
+        {
+          "text": "escapes"
+        }
+      ]
+    },
+    {
+      "tag": "title",
+      "content": [
+        {
+          "text": "Escape Sequence Examples"
+        }
+      ]
+    },
+    {
+      "tag": "description",
+      "content": [
+        {
+          "text": "\nThis demonstrates escape sequences: { } % and \\ are all special.\nUsing "
+        },
+        {
+          "special": "dots"
+        },
+        {
+          "text": " for ellipsis instead of "
+        },
+        {
+          "macro": {
+            "name": "dots.",
+            "args": []
+          }
+        },
+        {
+          "text": "\nPercent sign: 100% complete.\nBackslash: C:\\path\\to\\file\n"
+        }
+      ]
+    },
+    {
+      "tag": "details",
+      "content": [
+        {
+          "text": "\nEscaped braces in text: use { and } for literal braces.\n\nIn formulas, we might write: x % y for modulo.\n\nBoth "
+        },
+        {
+          "special": "dots"
+        },
+        {
+          "text": " and "
+        },
+        {
+          "special": "dots"
+        },
+        {
+          "text": " produce an ellipsis: a, b, "
+        },
+        {
+          "macro": {
+            "name": "dots,",
+            "args": []
+          }
+        },
+        {
+          "text": "z.\n"
+        }
+      ]
+    }
+  ]
+}

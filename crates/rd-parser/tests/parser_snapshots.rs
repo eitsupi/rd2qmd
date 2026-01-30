@@ -42,3 +42,6 @@ snapshot_test!(sections);
 snapshot_test!(nested);
 snapshot_test!(figures);
 snapshot_test!(lifecycle);
+snapshot_test!(special_sections);
+snapshot_test!(escapes);
+snapshot_test!(preformatted);

@@ -1,0 +1,137 @@
+---
+source: crates/rd-parser/tests/parser_snapshots.rs
+expression: ast_json
+---
+{
+  "sections": [
+    {
+      "tag": "name",
+      "content": [
+        {
+          "text": "special_sections"
+        }
+      ]
+    },
+    {
+      "tag": "alias",
+      "content": [
+        {
+          "text": "special_sections"
+        }
+      ]
+    },
+    {
+      "tag": "title",
+      "content": [
+        {
+          "text": "Special Section Examples"
+        }
+      ]
+    },
+    {
+      "tag": "description",
+      "content": [
+        {
+          "text": "\nDemonstrates less common section tags.\n"
+        }
+      ]
+    },
+    {
+      "tag": "concept",
+      "content": [
+        {
+          "text": "data analysis"
+        }
+      ]
+    },
+    {
+      "tag": "concept",
+      "content": [
+        {
+          "text": "statistics"
+        }
+      ]
+    },
+    {
+      "tag": "format",
+      "content": [
+        {
+          "text": "\nA data frame with 100 rows and 3 columns:\n"
+        },
+        {
+          "describe": [
+            {
+              "term": [
+                {
+                  "text": "x"
+                }
+              ],
+              "description": [
+                {
+                  "text": "Numeric column."
+                }
+              ]
+            },
+            {
+              "term": [
+                {
+                  "text": "y"
+                }
+              ],
+              "description": [
+                {
+                  "text": "Character column."
+                }
+              ]
+            },
+            {
+              "term": [
+                {
+                  "text": "z"
+                }
+              ],
+              "description": [
+                {
+                  "text": "Factor column."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "text": "\n"
+        }
+      ]
+    },
+    {
+      "tag": "source",
+      "content": [
+        {
+          "text": "\nData collected from "
+        },
+        {
+          "url": "https://example.com/data"
+        },
+        {
+          "text": ".\n"
+        }
+      ]
+    },
+    {
+      "tag": "encoding",
+      "content": [
+        {
+          "text": "UTF-8"
+        }
+      ]
+    },
+    {
+      "tag": "doctype",
+      "content": [
+        {
+          "text": "data"
+        }
+      ]
+    }
+  ]
+}
