@@ -196,6 +196,7 @@ fn run_single_benchmark(
         external_package_urls: external_urls.cloned(),
         exec_dontrun: false,
         exec_donttest: true, // pkgdown-compatible default
+        include_internal: false, // skip internal topics by default
     };
 
     convert_package(package, &options)?;

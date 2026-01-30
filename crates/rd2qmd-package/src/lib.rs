@@ -117,6 +117,10 @@ pub struct PackageConvertOptions {
     /// Matches pkgdown semantics: \donttest{} means "don't run during testing"
     /// but the code should normally be executable
     pub exec_donttest: bool,
+    /// Include topics with \keyword{internal} (default: false)
+    /// By default, internal topics are skipped (matching pkgdown behavior).
+    /// Set to true to include internal topics in the output.
+    pub include_internal: bool,
 }
 
 impl Default for PackageConvertOptions {
@@ -132,6 +136,7 @@ impl Default for PackageConvertOptions {
             external_package_urls: None,
             exec_dontrun: false,
             exec_donttest: true, // pkgdown-compatible: \donttest{} is executable by default
+            include_internal: false, // pkgdown-compatible: skip internal topics by default
         }
     }
 }
@@ -145,6 +150,8 @@ pub struct ConvertResult {
     pub failed_files: Vec<(PathBuf, String)>,
     /// Output files that were created
     pub output_files: Vec<PathBuf>,
+    /// Files skipped because they have \keyword{internal}
+    pub skipped_internal: Vec<PathBuf>,
 }
 
 /// Information about a single topic (Rd file) for index generation
@@ -180,6 +187,9 @@ impl TopicIndex {
 pub struct TopicIndexOptions {
     /// File extension for output files (e.g., "qmd", "md")
     pub output_extension: String,
+    /// Include topics with \keyword{internal} (default: false)
+    /// By default, internal topics are excluded from the index.
+    pub include_internal: bool,
 }
 
 /// Generate a topic index from a package
@@ -205,7 +215,13 @@ pub fn generate_topic_index(
 
     for file in &package.files {
         match extract_topic_info(file, &options.output_extension) {
-            Ok(info) => topics.push(info),
+            Ok(info) => {
+                // Skip internal topics unless include_internal is set
+                if !options.include_internal && info.metadata.keywords.contains(&"internal".to_string()) {
+                    continue;
+                }
+                topics.push(info);
+            }
             Err(e) => {
                 // Log error but continue processing other files
                 eprintln!(
@@ -262,6 +278,16 @@ fn extract_topic_info(file: &Path, output_extension: &str) -> Result<TopicInfo> 
     })
 }
 
+/// Outcome of converting a single file
+enum ConvertOutcome {
+    /// Successfully converted, contains output path
+    Success(PathBuf),
+    /// Skipped because the topic has \keyword{internal}
+    SkippedInternal(PathBuf),
+    /// Failed to convert, contains input path and error message
+    Failed(PathBuf, String),
+}
+
 /// Convert an entire package to Quarto Markdown
 ///
 /// This function converts all Rd files in the package, using the alias index
@@ -292,14 +318,18 @@ pub fn convert_package(
     let mut success_count = 0;
     let mut failed_files = Vec::new();
     let mut output_files = Vec::new();
+    let mut skipped_internal = Vec::new();
 
     for result in results {
         match result {
-            Ok(output_path) => {
+            ConvertOutcome::Success(output_path) => {
                 success_count += 1;
                 output_files.push(output_path);
             }
-            Err((path, error)) => {
+            ConvertOutcome::SkippedInternal(input_path) => {
+                skipped_internal.push(input_path);
+            }
+            ConvertOutcome::Failed(path, error) => {
                 failed_files.push((path, error));
             }
         }
@@ -309,7 +339,15 @@ pub fn convert_package(
         success_count,
         failed_files,
         output_files,
+        skipped_internal,
     })
+}
+
+/// Check if a document has \keyword{internal}
+fn has_keyword_internal(doc: &rd2qmd_core::RdDocument) -> bool {
+    doc.get_sections(&SectionTag::Keyword)
+        .iter()
+        .any(|s| extract_text(&s.content).eq_ignore_ascii_case("internal"))
 }
 
 /// Convert a single Rd file
@@ -317,13 +355,18 @@ fn convert_single_file(
     input: &Path,
     package: &RdPackage,
     options: &PackageConvertOptions,
-) -> std::result::Result<PathBuf, (PathBuf, String)> {
+) -> ConvertOutcome {
     let convert = || -> std::result::Result<PathBuf, Box<dyn std::error::Error>> {
         // Read input file
         let content = fs::read_to_string(input)?;
 
         // Parse Rd
         let doc = parse(&content).map_err(|e| format!("Parse error: {}", e))?;
+
+        // Check for \keyword{internal} - skip unless include_internal is set
+        if !options.include_internal && has_keyword_internal(&doc) {
+            return Err("__INTERNAL__".into());
+        }
 
         // Build converter options with alias map
         let converter_options = ConverterOptions {
@@ -398,7 +441,13 @@ fn convert_single_file(
         Ok(output_path)
     };
 
-    convert().map_err(|e| (input.to_path_buf(), e.to_string()))
+    match convert() {
+        Ok(path) => ConvertOutcome::Success(path),
+        Err(e) if e.to_string() == "__INTERNAL__" => {
+            ConvertOutcome::SkippedInternal(input.to_path_buf())
+        }
+        Err(e) => ConvertOutcome::Failed(input.to_path_buf(), e.to_string()),
+    }
 }
 
 /// Collect all .Rd files in a directory
@@ -700,6 +749,7 @@ An old deprecated function.
         let package = RdPackage::from_directory(dir.path(), false).unwrap();
         let options = TopicIndexOptions {
             output_extension: "qmd".to_string(),
+            include_internal: false,
         };
         let index = generate_topic_index(&package, &options).unwrap();
 
@@ -749,6 +799,7 @@ An old deprecated function.
         let package = RdPackage::from_directory(dir.path(), false).unwrap();
         let options = TopicIndexOptions {
             output_extension: "qmd".to_string(),
+            include_internal: false,
         };
         let index = generate_topic_index(&package, &options).unwrap();
 
@@ -853,6 +904,7 @@ An old deprecated function.
             external_package_urls: None,
             exec_dontrun: false,
             exec_donttest: true,
+            include_internal: false,
         };
 
         let result = PackageConverter::new(&package, options).convert().unwrap();
@@ -871,6 +923,7 @@ An old deprecated function.
         assert!(alpha_content.contains("# Alpha Function"));
 
         // Fallbacks should be empty when external links not used
+        #[cfg(feature = "external-links")]
         assert!(result.fallbacks.is_empty());
     }
 
@@ -906,6 +959,7 @@ An old deprecated function.
             external_package_urls: None,
             exec_dontrun: false,
             exec_donttest: true,
+            include_internal: false,
         };
 
         let result = PackageConverter::new(&package, options).convert().unwrap();
@@ -947,6 +1001,7 @@ x <- 1
             external_package_urls: None,
             exec_dontrun: false,
             exec_donttest: true,
+            include_internal: false,
         };
 
         let result = PackageConverter::new(&package, options).convert().unwrap();
@@ -1013,6 +1068,7 @@ x <- 1
             external_package_urls: None,
             exec_dontrun: false,
             exec_donttest: true,
+            include_internal: false,
         };
 
         let result = PackageConverter::new(&package, options).convert().unwrap();
@@ -1057,6 +1113,7 @@ x <- 1
             external_package_urls: Some(external_urls),
             exec_dontrun: false,
             exec_donttest: true,
+            include_internal: false,
         };
 
         let result = PackageConverter::new(&package, options).convert().unwrap();
@@ -1087,6 +1144,7 @@ x <- 1
             external_package_urls: None,
             exec_dontrun: false,
             exec_donttest: true,
+            include_internal: false,
         };
 
         let result = PackageConverter::new(&package, options).convert().unwrap();
@@ -1120,6 +1178,7 @@ x <- 1
             external_package_urls: None,
             exec_dontrun: false,
             exec_donttest: true,
+            include_internal: false,
         };
 
         let result = PackageConverter::new(&package, options).convert().unwrap();
@@ -1129,6 +1188,207 @@ x <- 1
         assert!(result.conversion.failed_files.is_empty());
         assert_eq!(result.conversion.output_files.len(), 1);
         // Fallbacks are empty when not using external links feature
+        #[cfg(feature = "external-links")]
         assert!(result.fallbacks.is_empty());
+    }
+
+    // ========================================================================
+    // Internal topic skipping tests
+    // ========================================================================
+
+    #[test]
+    fn test_internal_topics_skipped_by_default() {
+        let dir = tempdir().unwrap();
+        let out_dir = tempdir().unwrap();
+
+        // Create one public and one internal topic
+        let rd_public = r#"\name{public_func}
+\alias{public_func}
+\title{Public Function}
+\description{A public function.}
+"#;
+        let rd_internal = r#"\name{internal_func}
+\alias{internal_func}
+\title{Internal Function}
+\keyword{internal}
+\description{An internal function.}
+"#;
+        fs::write(dir.path().join("public_func.Rd"), rd_public).unwrap();
+        fs::write(dir.path().join("internal_func.Rd"), rd_internal).unwrap();
+
+        let package = RdPackage::from_directory(dir.path(), false).unwrap();
+        assert_eq!(package.files.len(), 2);
+
+        let options = PackageConvertOptions {
+            output_dir: out_dir.path().to_path_buf(),
+            output_extension: "qmd".to_string(),
+            frontmatter: false,
+            pagetitle: false,
+            quarto_code_blocks: true,
+            parallel_jobs: Some(1),
+            unresolved_link_url: None,
+            external_package_urls: None,
+            exec_dontrun: false,
+            exec_donttest: true,
+            include_internal: false, // Default: skip internal
+        };
+
+        let result = PackageConverter::new(&package, options).convert().unwrap();
+
+        // Only public topic should be converted
+        assert_eq!(result.conversion.success_count, 1);
+        assert_eq!(result.conversion.skipped_internal.len(), 1);
+        assert!(result.conversion.failed_files.is_empty());
+
+        // Check that only public_func.qmd was created
+        assert!(out_dir.path().join("public_func.qmd").exists());
+        assert!(!out_dir.path().join("internal_func.qmd").exists());
+
+        // Check skipped file name
+        assert!(result.conversion.skipped_internal[0]
+            .to_string_lossy()
+            .contains("internal_func.Rd"));
+    }
+
+    #[test]
+    fn test_internal_topics_included_when_requested() {
+        let dir = tempdir().unwrap();
+        let out_dir = tempdir().unwrap();
+
+        // Create one public and one internal topic
+        let rd_public = r#"\name{public_func}
+\alias{public_func}
+\title{Public Function}
+\description{A public function.}
+"#;
+        let rd_internal = r#"\name{internal_func}
+\alias{internal_func}
+\title{Internal Function}
+\keyword{internal}
+\description{An internal function.}
+"#;
+        fs::write(dir.path().join("public_func.Rd"), rd_public).unwrap();
+        fs::write(dir.path().join("internal_func.Rd"), rd_internal).unwrap();
+
+        let package = RdPackage::from_directory(dir.path(), false).unwrap();
+
+        let options = PackageConvertOptions {
+            output_dir: out_dir.path().to_path_buf(),
+            output_extension: "qmd".to_string(),
+            frontmatter: false,
+            pagetitle: false,
+            quarto_code_blocks: true,
+            parallel_jobs: Some(1),
+            unresolved_link_url: None,
+            external_package_urls: None,
+            exec_dontrun: false,
+            exec_donttest: true,
+            include_internal: true, // Include internal topics
+        };
+
+        let result = PackageConverter::new(&package, options).convert().unwrap();
+
+        // Both topics should be converted
+        assert_eq!(result.conversion.success_count, 2);
+        assert!(result.conversion.skipped_internal.is_empty());
+        assert!(result.conversion.failed_files.is_empty());
+
+        // Check that both files were created
+        assert!(out_dir.path().join("public_func.qmd").exists());
+        assert!(out_dir.path().join("internal_func.qmd").exists());
+    }
+
+    #[test]
+    fn test_has_keyword_internal_detection() {
+        // Test the has_keyword_internal helper function
+        let rd_internal = r#"\name{func}
+\keyword{internal}
+\title{Test}
+"#;
+        let rd_normal = r#"\name{func}
+\keyword{datasets}
+\title{Test}
+"#;
+        let rd_no_keyword = r#"\name{func}
+\title{Test}
+"#;
+
+        let doc_internal = parse(rd_internal).unwrap();
+        let doc_normal = parse(rd_normal).unwrap();
+        let doc_no_keyword = parse(rd_no_keyword).unwrap();
+
+        assert!(has_keyword_internal(&doc_internal));
+        assert!(!has_keyword_internal(&doc_normal));
+        assert!(!has_keyword_internal(&doc_no_keyword));
+    }
+
+    #[test]
+    fn test_topic_index_excludes_internal_by_default() {
+        let dir = tempdir().unwrap();
+
+        // Create public and internal topics
+        let rd_public = r#"\name{public_func}
+\alias{public_func}
+\title{Public Function}
+\description{A public function.}
+"#;
+        let rd_internal = r#"\name{internal_func}
+\alias{internal_func}
+\title{Internal Function}
+\keyword{internal}
+\description{An internal function.}
+"#;
+        fs::write(dir.path().join("public_func.Rd"), rd_public).unwrap();
+        fs::write(dir.path().join("internal_func.Rd"), rd_internal).unwrap();
+
+        let package = RdPackage::from_directory(dir.path(), false).unwrap();
+
+        // Default: exclude internal
+        let options = TopicIndexOptions {
+            output_extension: "qmd".to_string(),
+            include_internal: false,
+        };
+        let index = generate_topic_index(&package, &options).unwrap();
+
+        // Only public topic should be in the index
+        assert_eq!(index.topics.len(), 1);
+        assert_eq!(index.topics[0].name, "public_func");
+    }
+
+    #[test]
+    fn test_topic_index_includes_internal_when_requested() {
+        let dir = tempdir().unwrap();
+
+        // Create public and internal topics
+        let rd_public = r#"\name{public_func}
+\alias{public_func}
+\title{Public Function}
+\description{A public function.}
+"#;
+        let rd_internal = r#"\name{internal_func}
+\alias{internal_func}
+\title{Internal Function}
+\keyword{internal}
+\description{An internal function.}
+"#;
+        fs::write(dir.path().join("public_func.Rd"), rd_public).unwrap();
+        fs::write(dir.path().join("internal_func.Rd"), rd_internal).unwrap();
+
+        let package = RdPackage::from_directory(dir.path(), false).unwrap();
+
+        // Include internal topics
+        let options = TopicIndexOptions {
+            output_extension: "qmd".to_string(),
+            include_internal: true,
+        };
+        let index = generate_topic_index(&package, &options).unwrap();
+
+        // Both topics should be in the index
+        assert_eq!(index.topics.len(), 2);
+
+        // Topics are sorted by name
+        let names: Vec<_> = index.topics.iter().map(|t| t.name.as_str()).collect();
+        assert!(names.contains(&"public_func"));
+        assert!(names.contains(&"internal_func"));
     }
 }

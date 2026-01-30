@@ -144,6 +144,13 @@ expression: schema
             "null"
           ]
         },
+        "include_internal": {
+          "description": "Include topics with \\keyword{internal} (default: false) By default, internal topics are skipped (matching pkgdown behavior).",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "pagetitle": {
           "description": "Add pkgdown-style pagetitle metadata (\"<title> — <name>\") (default: true)",
           "type": [

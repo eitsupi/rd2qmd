@@ -9,6 +9,7 @@ format = "qmd"
 frontmatter = true
 pagetitle = true
 arguments_table = "grid"
+include_internal = false
 
 [code]
 exec_dontrun = false

@@ -48,6 +48,10 @@ pub struct OutputConfig {
     /// Table format for Arguments section: "grid" (Pandoc grid table) or "pipe" (default: "grid")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub arguments_table: Option<String>,
+    /// Include topics with \keyword{internal} (default: false)
+    /// By default, internal topics are skipped (matching pkgdown behavior).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub include_internal: Option<bool>,
 }
 
 impl OutputConfig {
@@ -56,6 +60,7 @@ impl OutputConfig {
             && self.frontmatter.is_none()
             && self.pagetitle.is_none()
             && self.arguments_table.is_none()
+            && self.include_internal.is_none()
     }
 }
 
@@ -176,6 +181,7 @@ impl Config {
                 frontmatter: Some(true),
                 pagetitle: Some(true),
                 arguments_table: Some("grid".to_string()),
+                include_internal: Some(false),
             },
             code: CodeConfig {
                 quarto_code_blocks: None, // auto-detect

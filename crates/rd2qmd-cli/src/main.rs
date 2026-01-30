@@ -149,6 +149,11 @@ struct Cli {
     #[arg(long)]
     no_exec_donttest: bool,
 
+    /// Include topics with \keyword{internal} in the output
+    /// By default, internal topics are skipped (matching pkgdown behavior).
+    #[arg(long)]
+    include_internal: bool,
+
     /// Table format for the Arguments section: grid (Pandoc grid table) or pipe (pipe table)
     /// Grid tables support block elements (lists, paragraphs) in cells. Use pipe for simpler Markdown output.
     #[arg(long, value_enum, default_value_t = ArgumentsTableFormat::Grid)]
@@ -198,6 +203,11 @@ struct IndexArgs {
     /// Process directories recursively
     #[arg(short, long)]
     recursive: bool,
+
+    /// Include topics with \keyword{internal} in the index
+    /// By default, internal topics are excluded (matching pkgdown behavior).
+    #[arg(long)]
+    include_internal: bool,
 }
 
 /// Arguments for the init subcommand
@@ -274,6 +284,13 @@ fn main() -> Result<()> {
     // Convert arguments table format: CLI > Config > Grid
     let arguments_format = merge_arguments_format(&cli, &config);
 
+    // include_internal: CLI > Config > false (skip internal by default)
+    let include_internal = if cli.include_internal {
+        true
+    } else {
+        config.output.include_internal.unwrap_or(false)
+    };
+
     if input.is_file() {
         // Single file conversion (no alias resolution)
         convert_single_file(
@@ -307,6 +324,7 @@ fn main() -> Result<()> {
             external_link_options,
             exec_dontrun,
             exec_donttest,
+            include_internal,
             cli.topic_index.as_deref(),
             cli.verbose,
             cli.quiet,
@@ -398,6 +416,7 @@ fn convert_directory(
     external_link_options: Option<ExternalLinkOptions>,
     exec_dontrun: bool,
     exec_donttest: bool,
+    include_internal: bool,
     topic_index_path: Option<&Path>,
     verbose: bool,
     quiet: bool,
@@ -442,6 +461,7 @@ fn convert_directory(
         external_package_urls: None, // Will be set by convert_package_with_external_links
         exec_dontrun,
         exec_donttest,
+        include_internal,
     };
 
     // Convert external link options
@@ -489,12 +509,23 @@ fn convert_directory(
         eprintln!("Error converting {}: {}", file.display(), error);
     }
 
+    // Report skipped internal topics
+    if verbose && !result.skipped_internal.is_empty() {
+        for path in &result.skipped_internal {
+            eprintln!("Skipped (internal): {}", path.display());
+        }
+    }
+
     if !quiet {
-        eprintln!(
+        let mut summary = format!(
             "Converted {} files, {} failed",
             result.success_count,
             result.failed_files.len()
         );
+        if !result.skipped_internal.is_empty() {
+            summary.push_str(&format!(", {} skipped (internal)", result.skipped_internal.len()));
+        }
+        eprintln!("{}", summary);
     }
 
     if !result.failed_files.is_empty() {
@@ -509,6 +540,7 @@ fn convert_directory(
 
         let index_options = TopicIndexOptions {
             output_extension: output_extension.to_string(),
+            include_internal,
         };
         let index = generate_topic_index(&package, &index_options)
             .with_context(|| "Failed to generate topic index")?;
@@ -600,6 +632,7 @@ fn run_index_command(args: &IndexArgs) -> Result<()> {
 
     let index_options = TopicIndexOptions {
         output_extension: output_extension.to_string(),
+        include_internal: args.include_internal,
     };
 
     let index = generate_topic_index(&package, &index_options)
@@ -799,6 +832,7 @@ mod tests {
             quiet: false,
             exec_dontrun: false,
             no_exec_donttest: false,
+            include_internal: false,
             arguments_table: ArgumentsTableFormat::Grid,
             topic_index: None,
             config: None,
