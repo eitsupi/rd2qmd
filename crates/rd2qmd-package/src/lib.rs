@@ -73,11 +73,11 @@ enum ConvertError {
 #[derive(Debug, Clone)]
 pub struct RdPackage {
     /// Root directory containing Rd files
-    pub root: PathBuf,
+    root: PathBuf,
     /// List of Rd files in the package
-    pub files: Vec<PathBuf>,
+    files: Vec<PathBuf>,
     /// Alias index: maps alias names to Rd file basenames (without extension)
-    pub alias_index: HashMap<String, String>,
+    alias_index: HashMap<String, String>,
 }
 
 impl RdPackage {
@@ -98,6 +98,21 @@ impl RdPackage {
             files,
             alias_index,
         })
+    }
+
+    /// Get the root directory containing Rd files
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// Get the list of Rd files in the package
+    pub fn files(&self) -> &[PathBuf] {
+        &self.files
+    }
+
+    /// Get the alias index (maps alias names to Rd file basenames)
+    pub fn alias_index(&self) -> &HashMap<String, String> {
+        &self.alias_index
     }
 
     /// Get the target filename for a given alias

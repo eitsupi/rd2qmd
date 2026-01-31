@@ -49,10 +49,10 @@ fn main() -> Result<()> {
     let package =
         RdPackage::from_directory(&args.man_dir, false).context("Failed to load Rd files")?;
 
-    println!("Found {} .Rd files", package.files.len());
+    println!("Found {} .Rd files", package.files().len());
     println!(
         "Built alias index with {} entries",
-        package.alias_index.len()
+        package.alias_index().len()
     );
     println!();
 

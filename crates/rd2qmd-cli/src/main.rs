@@ -434,7 +434,7 @@ fn convert_directory(
     let package = RdPackage::from_directory(input, recursive)
         .with_context(|| format!("Failed to scan directory: {}", input.display()))?;
 
-    if package.files.is_empty() {
+    if package.files().is_empty() {
         if !quiet {
             eprintln!("No .Rd files found in {}", input.display());
         }
@@ -442,10 +442,10 @@ fn convert_directory(
     }
 
     if verbose {
-        eprintln!("Found {} .Rd files", package.files.len());
+        eprintln!("Found {} .Rd files", package.files().len());
         eprintln!(
             "Built alias index with {} entries",
-            package.alias_index.len()
+            package.alias_index().len()
         );
     }
 
@@ -626,7 +626,7 @@ fn run_index_command(args: &IndexArgs) -> Result<()> {
     let package = RdPackage::from_directory(&args.input, args.recursive)
         .with_context(|| format!("Failed to scan directory: {}", args.input.display()))?;
 
-    if package.files.is_empty() {
+    if package.files().is_empty() {
         anyhow::bail!("No .Rd files found in {}", args.input.display());
     }
 
