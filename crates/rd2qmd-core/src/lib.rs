@@ -27,13 +27,13 @@
 //!
 //! ## Mid-level: [`convert_rd_content`] function
 //!
-//! Function-style API when you have a pre-configured [`ConvertOptions`] struct.
+//! Function-style API when you have a pre-configured [`RdConvertOptions`] struct.
 //! Useful when options are loaded from configuration files.
 //!
 //! ```
-//! use rd2qmd_core::{convert_rd_content, ConvertOptions};
+//! use rd2qmd_core::{convert_rd_content, RdConvertOptions};
 //!
-//! let options = ConvertOptions::default();
+//! let options = RdConvertOptions::default();
 //! let qmd = convert_rd_content(r#"\name{foo}\title{Foo}\description{A function.}"#, &options).unwrap();
 //! ```
 //!
@@ -74,7 +74,7 @@ pub use rd_parser::parse_roxygen_comments;
 // Re-export rd2qmd-mdast types
 pub use rd2qmd_mdast::{Frontmatter, RdMetadata, WriterOptions, mdast_to_qmd};
 
-pub use convert::{ArgumentsFormat, ConverterOptions, rd_to_mdast, rd_to_mdast_with_options};
+pub use convert::{ArgumentsFormat, RdToMdastOptions, rd_to_mdast, rd_to_mdast_with_options};
 
 // ============================================================================
 // Option structs for single-file conversion
@@ -125,7 +125,7 @@ pub struct LinkOptions {
 
 /// Options for single-file Rd to QMD conversion
 #[derive(Debug, Clone, Default)]
-pub struct ConvertOptions {
+pub struct RdConvertOptions {
     /// Frontmatter output options
     pub frontmatter: FrontmatterOptions,
     /// Code block execution options
@@ -311,7 +311,7 @@ pub fn extract_rd_metadata(doc: &RdDocument, source_files: Vec<String>) -> RdMet
 /// ```
 pub struct RdConverter {
     content: String,
-    options: ConvertOptions,
+    options: RdConvertOptions,
 }
 
 impl RdConverter {
@@ -319,7 +319,7 @@ impl RdConverter {
     pub fn new(content: impl Into<String>) -> Self {
         Self {
             content: content.into(),
-            options: ConvertOptions::default(),
+            options: RdConvertOptions::default(),
         }
     }
 
@@ -384,7 +384,7 @@ impl RdConverter {
     }
 
     /// Set all options at once
-    pub fn with_options(mut self, options: ConvertOptions) -> Self {
+    pub fn with_options(mut self, options: RdConvertOptions) -> Self {
         self.options = options;
         self
     }
@@ -405,7 +405,7 @@ impl RdConverter {
 /// # Example
 ///
 /// ```
-/// use rd2qmd_core::{convert_rd_content, ConvertOptions, FrontmatterOptions, CodeExecutionOptions, LinkOptions};
+/// use rd2qmd_core::{convert_rd_content, RdConvertOptions, FrontmatterOptions, CodeExecutionOptions, LinkOptions};
 ///
 /// let rd_content = r#"
 /// \name{hello}
@@ -413,7 +413,7 @@ impl RdConverter {
 /// \description{A simple function.}
 /// "#;
 ///
-/// let options = ConvertOptions {
+/// let options = RdConvertOptions {
 ///     frontmatter: FrontmatterOptions { enabled: true, pagetitle: true },
 ///     code: CodeExecutionOptions::default(),
 ///     links: LinkOptions { output_extension: "qmd".to_string(), ..Default::default() },
@@ -424,11 +424,11 @@ impl RdConverter {
 /// assert!(qmd.contains("title:"));
 /// assert!(qmd.contains("Hello World"));
 /// ```
-pub fn convert_rd_content(content: &str, options: &ConvertOptions) -> Result<String, ParseError> {
+pub fn convert_rd_content(content: &str, options: &RdConvertOptions) -> Result<String, ParseError> {
     let doc = parse(content)?;
 
     // Build converter options
-    let converter_options = ConverterOptions {
+    let converter_options = RdToMdastOptions {
         link_extension: Some(options.links.output_extension.clone()),
         alias_map: options.links.alias_map.clone(),
         unresolved_link_url: options.links.unresolved_url.clone(),
@@ -520,7 +520,7 @@ mod tests {
 \title{Test Function}
 \description{A test function.}
 "#;
-        let options = ConvertOptions {
+        let options = RdConvertOptions {
             frontmatter: FrontmatterOptions {
                 enabled: true,
                 pagetitle: false,
@@ -544,7 +544,7 @@ mod tests {
 \title{Foo Function}
 \description{Does foo.}
 "#;
-        let options = ConvertOptions {
+        let options = RdConvertOptions {
             frontmatter: FrontmatterOptions {
                 enabled: true,
                 pagetitle: true,
@@ -566,7 +566,7 @@ mod tests {
 \title{Test}
 \description{Description.}
 "#;
-        let options = ConvertOptions {
+        let options = RdConvertOptions {
             frontmatter: FrontmatterOptions {
                 enabled: false,
                 pagetitle: false,
@@ -835,7 +835,7 @@ Sys.sleep(10)
 \title{Options Test}
 \description{Testing with_options.}
 "#;
-        let options = ConvertOptions {
+        let options = RdConvertOptions {
             frontmatter: FrontmatterOptions {
                 enabled: true,
                 pagetitle: true,

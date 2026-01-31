@@ -27,7 +27,7 @@ pub enum ArgumentsFormat {
 
 /// Options for Rd to mdast conversion
 #[derive(Debug, Clone)]
-pub struct ConverterOptions {
+pub struct RdToMdastOptions {
     /// File extension for internal links (e.g., "qmd", "md", "html")
     /// If None, internal links become inline code instead of hyperlinks
     pub link_extension: Option<String>,
@@ -61,7 +61,7 @@ pub struct ConverterOptions {
     pub arguments_format: ArgumentsFormat,
 }
 
-impl Default for ConverterOptions {
+impl Default for RdToMdastOptions {
     fn default() -> Self {
         Self {
             link_extension: None,
@@ -78,11 +78,11 @@ impl Default for ConverterOptions {
 
 /// Convert an Rd document to mdast
 pub fn rd_to_mdast(doc: &RdDocument) -> Root {
-    rd_to_mdast_with_options(doc, &ConverterOptions::default())
+    rd_to_mdast_with_options(doc, &RdToMdastOptions::default())
 }
 
 /// Convert an Rd document to mdast with options
-pub fn rd_to_mdast_with_options(doc: &RdDocument, options: &ConverterOptions) -> Root {
+pub fn rd_to_mdast_with_options(doc: &RdDocument, options: &RdToMdastOptions) -> Root {
     let mut converter = Converter::new(options.clone());
     converter.convert_document(doc)
 }
@@ -92,11 +92,11 @@ struct Converter {
     /// Current heading depth for sections
     section_depth: u8,
     /// Conversion options
-    options: ConverterOptions,
+    options: RdToMdastOptions,
 }
 
 impl Converter {
-    fn new(options: ConverterOptions) -> Self {
+    fn new(options: RdToMdastOptions) -> Self {
         Self {
             section_depth: 1,
             options,

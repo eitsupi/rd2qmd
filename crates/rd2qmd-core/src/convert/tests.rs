@@ -95,7 +95,7 @@ fn test_list_conversion() {
 fn test_internal_link_unresolved_becomes_inline_code() {
     // When topic is not in alias_map and no fallback URL, it becomes inline code
     let doc = parse("\\title{T}\n\\description{See \\link{other_func}}").unwrap();
-    let options = ConverterOptions {
+    let options = RdToMdastOptions {
         link_extension: Some("qmd".to_string()),
         alias_map: None,
         unresolved_link_url: None,
@@ -131,7 +131,7 @@ fn test_internal_link_unresolved_becomes_inline_code() {
 fn test_internal_link_with_fallback_url() {
     // When topic is not in alias_map but fallback URL is set, use it
     let doc = parse("\\title{T}\n\\description{See \\link{vector}}").unwrap();
-    let options = ConverterOptions {
+    let options = RdToMdastOptions {
         link_extension: Some("qmd".to_string()),
         alias_map: None,
         unresolved_link_url: Some("https://rdrr.io/r/base/{topic}.html".to_string()),
@@ -166,7 +166,7 @@ fn test_internal_link_with_fallback_url() {
 #[test]
 fn test_internal_link_without_extension() {
     let doc = parse("\\title{T}\n\\description{See \\link{other_func}}").unwrap();
-    let options = ConverterOptions::default(); // No link_extension
+    let options = RdToMdastOptions::default(); // No link_extension
     let mdast = rd_to_mdast_with_options(&doc, &options);
 
     // Should be inline code, not a link
@@ -192,7 +192,7 @@ fn test_internal_link_without_extension() {
 #[test]
 fn test_external_link_without_url_becomes_inline_code() {
     let doc = parse("\\title{T}\n\\description{See \\link[dplyr]{filter}}").unwrap();
-    let options = ConverterOptions {
+    let options = RdToMdastOptions {
         link_extension: Some("qmd".to_string()),
         alias_map: None,
         unresolved_link_url: None,
@@ -236,7 +236,7 @@ fn test_external_link_with_url_becomes_hyperlink() {
         "https://dplyr.tidyverse.org/reference".to_string(),
     );
 
-    let options = ConverterOptions {
+    let options = RdToMdastOptions {
         link_extension: Some("qmd".to_string()),
         alias_map: None,
         unresolved_link_url: None,
@@ -281,7 +281,7 @@ fn test_external_link_with_topic_in_package() {
         "https://rlang.r-lib.org/reference".to_string(),
     );
 
-    let options = ConverterOptions {
+    let options = RdToMdastOptions {
         link_extension: Some("qmd".to_string()),
         alias_map: None,
         unresolved_link_url: None,
@@ -323,7 +323,7 @@ fn test_alias_resolution() {
     let mut alias_map = HashMap::new();
     alias_map.insert("DataFrame".to_string(), "pl__DataFrame".to_string());
 
-    let options = ConverterOptions {
+    let options = RdToMdastOptions {
         link_extension: Some("qmd".to_string()),
         alias_map: Some(alias_map),
         unresolved_link_url: None,
@@ -416,7 +416,7 @@ fn test_code_wrapping_link_preserves_link() {
         "as_polars_series".to_string(),
     );
 
-    let options = ConverterOptions {
+    let options = RdToMdastOptions {
         link_extension: Some("qmd".to_string()),
         alias_map: Some(alias_map),
         unresolved_link_url: None,
@@ -990,7 +990,7 @@ regular_code()
 }
 "#;
     let doc = parse(rd).unwrap();
-    let options = ConverterOptions::default();
+    let options = RdToMdastOptions::default();
     let mdast = rd_to_mdast_with_options(&doc, &options);
 
     // Should have two code blocks
@@ -1038,7 +1038,7 @@ fn test_exec_dontrun_makes_executable() {
 }
 "#;
     let doc = parse(rd).unwrap();
-    let options = ConverterOptions {
+    let options = RdToMdastOptions {
         exec_dontrun: true,
         ..Default::default()
     };
@@ -1083,7 +1083,7 @@ fn test_donttest_default_executable() {
 }
 "#;
     let doc = parse(rd).unwrap();
-    let options = ConverterOptions::default();
+    let options = RdToMdastOptions::default();
     let mdast = rd_to_mdast_with_options(&doc, &options);
 
     // Should have one executable code block
@@ -1124,7 +1124,7 @@ fn test_no_exec_donttest_makes_not_executable() {
 }
 "#;
     let doc = parse(rd).unwrap();
-    let options = ConverterOptions {
+    let options = RdToMdastOptions {
         exec_donttest: false,
         ..Default::default()
     };
@@ -1166,7 +1166,7 @@ fn test_arguments_pipe_table_snapshot() {
 }
 "#;
     let doc = parse(rd).unwrap();
-    let options = ConverterOptions {
+    let options = RdToMdastOptions {
         arguments_format: ArgumentsFormat::PipeTable,
         ..Default::default()
     };
@@ -1186,7 +1186,7 @@ fn test_arguments_grid_table_simple_snapshot() {
 }
 "#;
     let doc = parse(rd).unwrap();
-    let options = ConverterOptions {
+    let options = RdToMdastOptions {
         arguments_format: ArgumentsFormat::GridTable,
         ..Default::default()
     };
@@ -1212,7 +1212,7 @@ fn test_arguments_grid_table_with_list_snapshot() {
 }
 "#;
     let doc = parse(rd).unwrap();
-    let options = ConverterOptions {
+    let options = RdToMdastOptions {
         arguments_format: ArgumentsFormat::GridTable,
         ..Default::default()
     };
@@ -1238,7 +1238,7 @@ Use a flag instead.}
 }
 "#;
     let doc = parse(rd).unwrap();
-    let options = ConverterOptions {
+    let options = RdToMdastOptions {
         arguments_format: ArgumentsFormat::GridTable,
         ..Default::default()
     };

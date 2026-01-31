@@ -33,7 +33,7 @@ pub enum FallbackReason {
 
 use rayon::prelude::*;
 use rd2qmd_core::{
-    ConverterOptions, Frontmatter, RdMetadata, SectionTag, WriterOptions, extract_rd_metadata,
+    RdToMdastOptions, Frontmatter, RdMetadata, SectionTag, WriterOptions, extract_rd_metadata,
     extract_text, mdast_to_qmd, parse, parse_roxygen_comments, rd_to_mdast_with_options,
 };
 use serde::Serialize;
@@ -394,7 +394,7 @@ fn convert_single_file(
         }
 
         // Build converter options with alias map
-        let converter_options = ConverterOptions {
+        let converter_options = RdToMdastOptions {
             link_extension: Some(options.output_extension.clone()),
             alias_map: Some(package.alias_index.clone()),
             unresolved_link_url: options.unresolved_link_url.clone(),
