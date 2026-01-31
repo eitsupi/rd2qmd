@@ -17,17 +17,8 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::RdPackage;
+use crate::{FallbackReason, RdPackage};
 use rd2qmd_core::RdNode;
-
-/// Reason why a fallback URL was used for a package
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FallbackReason {
-    /// Package is not installed in any of the library paths
-    NotInstalled,
-    /// Package is installed but no pkgdown site could be found
-    NoPkgdownSite,
-}
 
 /// Result of resolving external package URLs
 #[derive(Debug, Clone, Default)]

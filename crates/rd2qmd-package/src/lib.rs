@@ -16,9 +16,20 @@ pub mod external_links;
 
 #[cfg(feature = "external-links")]
 pub use external_links::{
-    FallbackReason, PackageResolveResult, PackageUrlResolver, PackageUrlResolverOptions,
-    collect_external_packages,
+    PackageResolveResult, PackageUrlResolver, PackageUrlResolverOptions, collect_external_packages,
 };
+
+/// Reason why a fallback URL was used for a package
+///
+/// This is returned in [`FullConvertResult::fallbacks`] when external link resolution
+/// is enabled and a package could not be resolved to its pkgdown documentation URL.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FallbackReason {
+    /// Package is not installed in any of the library paths
+    NotInstalled,
+    /// Package is installed but no pkgdown site could be found
+    NoPkgdownSite,
+}
 
 use rayon::prelude::*;
 use rd2qmd_core::{
@@ -540,7 +551,6 @@ pub struct FullConvertResult {
     pub conversion: ConvertResult,
     /// External package URL resolution fallbacks (package name -> reason)
     /// Empty when external link resolution is not enabled or not used.
-    #[cfg(feature = "external-links")]
     pub fallbacks: HashMap<String, FallbackReason>,
 }
 
@@ -626,7 +636,10 @@ impl<'a> PackageConverter<'a> {
         #[cfg(not(feature = "external-links"))]
         {
             let conversion = convert_package(self.package, &self.options)?;
-            Ok(FullConvertResult { conversion })
+            Ok(FullConvertResult {
+                conversion,
+                fallbacks: HashMap::new(),
+            })
         }
     }
 

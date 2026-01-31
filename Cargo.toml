@@ -39,7 +39,7 @@ url = "2"
 insta = { version = "1", features = ["yaml"] }
 
 # Internal crates
-rd2qmd-mdast = { path = "crates/rd2qmd-mdast" }
-rd-parser = { path = "crates/rd-parser" }
-rd2qmd-core = { path = "crates/rd2qmd-core" }
-rd2qmd-package = { path = "crates/rd2qmd-package" }
+rd2qmd-mdast = { version = "0.1.0", path = "crates/rd2qmd-mdast" }
+rd-parser = { version = "0.1.0", path = "crates/rd-parser" }
+rd2qmd-core = { version = "0.1.0", path = "crates/rd2qmd-core" }
+rd2qmd-package = { version = "0.1.0", path = "crates/rd2qmd-package" }
