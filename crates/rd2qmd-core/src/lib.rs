@@ -66,7 +66,22 @@ pub mod roxygen_code_block;
 use std::collections::HashMap;
 
 // Re-export rd-parser types
-pub use rd_parser::{ParseError, RdDocument, RdNode, RdSection, SectionTag, parse};
+pub use rd_parser::{RdDocument, RdNode, RdSection, SectionTag, parse};
+
+// ============================================================================
+// Error types
+// ============================================================================
+
+/// Error type for Rd to Markdown conversion
+///
+/// This provides a stable error interface that doesn't expose internal
+/// parser implementation details.
+#[derive(Debug, thiserror::Error)]
+pub enum ConvertError {
+    /// Parse error occurred while processing Rd content
+    #[error("Parse error: {0}")]
+    Parse(String),
+}
 
 #[cfg(feature = "roxygen")]
 pub use rd_parser::parse_roxygen_comments;
@@ -390,7 +405,7 @@ impl RdConverter {
     }
 
     /// Execute the conversion
-    pub fn convert(self) -> Result<String, ParseError> {
+    pub fn convert(self) -> Result<String, ConvertError> {
         convert_rd_content(&self.content, &self.options)
     }
 }
@@ -424,8 +439,8 @@ impl RdConverter {
 /// assert!(qmd.contains("title:"));
 /// assert!(qmd.contains("Hello World"));
 /// ```
-pub fn convert_rd_content(content: &str, options: &RdConvertOptions) -> Result<String, ParseError> {
-    let doc = parse(content)?;
+pub fn convert_rd_content(content: &str, options: &RdConvertOptions) -> Result<String, ConvertError> {
+    let doc = parse(content).map_err(|e| ConvertError::Parse(e.to_string()))?;
 
     // Build converter options
     let converter_options = RdToMdastOptions {
