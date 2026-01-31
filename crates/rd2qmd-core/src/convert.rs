@@ -36,13 +36,13 @@ pub struct ConverterOptions {
     pub alias_map: Option<HashMap<String, String>>,
     /// URL pattern for unresolved links (fallback to base R documentation)
     /// Use `{topic}` as placeholder for the topic name.
-    /// Example: "https://rdrr.io/r/base/{topic}.html"
+    /// Example: `https://rdrr.io/r/base/{topic}.html`
     /// If None, unresolved links become inline code instead of hyperlinks
     pub unresolved_link_url: Option<String>,
     /// External package URL map: package name -> reference documentation base URL
-    /// Used to resolve \link[pkg]{topic} to external package documentation
-    /// Example: "dplyr" -> "https://dplyr.tidyverse.org/reference"
-    /// The full URL is constructed as "{base_url}/{topic}.html"
+    /// Used to resolve `\link[pkg]{topic}` to external package documentation
+    /// Example: `"dplyr" -> "https://dplyr.tidyverse.org/reference"`
+    /// The full URL is constructed as `{base_url}/{topic}.html`
     pub external_package_urls: Option<HashMap<String, String>>,
     /// Make \dontrun{} example code executable (default: false, shown as non-executable)
     /// This matches pkgdown's semantics: \dontrun{} means "never run this code"

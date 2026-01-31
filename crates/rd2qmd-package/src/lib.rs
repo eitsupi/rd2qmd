@@ -106,7 +106,7 @@ pub struct PackageConvertOptions {
     pub output_extension: String,
     /// Whether to add YAML frontmatter
     pub frontmatter: bool,
-    /// Whether to add pagetitle in pkgdown style ("<title> — <name>")
+    /// Whether to add pagetitle in pkgdown style (`<title> — <name>`)
     pub pagetitle: bool,
     /// Whether to use Quarto {r} code blocks for examples
     pub quarto_code_blocks: bool,
@@ -114,12 +114,12 @@ pub struct PackageConvertOptions {
     pub parallel_jobs: Option<usize>,
     /// URL pattern for unresolved links (fallback to base R documentation)
     /// Use `{topic}` as placeholder for the topic name.
-    /// Example: "https://rdrr.io/r/base/{topic}.html"
+    /// Example: `https://rdrr.io/r/base/{topic}.html`
     /// If None, unresolved links become inline code instead of hyperlinks
     pub unresolved_link_url: Option<String>,
     /// External package URL map: package name -> reference documentation base URL
     /// Used for resolving `\link[pkg]{topic}` patterns to actual URLs.
-    /// Example: {"dplyr" -> "https://dplyr.tidyverse.org/reference"}
+    /// Example: `{"dplyr" -> "https://dplyr.tidyverse.org/reference"}`
     pub external_package_urls: Option<HashMap<String, String>>,
     /// Make \dontrun{} example code executable (default: false)
     /// Matches pkgdown semantics: \dontrun{} means "never run this code"

@@ -6,7 +6,53 @@
 //! - mdast to Quarto Markdown output (via rd2qmd-mdast crate)
 //! - Single-file conversion function
 //!
-//! ## Features
+//! # API Guide
+//!
+//! This crate offers three levels of API for different use cases:
+//!
+//! ## High-level: [`RdConverter`] builder (recommended for most users)
+//!
+//! Fluent builder API for converting Rd content strings to Quarto Markdown.
+//! Handles parsing, conversion, and output in one step.
+//!
+//! ```
+//! use rd2qmd_core::RdConverter;
+//!
+//! let qmd = RdConverter::new(r#"\name{foo}\title{Foo}\description{A function.}"#)
+//!     .frontmatter(true)
+//!     .pagetitle(true)
+//!     .convert()
+//!     .unwrap();
+//! ```
+//!
+//! ## Mid-level: [`convert_rd_content`] function
+//!
+//! Function-style API when you have a pre-configured [`ConvertOptions`] struct.
+//! Useful when options are loaded from configuration files.
+//!
+//! ```
+//! use rd2qmd_core::{convert_rd_content, ConvertOptions};
+//!
+//! let options = ConvertOptions::default();
+//! let qmd = convert_rd_content(r#"\name{foo}\title{Foo}\description{A function.}"#, &options).unwrap();
+//! ```
+//!
+//! ## Low-level: [`rd_to_mdast`] / [`rd_to_mdast_with_options`]
+//!
+//! For advanced use cases requiring direct access to the mdast intermediate representation.
+//! Use this when you need to manipulate the AST before rendering, or integrate with
+//! other markdown processing pipelines.
+//!
+//! ```
+//! use rd2qmd_core::{parse, rd_to_mdast, mdast_to_qmd, WriterOptions};
+//!
+//! let doc = parse(r#"\name{foo}\title{Foo}\description{A function.}"#).unwrap();
+//! let mdast = rd_to_mdast(&doc);
+//! // ... manipulate mdast if needed ...
+//! let qmd = mdast_to_qmd(&mdast, &WriterOptions::default());
+//! ```
+//!
+//! # Features
 //!
 //! - `lifecycle`: Enable lifecycle stage extraction from Rd documents
 //! - `roxygen`: Enable source file extraction from roxygen2 comments
@@ -39,7 +85,7 @@ pub use convert::{ArgumentsFormat, ConverterOptions, rd_to_mdast, rd_to_mdast_wi
 pub struct FrontmatterOptions {
     /// Output YAML frontmatter
     pub enabled: bool,
-    /// Output pkgdown-style pagetitle ("<title> — <name>")
+    /// Output pkgdown-style pagetitle (`<title> — <name>`)
     pub pagetitle: bool,
 }
 
