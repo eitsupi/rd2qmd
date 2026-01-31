@@ -57,6 +57,18 @@ pub enum PackageError {
 /// Result type for package operations
 pub type Result<T> = std::result::Result<T, PackageError>;
 
+/// Internal error type for single-file conversion
+///
+/// Used within [`convert_single_file`] to distinguish between
+/// files that should be skipped (internal) and actual errors.
+#[derive(Debug)]
+enum ConvertError {
+    /// File has `\keyword{internal}` and should be skipped
+    SkipInternal,
+    /// Conversion failed with an error message
+    Failed(String),
+}
+
 /// Information about an R package's documentation
 #[derive(Debug, Clone)]
 pub struct RdPackage {
@@ -367,16 +379,18 @@ fn convert_single_file(
     package: &RdPackage,
     options: &PackageConvertOptions,
 ) -> ConvertOutcome {
-    let convert = || -> std::result::Result<PathBuf, Box<dyn std::error::Error>> {
+    let convert = || -> std::result::Result<PathBuf, ConvertError> {
         // Read input file
-        let content = fs::read_to_string(input)?;
+        let content =
+            fs::read_to_string(input).map_err(|e| ConvertError::Failed(e.to_string()))?;
 
         // Parse Rd
-        let doc = parse(&content).map_err(|e| format!("Parse error: {}", e))?;
+        let doc =
+            parse(&content).map_err(|e| ConvertError::Failed(format!("Parse error: {}", e)))?;
 
         // Check for \keyword{internal} - skip unless include_internal is set
         if !options.include_internal && has_keyword_internal(&doc) {
-            return Err("__INTERNAL__".into());
+            return Err(ConvertError::SkipInternal);
         }
 
         // Build converter options with alias map
@@ -443,21 +457,19 @@ fn convert_single_file(
 
         // Create parent directory if needed
         if let Some(parent) = output_path.parent() {
-            fs::create_dir_all(parent)?;
+            fs::create_dir_all(parent).map_err(|e| ConvertError::Failed(e.to_string()))?;
         }
 
         // Write output
-        fs::write(&output_path, qmd)?;
+        fs::write(&output_path, qmd).map_err(|e| ConvertError::Failed(e.to_string()))?;
 
         Ok(output_path)
     };
 
     match convert() {
         Ok(path) => ConvertOutcome::Success(path),
-        Err(e) if e.to_string() == "__INTERNAL__" => {
-            ConvertOutcome::SkippedInternal(input.to_path_buf())
-        }
-        Err(e) => ConvertOutcome::Failed(input.to_path_buf(), e.to_string()),
+        Err(ConvertError::SkipInternal) => ConvertOutcome::SkippedInternal(input.to_path_buf()),
+        Err(ConvertError::Failed(msg)) => ConvertOutcome::Failed(input.to_path_buf(), msg),
     }
 }
 
