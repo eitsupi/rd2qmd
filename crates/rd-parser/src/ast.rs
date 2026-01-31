@@ -358,6 +358,15 @@ pub enum RdNode {
         /// S4 class name
         classname: String,
     },
+
+    /// Encoding-dependent text (\enc{encoded}{fallback})
+    /// First argument is UTF-8/encoded text, second is ASCII fallback
+    Enc {
+        /// UTF-8/encoded text (used for HTML/Markdown output)
+        encoded: String,
+        /// ASCII fallback text (used for plain text output)
+        fallback: String,
+    },
 }
 
 /// Description list item

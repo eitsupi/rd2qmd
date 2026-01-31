@@ -255,6 +255,9 @@ impl Parser {
             "ifelse" => self.parse_ifelse(),
             "out" => self.parse_verbatim_inline().map(|s| Some(RdNode::Out(s))),
 
+            // Encoding tag - use first (UTF-8) argument, ignore ASCII fallback
+            "enc" => self.parse_enc(),
+
             // Method declarations (in \usage)
             "method" => self.parse_method(),
             "S4method" => self.parse_s4method(),
@@ -648,6 +651,29 @@ impl Parser {
         let text = self.parse_braced_content()?;
 
         Ok(Some(RdNode::Href { url, text }))
+    }
+
+    /// Parse \enc{encoded}{fallback}
+    /// Preserves both arguments in AST for format-specific output selection
+    fn parse_enc(&mut self) -> ParseResult<Option<RdNode>> {
+        self.skip_whitespace();
+        self.expect(&TokenKind::OpenBrace)?;
+        let encoded = self.parse_text_until_close_brace()?;
+        self.expect(&TokenKind::CloseBrace)?;
+
+        // Parse the fallback argument
+        self.skip_whitespace();
+        let fallback = if self.check(&TokenKind::OpenBrace) {
+            self.expect(&TokenKind::OpenBrace)?;
+            let fb = self.parse_text_until_close_brace()?;
+            self.expect(&TokenKind::CloseBrace)?;
+            fb
+        } else {
+            // If no fallback provided, use encoded as fallback
+            encoded.clone()
+        };
+
+        Ok(Some(RdNode::Enc { encoded, fallback }))
     }
 
     /// Parse \link[pkg]{topic}, \link[pkg:bar]{text}, or \link[=dest]{text}
@@ -1387,6 +1413,47 @@ test(x, y = TRUE)
         let doc = parse(r#"\examples{\testonly{stopifnot(TRUE)}}"#).unwrap();
         let content = &doc.sections[0].content;
         assert!(matches!(&content[0], RdNode::DontShow(_)));
+    }
+
+    // ========================================================================
+    // Tests for \enc (encoding-dependent text)
+    // ========================================================================
+
+    #[test]
+    fn test_enc_basic() {
+        let doc = parse(r#"\description{\enc{Jöreskog}{Joreskog}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Enc { encoded, fallback } = &content[0] {
+            assert_eq!(encoded, "Jöreskog");
+            assert_eq!(fallback, "Joreskog");
+        } else {
+            panic!("Expected Enc node, got {:?}", content[0]);
+        }
+    }
+
+    #[test]
+    fn test_enc_dash() {
+        let doc = parse(r#"\description{\enc{–}{--}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Enc { encoded, fallback } = &content[0] {
+            assert_eq!(encoded, "–"); // en-dash
+            assert_eq!(fallback, "--");
+        } else {
+            panic!("Expected Enc node, got {:?}", content[0]);
+        }
+    }
+
+    #[test]
+    fn test_enc_single_arg() {
+        // If only one argument is provided, both should be the same
+        let doc = parse(r#"\description{\enc{text}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Enc { encoded, fallback } = &content[0] {
+            assert_eq!(encoded, "text");
+            assert_eq!(fallback, "text");
+        } else {
+            panic!("Expected Enc node, got {:?}", content[0]);
+        }
     }
 
     // ========================================================================

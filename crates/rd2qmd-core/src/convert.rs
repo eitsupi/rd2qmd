@@ -884,6 +884,8 @@ impl Converter {
                     (None, None) => Some(Node::inline_code(display)),
                 }
             }
+            // Use UTF-8 encoded text for Markdown/HTML output
+            RdNode::Enc { encoded, fallback: _ } => Some(Node::text(encoded.clone())),
             RdNode::Email(email) => {
                 let mailto = format!("mailto:{}", email);
                 Some(Node::link(mailto, vec![Node::text(email.clone())]))
@@ -1153,6 +1155,9 @@ impl Converter {
                     } else {
                         result.push_str(classname);
                     }
+                }
+                RdNode::Enc { encoded, fallback: _ } => {
+                    result.push_str(encoded);
                 }
                 RdNode::Doi(id) => {
                     result.push_str(&format!("doi:{}", id));

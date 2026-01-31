@@ -312,7 +312,8 @@ fn find_lifecycle_in_node(node: &RdNode) -> Option<Lifecycle> {
         | RdNode::Env(_)
         | RdNode::Command(_)
         | RdNode::Doi(_)
-        | RdNode::LinkS4Class { .. } => None,
+        | RdNode::LinkS4Class { .. }
+        | RdNode::Enc { .. } => None,
     }
 }
 
