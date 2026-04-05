@@ -2,11 +2,11 @@
 //!
 //! Converts an Rd document into an mdast tree for Markdown output.
 
+#[cfg(feature = "roxygen")]
+use crate::roxygen_code_block::try_match_roxygen_code_block;
 use rd_parser::{
     DescribeItem, FigureOptions, RdDocument, RdNode, RdSection, SectionTag, SpecialChar,
 };
-#[cfg(feature = "roxygen")]
-use crate::roxygen_code_block::try_match_roxygen_code_block;
 use rd2qmd_mdast::{
     Align, DefinitionDescription, DefinitionList, DefinitionTerm, Html, Image, Node, Root, Table,
     TableCell, TableRow,
@@ -794,8 +794,7 @@ impl Converter {
                             .as_ref()
                             .and_then(|map| map.get(pkg.as_str()))
                         {
-                            let url =
-                                format!("{}/{}.html", base_url.trim_end_matches('/'), topic);
+                            let url = format!("{}/{}.html", base_url.trim_end_matches('/'), topic);
                             Some(Node::link(url, vec![Node::inline_code(display)]))
                         } else {
                             // No URL found - just inline code
@@ -885,7 +884,10 @@ impl Converter {
                 }
             }
             // Use UTF-8 encoded text for Markdown/HTML output
-            RdNode::Enc { encoded, fallback: _ } => Some(Node::text(encoded.clone())),
+            RdNode::Enc {
+                encoded,
+                fallback: _,
+            } => Some(Node::text(encoded.clone())),
             RdNode::Email(email) => {
                 let mailto = format!("mailto:{}", email);
                 Some(Node::link(mailto, vec![Node::text(email.clone())]))
@@ -1146,17 +1148,17 @@ impl Converter {
                     }
                     result.push_str(generic);
                 }
-                RdNode::LinkS4Class {
-                    package,
-                    classname,
-                } => {
+                RdNode::LinkS4Class { package, classname } => {
                     if let Some(pkg) = package {
                         result.push_str(&format!("{}::{}", pkg, classname));
                     } else {
                         result.push_str(classname);
                     }
                 }
-                RdNode::Enc { encoded, fallback: _ } => {
+                RdNode::Enc {
+                    encoded,
+                    fallback: _,
+                } => {
                     result.push_str(encoded);
                 }
                 RdNode::Doi(id) => {

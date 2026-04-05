@@ -2,7 +2,9 @@
 //!
 //! Recursive descent parser that converts a token stream into an Rd AST.
 
-use crate::ast::{DescribeItem, FigureOptions, RdDocument, RdNode, RdSection, SectionTag, SpecialChar};
+use crate::ast::{
+    DescribeItem, FigureOptions, RdDocument, RdNode, RdSection, SectionTag, SpecialChar,
+};
 use crate::lexer::{Lexer, Token, TokenKind};
 use thiserror::Error;
 
@@ -1147,11 +1149,17 @@ test(x, y = TRUE)
     fn test_figure_expert_form() {
         // Form 3: \figure{filename}{options: string}
         // Note: "options:" prefix is stripped, remaining string is stored
-        let doc = parse(r#"\description{\figure{Rlogo.svg}{options: width=100 alt="R logo"}}"#).unwrap();
+        let doc =
+            parse(r#"\description{\figure{Rlogo.svg}{options: width=100 alt="R logo"}}"#).unwrap();
         let content = &doc.sections[0].content;
         if let RdNode::Figure { file, options } = &content[0] {
             assert_eq!(file, "Rlogo.svg");
-            assert_eq!(options, &Some(FigureOptions::ExpertOptions(r#"width=100 alt="R logo""#.to_string())));
+            assert_eq!(
+                options,
+                &Some(FigureOptions::ExpertOptions(
+                    r#"width=100 alt="R logo""#.to_string()
+                ))
+            );
         } else {
             panic!("Expected Figure node, got {:?}", content[0]);
         }
@@ -1161,11 +1169,19 @@ test(x, y = TRUE)
     fn test_figure_lifecycle_badge_style() {
         // Lifecycle badge format with single quotes
         // Note: "options:" prefix is stripped
-        let doc = parse(r#"\description{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}"#).unwrap();
+        let doc = parse(
+            r#"\description{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}"#,
+        )
+        .unwrap();
         let content = &doc.sections[0].content;
         if let RdNode::Figure { file, options } = &content[0] {
             assert_eq!(file, "lifecycle-deprecated.svg");
-            assert_eq!(options, &Some(FigureOptions::ExpertOptions("alt='[Deprecated]'".to_string())));
+            assert_eq!(
+                options,
+                &Some(FigureOptions::ExpertOptions(
+                    "alt='[Deprecated]'".to_string()
+                ))
+            );
         } else {
             panic!("Expected Figure node, got {:?}", content[0]);
         }
@@ -1192,7 +1208,10 @@ test(x, y = TRUE)
         let content = &doc.sections[0].content;
         if let RdNode::Figure { file, options } = &content[0] {
             assert_eq!(file, "file.png");
-            assert_eq!(options, &Some(FigureOptions::AltText("options are shown here".to_string())));
+            assert_eq!(
+                options,
+                &Some(FigureOptions::AltText("options are shown here".to_string()))
+            );
         } else {
             panic!("Expected Figure node, got {:?}", content[0]);
         }
@@ -1205,7 +1224,10 @@ test(x, y = TRUE)
         let content = &doc.sections[0].content;
         if let RdNode::Figure { file, options } = &content[0] {
             assert_eq!(file, "file.png");
-            assert_eq!(options, &Some(FigureOptions::AltText("options:nospace".to_string())));
+            assert_eq!(
+                options,
+                &Some(FigureOptions::AltText("options:nospace".to_string()))
+            );
         } else {
             panic!("Expected Figure node, got {:?}", content[0]);
         }
@@ -1218,7 +1240,12 @@ test(x, y = TRUE)
         // Form 1: \link{topic}
         let doc = parse(r#"\description{\link{foo}}"#).unwrap();
         let content = &doc.sections[0].content;
-        if let RdNode::Link { package, topic, text } = &content[0] {
+        if let RdNode::Link {
+            package,
+            topic,
+            text,
+        } = &content[0]
+        {
             assert_eq!(package, &None);
             assert_eq!(topic, "foo");
             assert_eq!(text, &None);
@@ -1232,7 +1259,12 @@ test(x, y = TRUE)
         // Form 2: \link[pkg]{topic}
         let doc = parse(r#"\description{\link[dplyr]{filter}}"#).unwrap();
         let content = &doc.sections[0].content;
-        if let RdNode::Link { package, topic, text } = &content[0] {
+        if let RdNode::Link {
+            package,
+            topic,
+            text,
+        } = &content[0]
+        {
             assert_eq!(package, &Some("dplyr".to_string()));
             assert_eq!(topic, "filter");
             assert_eq!(text, &None);
@@ -1246,7 +1278,12 @@ test(x, y = TRUE)
         // Form 3: \link[pkg:bar]{text} - topic comes from pkg:bar, brace content is display text
         let doc = parse(r#"\description{\link[rlang:abort]{abort function}}"#).unwrap();
         let content = &doc.sections[0].content;
-        if let RdNode::Link { package, topic, text } = &content[0] {
+        if let RdNode::Link {
+            package,
+            topic,
+            text,
+        } = &content[0]
+        {
             assert_eq!(package, &Some("rlang".to_string()));
             assert_eq!(topic, "abort");
             assert!(text.is_some());
@@ -1268,7 +1305,12 @@ test(x, y = TRUE)
         // Form 4: \link[=dest]{text} - link to dest, display text
         let doc = parse(r#"\description{\link[=as_polars_series]{as_polars_series()}}"#).unwrap();
         let content = &doc.sections[0].content;
-        if let RdNode::Link { package, topic, text } = &content[0] {
+        if let RdNode::Link {
+            package,
+            topic,
+            text,
+        } = &content[0]
+        {
             assert_eq!(package, &None);
             assert_eq!(topic, "as_polars_series");
             assert!(text.is_some());
@@ -1289,7 +1331,12 @@ test(x, y = TRUE)
         // Real-world case: \link[rlang:dyn-dots]{dynamic dots}
         let doc = parse(r#"\description{\link[rlang:dyn-dots]{dynamic dots}}"#).unwrap();
         let content = &doc.sections[0].content;
-        if let RdNode::Link { package, topic, text } = &content[0] {
+        if let RdNode::Link {
+            package,
+            topic,
+            text,
+        } = &content[0]
+        {
             assert_eq!(package, &Some("rlang".to_string()));
             assert_eq!(topic, "dyn-dots");
             assert!(text.is_some());

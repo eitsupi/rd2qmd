@@ -33,7 +33,7 @@ pub enum FallbackReason {
 
 use rayon::prelude::*;
 use rd2qmd_core::{
-    RdToMdastOptions, Frontmatter, RdMetadata, SectionTag, WriterOptions, extract_rd_metadata,
+    Frontmatter, RdMetadata, RdToMdastOptions, SectionTag, WriterOptions, extract_rd_metadata,
     extract_text, mdast_to_qmd, parse, parse_roxygen_comments, rd_to_mdast_with_options,
 };
 use serde::Serialize;
@@ -255,7 +255,9 @@ pub fn generate_topic_index(
         match extract_topic_info(file, &options.output_extension) {
             Ok(info) => {
                 // Skip internal topics unless include_internal is set
-                if !options.include_internal && info.metadata.keywords.contains(&"internal".to_string()) {
+                if !options.include_internal
+                    && info.metadata.keywords.contains(&"internal".to_string())
+                {
                     continue;
                 }
                 topics.push(info);
@@ -396,8 +398,7 @@ fn convert_single_file(
 ) -> ConvertOutcome {
     let convert = || -> std::result::Result<PathBuf, ConvertError> {
         // Read input file
-        let content =
-            fs::read_to_string(input).map_err(|e| ConvertError::Failed(e.to_string()))?;
+        let content = fs::read_to_string(input).map_err(|e| ConvertError::Failed(e.to_string()))?;
 
         // Parse Rd
         let doc =
@@ -806,7 +807,12 @@ An old deprecated function.
         assert_eq!(old_topic.file, "old_func.qmd");
         assert_eq!(old_topic.title, "Old Function");
         assert!(old_topic.metadata.aliases.contains(&"old_func".to_string()));
-        assert!(old_topic.metadata.aliases.contains(&"legacy_func".to_string()));
+        assert!(
+            old_topic
+                .metadata
+                .aliases
+                .contains(&"legacy_func".to_string())
+        );
         assert_eq!(old_topic.metadata.lifecycle, Some("deprecated".to_string()));
 
         // Both are hand-written, so no source_files
@@ -1116,7 +1122,9 @@ x <- 1
 
         let content = fs::read_to_string(out_dir.path().join("caller.qmd")).unwrap();
         // Link text has backticks
-        assert!(content.contains("[`unknown_external`](https://rdrr.io/r/base/unknown_external.html)"));
+        assert!(
+            content.contains("[`unknown_external`](https://rdrr.io/r/base/unknown_external.html)")
+        );
     }
 
     #[test]
@@ -1161,8 +1169,15 @@ x <- 1
 
         let content = fs::read_to_string(out_dir.path().join("tidyverse_user.qmd")).unwrap();
         // Link text uses [`package::topic`] format
-        assert!(content.contains("[`dplyr::mutate`](https://dplyr.tidyverse.org/reference/mutate.html)"));
-        assert!(content.contains("[`ggplot2::ggplot`](https://ggplot2.tidyverse.org/reference/ggplot.html)"));
+        assert!(
+            content
+                .contains("[`dplyr::mutate`](https://dplyr.tidyverse.org/reference/mutate.html)")
+        );
+        assert!(
+            content.contains(
+                "[`ggplot2::ggplot`](https://ggplot2.tidyverse.org/reference/ggplot.html)"
+            )
+        );
     }
 
     #[test]
@@ -1285,9 +1300,11 @@ x <- 1
         assert!(!out_dir.path().join("internal_func.qmd").exists());
 
         // Check skipped file name
-        assert!(result.conversion.skipped_internal[0]
-            .to_string_lossy()
-            .contains("internal_func.Rd"));
+        assert!(
+            result.conversion.skipped_internal[0]
+                .to_string_lossy()
+                .contains("internal_func.Rd")
+        );
     }
 
     #[test]

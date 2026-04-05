@@ -193,7 +193,10 @@ mod tests {
     fn test_json_serialization() {
         let metadata = RoxygenMetadata {
             is_generated: true,
-            source_files: vec!["R/coord-map.R".to_string(), "R/coord-quickmap.R".to_string()],
+            source_files: vec![
+                "R/coord-map.R".to_string(),
+                "R/coord-quickmap.R".to_string(),
+            ],
         };
 
         let json = serde_json::to_string(&metadata).unwrap();

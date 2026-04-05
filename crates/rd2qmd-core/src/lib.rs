@@ -439,7 +439,10 @@ impl RdConverter {
 /// assert!(qmd.contains("title:"));
 /// assert!(qmd.contains("Hello World"));
 /// ```
-pub fn convert_rd_content(content: &str, options: &RdConvertOptions) -> Result<String, ConvertError> {
+pub fn convert_rd_content(
+    content: &str,
+    options: &RdConvertOptions,
+) -> Result<String, ConvertError> {
     let doc = parse(content).map_err(|e| ConvertError::Parse(e.to_string()))?;
 
     // Build converter options

@@ -97,8 +97,10 @@ impl<'a> Writer<'a> {
             self.output.push('\n');
         }
         if let Some(pagetitle) = &fm.pagetitle {
-            self.output
-                .push_str(&format!(r#"pagetitle: "{}""#, escape_yaml_string(pagetitle)));
+            self.output.push_str(&format!(
+                r#"pagetitle: "{}""#,
+                escape_yaml_string(pagetitle)
+            ));
             self.output.push('\n');
         }
         if let Some(format) = &fm.format {
@@ -108,8 +110,7 @@ impl<'a> Writer<'a> {
         // TODO: Add configuration to control which metadata fields are output
         if let Some(metadata) = &fm.metadata {
             if let Some(lifecycle) = &metadata.lifecycle {
-                self.output
-                    .push_str(&format!("lifecycle: {}\n", lifecycle));
+                self.output.push_str(&format!("lifecycle: {}\n", lifecycle));
             }
             if !metadata.aliases.is_empty() {
                 self.output.push_str("aliases:\n");
@@ -278,7 +279,7 @@ impl<'a> Writer<'a> {
 
         // Determine fence length: must be longer than any backtick sequence in content
         let fence_len = calculate_fence_length(&c.value);
-        let fence: String = std::iter::repeat('`').take(fence_len).collect();
+        let fence = "`".repeat(fence_len);
 
         self.output.push_str(&fence);
         if let Some(lang) = &c.lang {
@@ -1122,7 +1123,10 @@ mod tests {
                     aliases: vec![],
                     keywords: vec![],
                     concepts: vec![],
-                    source_files: vec!["R/coord-map.R".to_string(), "R/coord-quickmap.R".to_string()],
+                    source_files: vec![
+                        "R/coord-map.R".to_string(),
+                        "R/coord-quickmap.R".to_string(),
+                    ],
                 }),
             }),
             ..Default::default()
