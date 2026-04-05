@@ -262,7 +262,7 @@ This project was inspired by:
 - [altdoc](https://altdoc.etiennebacher.com/) - A lightweight alternative to pkgdown supporting Quarto, Docsify, Docute, and MkDocs. Converts Rd to qmd via R's `tools::Rd2HTML()`.
 - [pkgsite](https://github.com/edgararuiz/pkgsite) - A Quarto-based R package documentation generator that converts Rd files to Quarto documents.
 - [downlit](https://downlit.r-lib.org/) - Syntax highlighting and automatic linking for R code, used by pkgdown.
-- [rd2md](https://github.com/coatless-rpkg/rd2md) - A Python-based Rd to Markdown converter.
+- [rd2md](https://github.com/comet-ml/rd2md) - A Python-based Rd to Markdown converter.
 - [rd2markdown](https://github.com/Genentech/rd2markdown) - An R package for Rd to Markdown conversion.
 
 ## License
