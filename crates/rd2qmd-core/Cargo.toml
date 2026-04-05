@@ -3,6 +3,7 @@ name = "rd2qmd-core"
 description = "Core library for converting Rd files to Quarto Markdown"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 
 [features]
