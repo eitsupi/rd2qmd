@@ -3,7 +3,7 @@ updates:
   - package-ecosystem: cargo
     directory: /
     commit-message:
-      prefix: "ci: "
+      prefix: "chore: "
     schedule:
       interval: weekly
     cooldown:
@@ -12,7 +12,7 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     commit-message:
-      prefix: "chore: "
+      prefix: "ci: "
     schedule:
       interval: weekly
     cooldown:
