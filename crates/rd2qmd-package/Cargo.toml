@@ -3,6 +3,7 @@ name = "rd2qmd-package"
 description = "Package-level operations for converting R documentation to Quarto Markdown"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 

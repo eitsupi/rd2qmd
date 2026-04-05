@@ -3,6 +3,7 @@ name = "rd2qmd-mdast"
 description = "mdast types and Quarto Markdown writer for rd2qmd"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
