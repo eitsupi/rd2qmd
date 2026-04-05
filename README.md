@@ -18,7 +18,7 @@ A fast Rd-to-Quarto Markdown converter written in Rust, with intelligent link re
 ### Cargo
 
 ```sh
-cargo install rd2qmd
+cargo install --locked rd2qmd
 ```
 
 ### GitHub Releases
