@@ -15,21 +15,27 @@ A fast Rd-to-Quarto Markdown converter written in Rust, with intelligent link re
 
 ## Installation
 
-### From source
+### Cargo
 
-```bash
-cargo install --git https://github.com/eitsupi/rd2qmd
+```sh
+cargo install --locked rd2qmd
 ```
 
-### Build locally
+### GitHub Releases
 
-```bash
-git clone https://github.com/eitsupi/rd2qmd
-cd rd2qmd
-cargo build --release
+Pre-built binaries for Linux, macOS, and Windows are available on the [Releases](https://github.com/eitsupi/rd2qmd/releases) page. You can also use the installer scripts:
+
+macOS / Linux:
+
+```sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/eitsupi/rd2qmd/releases/latest/download/rd2qmd-installer.sh | sh
 ```
 
-The binary will be available at `target/release/rd2qmd`.
+Windows (PowerShell):
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/eitsupi/rd2qmd/releases/latest/download/rd2qmd-installer.ps1 | iex"
+```
 
 ## Usage
 
