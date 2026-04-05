@@ -4,6 +4,7 @@ description = "CLI tool to convert Rd files to Quarto Markdown"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 
 [[bin]]
 name = "rd2qmd"

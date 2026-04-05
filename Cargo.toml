@@ -43,3 +43,8 @@ rd2qmd-mdast = { version = "0.1.0", path = "crates/rd2qmd-mdast" }
 rd-parser = { version = "0.1.0", path = "crates/rd-parser" }
 rd2qmd-core = { version = "0.1.0", path = "crates/rd2qmd-core" }
 rd2qmd-package = { version = "0.1.0", path = "crates/rd2qmd-package" }
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
