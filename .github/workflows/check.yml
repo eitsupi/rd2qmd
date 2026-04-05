@@ -72,6 +72,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       - uses: baptiste0928/cargo-install@f204293d9709061b7bc1756fec3ec4e2cd57dec0 # v3.4.0
         with:
           crate: cargo-msrv
@@ -79,10 +81,10 @@ jobs:
       - name: Run cargo msrv
         run: |
           # Verify MSRV for each package
-          find crates -mindepth 2 -name Cargo.toml | while read -r dir
+          find crates -mindepth 2 -name Cargo.toml | while read -r manifest
           do
-            echo "Checking package $dir"
-            cargo msrv verify --manifest-path "$dir" || exit 1
+            echo "Checking package $manifest"
+            cargo msrv verify --manifest-path "$manifest" || exit 1
           done
 
   test:
