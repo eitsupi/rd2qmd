@@ -263,9 +263,10 @@ fn main() -> Result<()> {
     };
 
     // quarto_code_blocks: CLI > Config > auto (based on format)
-    let quarto_code_blocks = cli.quarto_code_blocks.or(config.code.quarto_code_blocks).unwrap_or(
-        matches!(format, OutputFormat::Qmd | OutputFormat::Rmd),
-    );
+    let quarto_code_blocks = cli
+        .quarto_code_blocks
+        .or(config.code.quarto_code_blocks)
+        .unwrap_or(matches!(format, OutputFormat::Qmd | OutputFormat::Rmd));
 
     // exec_dontrun: CLI > Config > false
     let exec_dontrun = if cli.exec_dontrun {
@@ -490,7 +491,9 @@ fn convert_directory(
     let FullConvertResult {
         conversion: result,
         fallbacks,
-    } = converter.convert().with_context(|| "Package conversion failed")?;
+    } = converter
+        .convert()
+        .with_context(|| "Package conversion failed")?;
 
     // Display fallback warnings
     if !quiet && !fallbacks.is_empty() {
@@ -523,7 +526,10 @@ fn convert_directory(
             result.failed_files.len()
         );
         if !result.skipped_internal.is_empty() {
-            summary.push_str(&format!(", {} skipped (internal)", result.skipped_internal.len()));
+            summary.push_str(&format!(
+                ", {} skipped (internal)",
+                result.skipped_internal.len()
+            ));
         }
         eprintln!("{}", summary);
     }
@@ -610,7 +616,6 @@ fn display_fallback_warnings(
     }
 }
 
-
 /// Run the index subcommand: generate topic index JSON to stdout
 fn run_index_command(args: &IndexArgs) -> Result<()> {
     if !args.input.is_dir() {
@@ -667,8 +672,12 @@ fn run_init_command(args: &InitArgs) -> Result<()> {
     let config = Config::sample();
     let config_content = config.to_toml_with_schema()?;
 
-    fs::write(&args.output, &config_content)
-        .with_context(|| format!("Failed to write configuration file: {}", args.output.display()))?;
+    fs::write(&args.output, &config_content).with_context(|| {
+        format!(
+            "Failed to write configuration file: {}",
+            args.output.display()
+        )
+    })?;
 
     eprintln!("Created configuration file: {}", args.output.display());
     Ok(())
@@ -984,7 +993,10 @@ mod tests {
     fn test_merge_arguments_format_no_config() {
         let cli = default_cli();
         let config = Config::default();
-        assert_eq!(merge_arguments_format(&cli, &config), ArgumentsFormat::GridTable);
+        assert_eq!(
+            merge_arguments_format(&cli, &config),
+            ArgumentsFormat::GridTable
+        );
     }
 
     #[test]
@@ -997,7 +1009,10 @@ mod tests {
             },
             ..Default::default()
         };
-        assert_eq!(merge_arguments_format(&cli, &config), ArgumentsFormat::PipeTable);
+        assert_eq!(
+            merge_arguments_format(&cli, &config),
+            ArgumentsFormat::PipeTable
+        );
     }
 
     #[test]
@@ -1012,7 +1027,10 @@ mod tests {
             ..Default::default()
         };
         // CLI is not default (Grid), so CLI wins
-        assert_eq!(merge_arguments_format(&cli, &config), ArgumentsFormat::PipeTable);
+        assert_eq!(
+            merge_arguments_format(&cli, &config),
+            ArgumentsFormat::PipeTable
+        );
     }
 
     #[test]
@@ -1073,6 +1091,9 @@ mod tests {
         };
         let opts = merge_external_link_options(&cli, &config).unwrap();
         // CLI lib_paths should override config
-        assert_eq!(opts.lib_paths, vec![std::path::PathBuf::from("/home/user/R")]);
+        assert_eq!(
+            opts.lib_paths,
+            vec![std::path::PathBuf::from("/home/user/R")]
+        );
     }
 }

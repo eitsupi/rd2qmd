@@ -1,4 +1,3 @@
-
 use super::*;
 use rd_parser::parse;
 use rd2qmd_mdast::mdast_to_qmd;
@@ -1391,7 +1390,10 @@ fn test_extract_alt_from_attrs_single_quotes() {
 fn test_extract_alt_from_attrs_no_alt() {
     // Expert form without alt attribute - should return None (caller uses filename)
     assert_eq!(Converter::extract_alt_from_attrs("width=100"), None);
-    assert_eq!(Converter::extract_alt_from_attrs("width=50 height=30"), None);
+    assert_eq!(
+        Converter::extract_alt_from_attrs("width=50 height=30"),
+        None
+    );
 }
 
 #[test]

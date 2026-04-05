@@ -335,9 +335,7 @@ fn extract_lifecycle_from_filename(filename: &str) -> Option<Lifecycle> {
     // Remove "lifecycle-" prefix and file extension
     let stage_str = basename.strip_prefix("lifecycle-").and_then(|s| {
         // Split off the file extension if present
-        s.rsplit_once('.')
-            .map(|(name, _ext)| name)
-            .or(Some(s)) // No extension case
+        s.rsplit_once('.').map(|(name, _ext)| name).or(Some(s)) // No extension case
     })?;
 
     if stage_str.is_empty() {

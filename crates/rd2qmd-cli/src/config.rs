@@ -11,8 +11,7 @@ use std::path::{Path, PathBuf};
 pub const CONFIG_FILE_NAME: &str = "_rd2qmd.toml";
 
 /// Schema URL for the configuration file
-pub const SCHEMA_URL: &str =
-    "https://raw.githubusercontent.com/eitsupi/rd2qmd/main/crates/rd2qmd-cli/schema/rd2qmd.schema.json";
+pub const SCHEMA_URL: &str = "https://raw.githubusercontent.com/eitsupi/rd2qmd/main/crates/rd2qmd-cli/schema/rd2qmd.schema.json";
 
 /// Root configuration structure
 #[derive(Debug, Default, Clone, Deserialize, Serialize, JsonSchema)]
