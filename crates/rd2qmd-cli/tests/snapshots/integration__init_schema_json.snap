@@ -3,45 +3,29 @@ source: crates/rd2qmd-cli/tests/integration.rs
 expression: schema
 ---
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Config",
   "description": "Root configuration structure",
   "type": "object",
   "properties": {
     "code": {
       "description": "Code block configuration",
-      "allOf": [
-        {
-          "$ref": "#/definitions/CodeConfig"
-        }
-      ]
+      "$ref": "#/$defs/CodeConfig"
     },
     "external": {
       "description": "External package link resolution configuration",
-      "allOf": [
-        {
-          "$ref": "#/definitions/ExternalConfig"
-        }
-      ]
+      "$ref": "#/$defs/ExternalConfig"
     },
     "links": {
       "description": "Link resolution configuration",
-      "allOf": [
-        {
-          "$ref": "#/definitions/LinksConfig"
-        }
-      ]
+      "$ref": "#/$defs/LinksConfig"
     },
     "output": {
       "description": "Output format configuration",
-      "allOf": [
-        {
-          "$ref": "#/definitions/OutputConfig"
-        }
-      ]
+      "$ref": "#/$defs/OutputConfig"
     }
   },
-  "definitions": {
+  "$defs": {
     "CodeConfig": {
       "description": "Code block configuration",
       "type": "object",
@@ -88,7 +72,7 @@ expression: schema
           ]
         },
         "fallback_url": {
-          "description": "Fallback URL pattern for packages without pkgdown sites. Use {package} and {topic} as placeholders. (default: \"https://rdrr.io/pkg/{package}/man/{topic}.html\")",
+          "description": "Fallback URL pattern for packages without pkgdown sites.\nUse {package} and {topic} as placeholders.\n(default: \"https://rdrr.io/pkg/{package}/man/{topic}.html\")",
           "type": [
             "string",
             "null"
@@ -111,7 +95,7 @@ expression: schema
       "type": "object",
       "properties": {
         "unresolved_url": {
-          "description": "URL pattern for unresolved links. Use {topic} as placeholder for the topic name. (default: \"https://rdrr.io/r/base/{topic}.html\")",
+          "description": "URL pattern for unresolved links. Use {topic} as placeholder for the topic name.\n(default: \"https://rdrr.io/r/base/{topic}.html\")",
           "type": [
             "string",
             "null"
@@ -145,7 +129,7 @@ expression: schema
           ]
         },
         "include_internal": {
-          "description": "Include topics with \\keyword{internal} (default: false) By default, internal topics are skipped (matching pkgdown behavior).",
+          "description": "Include topics with \\keyword{internal} (default: false)\nBy default, internal topics are skipped (matching pkgdown behavior).",
           "type": [
             "boolean",
             "null"
