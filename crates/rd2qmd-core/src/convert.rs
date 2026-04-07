@@ -1,6 +1,6 @@
 //! Rd AST to mdast conversion
 //!
-//! This module provides the mid-level conversion API that transforms a parsed
+//! This module provides the low-level conversion API that transforms a parsed
 //! [`RdDocument`] into an mdast ([`Root`]) tree for Markdown output.
 //!
 //! The main entry points are:

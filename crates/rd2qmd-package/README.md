@@ -18,7 +18,7 @@ This crate is designed to be used as a library by various interfaces (CLI, R pac
 
 ### Basic conversion
 
-```rust
+```rust,no_run
 use rd2qmd_package::{RdPackage, PackageConvertOptions, PackageConverter};
 use std::path::{Path, PathBuf};
 
@@ -35,7 +35,7 @@ println!("Converted {} files", result.conversion.success_count);
 
 ### Topic index generation
 
-```rust
+```rust,no_run
 use rd2qmd_package::{RdPackage, TopicIndexOptions, generate_topic_index};
 use std::path::Path;
 
@@ -50,7 +50,7 @@ println!("{}", index.to_json()?);
 
 ### External link resolution (requires `external-links` feature)
 
-```rust
+```rust,no_run
 use rd2qmd_package::{
     ExternalLinkOptions, PackageConvertOptions, PackageConverter, RdPackage,
 };
