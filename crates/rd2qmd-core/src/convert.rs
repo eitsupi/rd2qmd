@@ -1,6 +1,15 @@
 //! Rd AST to mdast conversion
 //!
-//! Converts an Rd document into an mdast tree for Markdown output.
+//! This module provides the low-level conversion API that transforms a parsed
+//! [`RdDocument`] into an mdast ([`Root`]) tree for Markdown output.
+//!
+//! The main entry points are:
+//! - [`rd_to_mdast`] - Convert with default options
+//! - [`rd_to_mdast_with_options`] - Convert with custom [`RdToMdastOptions`]
+//!
+//! This module handles conversion of all Rd section types (description, usage,
+//! arguments, value, details, examples, etc.) and inline markup (links, code,
+//! emphasis, math, lists, tables) into their mdast equivalents.
 
 #[cfg(feature = "roxygen")]
 use crate::roxygen_code_block::try_match_roxygen_code_block;
@@ -76,12 +85,25 @@ impl Default for RdToMdastOptions {
     }
 }
 
-/// Convert an Rd document to mdast
+/// Convert an Rd document to mdast with default options
+///
+/// This is a convenience wrapper around [`rd_to_mdast_with_options`] using
+/// [`RdToMdastOptions::default()`]. Internal links will be rendered as
+/// inline code since no alias map or link extension is configured.
+///
+/// For link resolution and other customizations, use
+/// [`rd_to_mdast_with_options`] instead.
 pub fn rd_to_mdast(doc: &RdDocument) -> Root {
     rd_to_mdast_with_options(doc, &RdToMdastOptions::default())
 }
 
-/// Convert an Rd document to mdast with options
+/// Convert an Rd document to mdast with custom options
+///
+/// Transforms a parsed [`RdDocument`] into an mdast [`Root`] tree. The resulting
+/// tree can be rendered to Quarto Markdown using [`mdast_to_qmd`](crate::mdast_to_qmd).
+///
+/// Use [`RdToMdastOptions`] to control link resolution, code block behavior,
+/// and table formatting.
 pub fn rd_to_mdast_with_options(doc: &RdDocument, options: &RdToMdastOptions) -> Root {
     let mut converter = Converter::new(options.clone());
     converter.convert_document(doc)
