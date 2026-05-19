@@ -1,6 +1,6 @@
+use super::{ParseResult, Parser};
 use crate::ast::RdNode;
 use crate::lexer::TokenKind;
-use super::{ParseResult, Parser};
 
 impl Parser {
     /// Parse optional argument in brackets [...]

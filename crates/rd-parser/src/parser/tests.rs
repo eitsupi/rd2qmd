@@ -188,10 +188,9 @@ fn test_figure_expert_form() {
 fn test_figure_lifecycle_badge_style() {
     // Lifecycle badge format with single quotes
     // Note: "options:" prefix is stripped
-    let doc = parse(
-        r#"\description{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}"#,
-    )
-    .unwrap();
+    let doc =
+        parse(r#"\description{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}"#)
+            .unwrap();
     let content = &doc.sections[0].content;
     if let RdNode::Figure { file, options } = &content[0] {
         assert_eq!(file, "lifecycle-deprecated.svg");
@@ -754,9 +753,8 @@ fn test_zero_arg_macro_terminates_at_non_alphanumeric() {
 /// (they are R code syntax, not Rd grouping braces).
 #[test]
 fn test_examples_preserves_literal_braces() {
-    let doc =
-        parse(r#"\examples{hilbert <- function(n) { i <- 1:n; 1 / outer(i - 1, i, `+`) }}"#)
-            .unwrap();
+    let doc = parse(r#"\examples{hilbert <- function(n) { i <- 1:n; 1 / outer(i - 1, i, `+`) }}"#)
+        .unwrap();
     let content = &doc.sections[0].content;
     let text = content
         .iter()

@@ -1,6 +1,6 @@
+use super::{ParseResult, Parser};
 use crate::ast::{RdNode, SpecialChar};
 use crate::lexer::{Token, TokenKind};
-use super::{ParseResult, Parser};
 
 impl Parser {
     /// Parse a macro (after seeing backslash)
@@ -113,9 +113,7 @@ impl Parser {
             // Example control macros
             "dontrun" => self.parse_inline_nodes().map(|n| Some(RdNode::DontRun(n))),
             "donttest" => self.parse_inline_nodes().map(|n| Some(RdNode::DontTest(n))),
-            "dontshow" | "testonly" => {
-                self.parse_inline_nodes().map(|n| Some(RdNode::DontShow(n)))
-            }
+            "dontshow" | "testonly" => self.parse_inline_nodes().map(|n| Some(RdNode::DontShow(n))),
             "dontdiff" => self.parse_inline_nodes().map(|n| Some(RdNode::DontDiff(n))),
 
             // Unknown macro - store generically

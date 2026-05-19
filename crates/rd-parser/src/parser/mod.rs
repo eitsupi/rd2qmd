@@ -165,9 +165,7 @@ impl Parser {
                                 RdNode::Text(s) => current_text.push_str(&s),
                                 other => {
                                     if !current_text.is_empty() {
-                                        nodes.push(RdNode::Text(std::mem::take(
-                                            &mut current_text,
-                                        )));
+                                        nodes.push(RdNode::Text(std::mem::take(&mut current_text)));
                                     }
                                     nodes.push(other);
                                 }

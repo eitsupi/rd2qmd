@@ -1,6 +1,6 @@
+use super::{ParseResult, Parser};
 use crate::ast::{DescribeItem, FigureOptions, RdNode};
 use crate::lexer::TokenKind;
-use super::{ParseResult, Parser};
 
 impl Parser {
     /// Parse \itemize or \enumerate
@@ -176,8 +176,7 @@ impl Parser {
                             self.advance();
                             self.consume_optional_empty_braces();
                             if !current_text.is_empty() {
-                                current_cell
-                                    .push(RdNode::Text(std::mem::take(&mut current_text)));
+                                current_cell.push(RdNode::Text(std::mem::take(&mut current_text)));
                             }
                             current_row.push(std::mem::take(&mut current_cell));
                         }
@@ -185,8 +184,7 @@ impl Parser {
                             self.advance();
                             self.consume_optional_empty_braces();
                             if !current_text.is_empty() {
-                                current_cell
-                                    .push(RdNode::Text(std::mem::take(&mut current_text)));
+                                current_cell.push(RdNode::Text(std::mem::take(&mut current_text)));
                             }
                             current_row.push(std::mem::take(&mut current_cell));
                             rows.push(std::mem::take(&mut current_row));
@@ -194,8 +192,7 @@ impl Parser {
                         _ => {
                             self.pos = pos;
                             if !current_text.is_empty() {
-                                current_cell
-                                    .push(RdNode::Text(std::mem::take(&mut current_text)));
+                                current_cell.push(RdNode::Text(std::mem::take(&mut current_text)));
                             }
                             if let Some(node) = self.parse_macro()? {
                                 current_cell.push(node);
@@ -350,10 +347,7 @@ impl Parser {
     }
 
     /// Parse \Sexpr[options]{code}
-    pub(super) fn parse_sexpr(
-        &mut self,
-        opt_arg: Option<String>,
-    ) -> ParseResult<Option<RdNode>> {
+    pub(super) fn parse_sexpr(&mut self, opt_arg: Option<String>) -> ParseResult<Option<RdNode>> {
         self.skip_whitespace();
         self.expect(&TokenKind::OpenBrace)?;
         let code = self.parse_text_until_close_brace()?;
@@ -467,10 +461,7 @@ impl Parser {
     /// 3. `\figure{filename}{options: string}` - Expert form
     ///
     /// Reference: https://cran.r-project.org/doc/manuals/r-devel/R-exts.html#Figures
-    pub(super) fn parse_figure(
-        &mut self,
-        opt_arg: Option<String>,
-    ) -> ParseResult<Option<RdNode>> {
+    pub(super) fn parse_figure(&mut self, opt_arg: Option<String>) -> ParseResult<Option<RdNode>> {
         self.skip_whitespace();
         self.expect(&TokenKind::OpenBrace)?;
         let file = self.parse_text_until_close_brace()?;
