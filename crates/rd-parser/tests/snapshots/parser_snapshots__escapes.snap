@@ -33,13 +33,10 @@ expression: ast_json
           "text": " for ellipsis instead of "
         },
         {
-          "macro": {
-            "name": "dots.",
-            "args": []
-          }
+          "special": "dots"
         },
         {
-          "text": "\nPercent sign: 100% complete.\nBackslash: C:\\path\\to\\file\n"
+          "text": ".\nPercent sign: 100% complete.\nBackslash: C:\\path\\to\\file\n"
         }
       ]
     },
@@ -62,13 +59,10 @@ expression: ast_json
           "text": " produce an ellipsis: a, b, "
         },
         {
-          "macro": {
-            "name": "dots,",
-            "args": []
-          }
+          "special": "dots"
         },
         {
-          "text": "z.\n"
+          "text": ", z.\n"
         }
       ]
     }
