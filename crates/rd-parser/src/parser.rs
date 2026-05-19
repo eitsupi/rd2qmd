@@ -215,12 +215,26 @@ impl Parser {
 
         let name = self.parse_macro_name()?;
 
-        // Handle special characters (no braces needed)
+        // Handle special characters (no braces needed).
+        // Consume an immediately following empty `{}` terminator if present —
+        // a common Rd idiom to unambiguously end a zero-arg macro (e.g. `\dots{}`).
         match name.as_str() {
-            "R" => return Ok(Some(RdNode::Special(SpecialChar::R))),
-            "dots" | "ldots" => return Ok(Some(RdNode::Special(SpecialChar::Dots))),
-            "cr" => return Ok(Some(RdNode::LineBreak)),
-            "tab" => return Ok(Some(RdNode::Tab)),
+            "R" => {
+                self.consume_optional_empty_braces();
+                return Ok(Some(RdNode::Special(SpecialChar::R)));
+            }
+            "dots" | "ldots" => {
+                self.consume_optional_empty_braces();
+                return Ok(Some(RdNode::Special(SpecialChar::Dots)));
+            }
+            "cr" => {
+                self.consume_optional_empty_braces();
+                return Ok(Some(RdNode::LineBreak));
+            }
+            "tab" => {
+                self.consume_optional_empty_braces();
+                return Ok(Some(RdNode::Tab));
+            }
             _ => {}
         }
 
@@ -1006,6 +1020,19 @@ impl Parser {
                 line: token.map(|t| t.span.line).unwrap_or(0),
                 col: token.map(|t| t.span.column).unwrap_or(0),
             })
+        }
+    }
+
+    /// Consume an immediately adjacent empty `{}` if the next two tokens are
+    /// `OpenBrace` then `CloseBrace`. Used to silently drop the common Rd
+    /// idiom of terminating zero-arg macros with `{}` (e.g. `\dots{}`).
+    fn consume_optional_empty_braces(&mut self) {
+        if self.check(&TokenKind::OpenBrace)
+            && self.pos + 1 < self.tokens.len()
+            && self.tokens[self.pos + 1].kind == TokenKind::CloseBrace
+        {
+            self.advance(); // {
+            self.advance(); // }
         }
     }
 
@@ -1839,6 +1866,32 @@ test(x, y = TRUE)
             );
         } else {
             panic!("Expected DontRun node, got {:?}", content[0]);
+        }
+    }
+
+    /// `\dots{}` in a code section must produce `SpecialChar::Dots` only —
+    /// the empty `{}` terminator must not be preserved as literal text `"{}"`.
+    #[test]
+    fn test_zero_arg_macro_empty_brace_terminator_not_preserved() {
+        for input in &[
+            r#"\usage{f(\dots{})}"#,
+            r#"\usage{f(\ldots{})}"#,
+            r#"\examples{f(\dots{})}"#,
+        ] {
+            let doc = parse(input).unwrap();
+            let content = &doc.sections[0].content;
+            let has_dots = content
+                .iter()
+                .any(|n| matches!(n, RdNode::Special(SpecialChar::Dots)));
+            assert!(has_dots, "Input {input:?}: expected SpecialChar::Dots");
+            let text: String = content
+                .iter()
+                .filter_map(|n| if let RdNode::Text(s) = n { Some(s.as_str()) } else { None })
+                .collect();
+            assert!(
+                !text.contains("{}"),
+                "Input {input:?}: empty {{}} terminator must not appear in text, got: {text:?}"
+            );
         }
     }
 
