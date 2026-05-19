@@ -1798,7 +1798,13 @@ test(x, y = TRUE)
             );
             let text: String = content
                 .iter()
-                .filter_map(|n| if let RdNode::Text(s) = n { Some(s.as_str()) } else { None })
+                .filter_map(|n| {
+                    if let RdNode::Text(s) = n {
+                        Some(s.as_str())
+                    } else {
+                        None
+                    }
+                })
                 .collect();
             assert!(
                 text.contains(expected_char),
@@ -1811,14 +1817,19 @@ test(x, y = TRUE)
     /// (they are R code syntax, not Rd grouping braces).
     #[test]
     fn test_examples_preserves_literal_braces() {
-        let doc = parse(
-            r#"\examples{hilbert <- function(n) { i <- 1:n; 1 / outer(i - 1, i, `+`) }}"#,
-        )
-        .unwrap();
+        let doc =
+            parse(r#"\examples{hilbert <- function(n) { i <- 1:n; 1 / outer(i - 1, i, `+`) }}"#)
+                .unwrap();
         let content = &doc.sections[0].content;
         let text = content
             .iter()
-            .filter_map(|n| if let RdNode::Text(s) = n { Some(s.as_str()) } else { None })
+            .filter_map(|n| {
+                if let RdNode::Text(s) = n {
+                    Some(s.as_str())
+                } else {
+                    None
+                }
+            })
             .collect::<String>();
         assert!(
             text.contains("{ i <- 1:n"),
@@ -1839,7 +1850,13 @@ test(x, y = TRUE)
         let content = &doc.sections[0].content;
         let text = content
             .iter()
-            .filter_map(|n| if let RdNode::Text(s) = n { Some(s.as_str()) } else { None })
+            .filter_map(|n| {
+                if let RdNode::Text(s) = n {
+                    Some(s.as_str())
+                } else {
+                    None
+                }
+            })
             .collect::<String>();
         assert!(
             text.contains("{ x + 1 }"),
@@ -1851,15 +1868,18 @@ test(x, y = TRUE)
     /// Braces in `\dontrun{}` inside `\examples{}` should also be preserved.
     #[test]
     fn test_examples_dontrun_preserves_braces() {
-        let doc = parse(
-            r#"\examples{\dontrun{f <- function(x) { x + 1 }}}"#,
-        )
-        .unwrap();
+        let doc = parse(r#"\examples{\dontrun{f <- function(x) { x + 1 }}}"#).unwrap();
         let content = &doc.sections[0].content;
         if let RdNode::DontRun(children) = &content[0] {
             let text = children
                 .iter()
-                .filter_map(|n| if let RdNode::Text(s) = n { Some(s.as_str()) } else { None })
+                .filter_map(|n| {
+                    if let RdNode::Text(s) = n {
+                        Some(s.as_str())
+                    } else {
+                        None
+                    }
+                })
                 .collect::<String>();
             assert!(
                 text.contains("{ x + 1 }"),
@@ -1888,7 +1908,13 @@ test(x, y = TRUE)
             assert!(has_dots, "Input {input:?}: expected SpecialChar::Dots");
             let text: String = content
                 .iter()
-                .filter_map(|n| if let RdNode::Text(s) = n { Some(s.as_str()) } else { None })
+                .filter_map(|n| {
+                    if let RdNode::Text(s) = n {
+                        Some(s.as_str())
+                    } else {
+                        None
+                    }
+                })
                 .collect();
             assert!(
                 !text.contains("{}"),
@@ -1924,7 +1950,13 @@ test(x, y = TRUE)
         let content = &doc.sections[0].content;
         let text = content
             .iter()
-            .filter_map(|n| if let RdNode::Text(s) = n { Some(s.as_str()) } else { None })
+            .filter_map(|n| {
+                if let RdNode::Text(s) = n {
+                    Some(s.as_str())
+                } else {
+                    None
+                }
+            })
             .collect::<String>();
         assert_eq!(text, "grouped text");
     }
