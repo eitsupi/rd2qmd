@@ -640,6 +640,7 @@ impl Parser {
                     match self.peek_kind() {
                         TokenKind::Text(name) if name == "tab" => {
                             self.advance();
+                            self.consume_optional_empty_braces();
                             if !current_text.is_empty() {
                                 current_cell.push(RdNode::Text(std::mem::take(&mut current_text)));
                             }
@@ -647,6 +648,7 @@ impl Parser {
                         }
                         TokenKind::Text(name) if name == "cr" => {
                             self.advance();
+                            self.consume_optional_empty_braces();
                             if !current_text.is_empty() {
                                 current_cell.push(RdNode::Text(std::mem::take(&mut current_text)));
                             }
@@ -1892,6 +1894,25 @@ test(x, y = TRUE)
                 !text.contains("{}"),
                 "Input {input:?}: empty {{}} terminator must not appear in text, got: {text:?}"
             );
+        }
+    }
+
+    /// `\tab{}` and `\cr{}` inside `\tabular{}` must consume the empty `{}`
+    /// without leaving stray tokens that corrupt the table parse.
+    #[test]
+    fn test_tabular_tab_cr_with_empty_brace_terminator() {
+        // \tab{} — empty brace after cell separator
+        let doc = parse(r#"\details{\tabular{ll}{a \tab{} b \cr{} c \tab{} d \cr}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::Tabular { alignment, rows } = &content[0] {
+            assert_eq!(alignment, "ll");
+            assert_eq!(rows.len(), 2, "Expected 2 rows, got: {rows:?}");
+            // Row 1: cells "a " and " b "
+            assert_eq!(rows[0].len(), 2, "Expected 2 cells in row 1");
+            // Row 2: cells "c " and " d "
+            assert_eq!(rows[1].len(), 2, "Expected 2 cells in row 2");
+        } else {
+            panic!("Expected Tabular node, got {:?}", content[0]);
         }
     }
 
