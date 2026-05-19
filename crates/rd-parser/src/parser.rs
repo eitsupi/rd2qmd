@@ -36,6 +36,9 @@ pub type ParseResult<T> = Result<T, ParseError>;
 pub struct Parser {
     tokens: Vec<Token>,
     pos: usize,
+    /// When true, bare `{...}` in content is treated as literal text rather than Rd grouping.
+    /// Used for R code contexts like `\examples{}` and `\usage{}` where braces are R syntax.
+    preserve_braces: bool,
 }
 
 impl Parser {
@@ -44,6 +47,7 @@ impl Parser {
         Self {
             tokens: Lexer::tokenize(source),
             pos: 0,
+            preserve_braces: false,
         }
     }
 
@@ -91,7 +95,14 @@ impl Parser {
             }));
         }
 
+        // R code sections preserve literal braces (R syntax) rather than treating them
+        // as Rd text grouping.
+        let prev_preserve = self.preserve_braces;
+        if matches!(tag, SectionTag::Usage | SectionTag::Examples) {
+            self.preserve_braces = true;
+        }
         let content = self.parse_braced_content()?;
+        self.preserve_braces = prev_preserve;
 
         Ok(Some(RdSection { tag, content }))
     }
@@ -137,14 +148,34 @@ impl Parser {
                     }
                 }
                 TokenKind::OpenBrace => {
-                    // Nested braces - treat as text group
-                    if !current_text.is_empty() {
-                        nodes.push(RdNode::Text(std::mem::take(&mut current_text)));
+                    if self.preserve_braces {
+                        // In R code contexts (examples, usage), braces are literal R syntax.
+                        current_text.push('{');
+                        self.advance();
+                        let inner = self.parse_content_until_close_brace()?;
+                        self.expect(&TokenKind::CloseBrace)?;
+                        for inner_node in inner {
+                            match inner_node {
+                                RdNode::Text(s) => current_text.push_str(&s),
+                                other => {
+                                    if !current_text.is_empty() {
+                                        nodes.push(RdNode::Text(std::mem::take(&mut current_text)));
+                                    }
+                                    nodes.push(other);
+                                }
+                            }
+                        }
+                        current_text.push('}');
+                    } else {
+                        // In text contexts, nested braces are Rd grouping: unwrap inner content.
+                        if !current_text.is_empty() {
+                            nodes.push(RdNode::Text(std::mem::take(&mut current_text)));
+                        }
+                        self.advance();
+                        let inner = self.parse_content_until_close_brace()?;
+                        self.expect(&TokenKind::CloseBrace)?;
+                        nodes.extend(inner);
                     }
-                    self.advance();
-                    let inner = self.parse_content_until_close_brace()?;
-                    self.expect(&TokenKind::CloseBrace)?;
-                    nodes.extend(inner);
                 }
                 TokenKind::Text(s) => {
                     current_text.push_str(&s);
@@ -283,11 +314,33 @@ impl Parser {
     }
 
     /// Parse macro name (text following backslash)
+    ///
+    /// Macro names consist only of ASCII alphanumeric characters per parseRd.pdf.
+    /// If the text token has a non-alphanumeric suffix (e.g. `dots)` after `\`),
+    /// only the alphanumeric prefix is consumed as the name and the remainder is
+    /// reinserted into the token stream so it can be parsed as text content.
     fn parse_macro_name(&mut self) -> ParseResult<String> {
         match self.peek_kind() {
             TokenKind::Text(s) => {
-                let name = s.clone();
+                let alpha_end = s
+                    .find(|c: char| !c.is_ascii_alphanumeric())
+                    .unwrap_or(s.len());
+                if alpha_end == 0 {
+                    return Ok(String::new());
+                }
+                let name = s[..alpha_end].to_string();
+                let rest = s[alpha_end..].to_string();
+                let span = self.peek().map(|t| t.span).unwrap_or_default();
                 self.advance();
+                if !rest.is_empty() {
+                    self.tokens.insert(
+                        self.pos,
+                        Token {
+                            kind: TokenKind::Text(rest),
+                            span,
+                        },
+                    );
+                }
                 Ok(name)
             }
             // Special single-character escapes
@@ -1358,8 +1411,7 @@ test(x, y = TRUE)
 
     #[test]
     fn test_ldots() {
-        // \ldots should produce the same output as \dots
-        // Note: Use {} or space after macro name to properly terminate
+        // \ldots is an alias for \dots and should produce SpecialChar::Dots
         let doc = parse(r#"\description{a, b, \ldots{}, z}"#).unwrap();
         let content = &doc.sections[0].content;
         assert!(
@@ -1685,5 +1737,121 @@ test(x, y = TRUE)
         } else {
             panic!("Expected Sexpr node, got {:?}", content[0]);
         }
+    }
+
+    // ========================================================================
+    // Regression tests for GitHub issue #20: zero-arg macro terminator and
+    // literal braces in deparsed Rd examples
+    // ========================================================================
+
+    /// Rd macro names consist only of ASCII alphanumeric characters.
+    /// A zero-arg macro immediately followed by any non-alphanumeric character
+    /// must be recognized as the macro + preserved literal text, regardless of
+    /// which punctuation character follows.
+    #[test]
+    fn test_zero_arg_macro_terminates_at_non_alphanumeric() {
+        // (input, expected terminator char)
+        let cases: &[(&str, char)] = &[
+            (r#"\usage{\dots)}"#, ')'),
+            (r#"\usage{\dots,}"#, ','),
+            (r#"\usage{\dots.}"#, '.'),
+            (r#"\usage{\ldots)}"#, ')'),
+        ];
+        for &(input, expected_char) in cases {
+            let doc = parse(input).unwrap();
+            let content = &doc.sections[0].content;
+            let has_dots = content
+                .iter()
+                .any(|n| matches!(n, RdNode::Special(SpecialChar::Dots)));
+            assert!(
+                has_dots,
+                "Input {input:?}: expected SpecialChar::Dots, got: {content:?}"
+            );
+            let text: String = content
+                .iter()
+                .filter_map(|n| if let RdNode::Text(s) = n { Some(s.as_str()) } else { None })
+                .collect();
+            assert!(
+                text.contains(expected_char),
+                "Input {input:?}: expected {expected_char:?} preserved in text, got: {text:?}"
+            );
+        }
+    }
+
+    /// Literal `{` `}` in `\examples{}` must be preserved in the AST text
+    /// (they are R code syntax, not Rd grouping braces).
+    #[test]
+    fn test_examples_preserves_literal_braces() {
+        let doc = parse(
+            r#"\examples{hilbert <- function(n) { i <- 1:n; 1 / outer(i - 1, i, `+`) }}"#,
+        )
+        .unwrap();
+        let content = &doc.sections[0].content;
+        let text = content
+            .iter()
+            .filter_map(|n| if let RdNode::Text(s) = n { Some(s.as_str()) } else { None })
+            .collect::<String>();
+        assert!(
+            text.contains("{ i <- 1:n"),
+            "Expected literal '{{' preserved in examples, full text: {:?}",
+            text
+        );
+        assert!(
+            text.ends_with('}') || text.contains("} }") || text.contains("`) }"),
+            "Expected literal '}}' preserved in examples, full text: {:?}",
+            text
+        );
+    }
+
+    /// Literal `{` `}` in `\usage{}` must also be preserved.
+    #[test]
+    fn test_usage_preserves_literal_braces() {
+        let doc = parse(r#"\usage{f <- function(x) { x + 1 }}"#).unwrap();
+        let content = &doc.sections[0].content;
+        let text = content
+            .iter()
+            .filter_map(|n| if let RdNode::Text(s) = n { Some(s.as_str()) } else { None })
+            .collect::<String>();
+        assert!(
+            text.contains("{ x + 1 }"),
+            "Expected literal braces preserved in usage, full text: {:?}",
+            text
+        );
+    }
+
+    /// Braces in `\dontrun{}` inside `\examples{}` should also be preserved.
+    #[test]
+    fn test_examples_dontrun_preserves_braces() {
+        let doc = parse(
+            r#"\examples{\dontrun{f <- function(x) { x + 1 }}}"#,
+        )
+        .unwrap();
+        let content = &doc.sections[0].content;
+        if let RdNode::DontRun(children) = &content[0] {
+            let text = children
+                .iter()
+                .filter_map(|n| if let RdNode::Text(s) = n { Some(s.as_str()) } else { None })
+                .collect::<String>();
+            assert!(
+                text.contains("{ x + 1 }"),
+                "Expected literal braces preserved inside \\dontrun, full text: {:?}",
+                text
+            );
+        } else {
+            panic!("Expected DontRun node, got {:?}", content[0]);
+        }
+    }
+
+    /// In non-code sections (e.g. `\description{}`), bare `{{...}}` remains
+    /// Rd text grouping: the braces are unwrapped and the inner content is kept.
+    #[test]
+    fn test_description_unwraps_grouping_braces() {
+        let doc = parse(r#"\description{{grouped text}}"#).unwrap();
+        let content = &doc.sections[0].content;
+        let text = content
+            .iter()
+            .filter_map(|n| if let RdNode::Text(s) = n { Some(s.as_str()) } else { None })
+            .collect::<String>();
+        assert_eq!(text, "grouped text");
     }
 }

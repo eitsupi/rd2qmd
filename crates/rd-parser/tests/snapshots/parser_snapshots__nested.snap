@@ -111,10 +111,10 @@ expression: ast_json
               "text": "(x, "
             },
             {
-              "macro": {
-                "name": "dots)",
-                "args": []
-              }
+              "special": "dots"
+            },
+            {
+              "text": ")"
             }
           ]
         },
