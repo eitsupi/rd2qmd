@@ -43,7 +43,7 @@ enum ArgumentsTableFormat {
     #[default]
     Grid,
     /// Quarto list-table - requires Quarto 1.9+, compatible with q2
-    List,
+    ListTable,
 }
 
 #[derive(Parser, Debug)]
@@ -157,8 +157,8 @@ struct Cli {
     include_internal: bool,
 
     /// Table format for the Arguments section: grid (Pandoc grid table), pipe (GFM pipe table),
-    /// or list (Quarto list-table, requires Quarto 1.9+, compatible with q2).
-    /// Grid and list tables support block elements (lists, paragraphs) in cells.
+    /// or list-table (Quarto list-table, requires Quarto 1.9+, compatible with q2).
+    /// Grid and list-table support block elements (lists, paragraphs) in cells.
     #[arg(long, value_enum, default_value_t = ArgumentsTableFormat::Grid)]
     arguments_table: ArgumentsTableFormat,
 
@@ -770,14 +770,14 @@ fn merge_arguments_format(cli: &Cli, config: &Config) -> ArgumentsFormat {
     {
         return match fmt.to_lowercase().as_str() {
             "pipe" => ArgumentsFormat::PipeTable,
-            "list" => ArgumentsFormat::ListTable,
+            "list-table" => ArgumentsFormat::ListTable,
             _ => ArgumentsFormat::GridTable,
         };
     }
     match cli.arguments_table {
         ArgumentsTableFormat::Pipe => ArgumentsFormat::PipeTable,
         ArgumentsTableFormat::Grid => ArgumentsFormat::GridTable,
-        ArgumentsTableFormat::List => ArgumentsFormat::ListTable,
+        ArgumentsTableFormat::ListTable => ArgumentsFormat::ListTable,
     }
 }
 
