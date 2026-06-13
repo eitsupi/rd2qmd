@@ -424,9 +424,8 @@ impl Converter {
             if let RdNode::Item { label, content } = node
                 && let Some(label_nodes) = label
             {
-                // Argument name with backticks for inline code
                 let term_text = self.extract_text(label_nodes);
-                let arg_text = format!("`{}`", term_text.trim());
+                let arg_text = rd2qmd_mdast::format_inline_code(term_text.trim(), false);
 
                 // Convert description to Markdown text for grid table
                 let desc_text = self.convert_to_markdown_text(content);
@@ -694,13 +693,15 @@ impl Converter {
                     }
                 }
                 Node::Code(c) => {
-                    result.push_str("```");
+                    let fence = code_fence(&c.value);
+                    result.push_str(&fence);
                     if let Some(lang) = &c.lang {
                         result.push_str(lang);
                     }
                     result.push('\n');
                     result.push_str(&c.value);
-                    result.push_str("\n```");
+                    result.push('\n');
+                    result.push_str(&fence);
                 }
                 _ => {
                     // For other nodes, try to extract text
