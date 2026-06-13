@@ -32,7 +32,8 @@ pub use writer::{Frontmatter, RdMetadata, WriterOptions, mdast_to_qmd};
 ///
 /// Chooses a fence one backtick longer than the longest consecutive backtick run
 /// in `value`, so the delimiter never appears inside the span. Adds padding spaces
-/// when a multi-backtick fence is used (CommonMark requirement to avoid ambiguity).
+/// when a multi-backtick fence is used, to prevent ambiguity when the code starts or
+/// ends with a backtick character.
 ///
 /// Also prepends a space when `prev_ends_with_backtick` is true to prevent
 /// adjacent backtick spans from merging into a single code span.
