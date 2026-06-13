@@ -1477,14 +1477,26 @@ fn special_char_to_string(ch: SpecialChar) -> &'static str {
 /// stripped so the 4-space indent is always exact.
 fn indent_list_table_cell(text: &str) -> String {
     let mut result = String::new();
+    let mut in_code_block = false;
     for (i, line) in text.split('\n').enumerate() {
         if i > 0 {
             result.push('\n');
-            if !line.is_empty() {
-                result.push_str("    ");
-                result.push_str(line.trim_start());
-            }
+        }
+        // Track fenced code block boundaries so we don't strip semantic indentation
+        // inside code blocks (e.g. from \preformatted{}).
+        if line.trim_start().starts_with("```") {
+            in_code_block = !in_code_block;
+        }
+        if i == 0 {
+            result.push_str(line.trim_start());
+        } else if line.is_empty() {
+            // blank line: no indent
+        } else if in_code_block {
+            // Inside fenced code block: add prefix but preserve content whitespace
+            result.push_str("    ");
+            result.push_str(line);
         } else {
+            result.push_str("    ");
             result.push_str(line.trim_start());
         }
     }
