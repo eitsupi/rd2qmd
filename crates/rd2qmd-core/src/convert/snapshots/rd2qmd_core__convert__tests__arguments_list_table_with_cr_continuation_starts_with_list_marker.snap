@@ -1,6 +1,6 @@
 ---
 source: crates/rd2qmd-core/src/convert/tests.rs
-assertion_line: 1785
+assertion_line: 1811
 expression: qmd
 ---
 # Test
@@ -12,11 +12,11 @@ expression: qmd
 - - Argument
   - Description
 
-- - `method`
-  - One of: 
+- - `x`
+  - Options: 
 
-    - `"a"`: First line.  
-      Second line. 
-    - `"b"`: Use method B. 
+    - First line.  
+      - not a new item. 
+    - Second item. 
 
 :::

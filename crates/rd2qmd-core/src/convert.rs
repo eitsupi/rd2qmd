@@ -518,7 +518,7 @@ impl Converter {
                     }
                     // Split on embedded newlines (e.g. from \cr → Node::Break) and
                     // prefix each continuation line so it stays inside the cell.
-                    let indented = indent_cell_continuation(text);
+                    let indented = indent_cell_continuation(text, "    ");
                     if first_block {
                         result.push_str(&indented);
                     } else {
@@ -528,50 +528,56 @@ impl Converter {
                     first_block = false;
                 }
                 Node::List(l) => {
-                    let mut items: Vec<String> = Vec::new();
-                    for (j, item) in l.children.iter().enumerate() {
-                        if let Node::ListItem(li) = item {
+                    let mut any_item = false;
+                    for (j, list_item) in l.children.iter().enumerate() {
+                        if let Node::ListItem(li) = list_item {
                             let marker = if l.ordered {
                                 format!("{}. ", j + 1)
                             } else {
                                 "- ".to_string()
                             };
-                            let mut item_text = marker;
-                            for child in &li.children {
-                                if let Node::Paragraph(p) = child {
-                                    // Also handle \cr inside list item text.
-                                    item_text.push_str(&indent_cell_continuation(
+                            // j==0 in first_block has no outer cell prefix; all other
+                            // items are indented 4 spaces (either non-first-block or
+                            // subsequent items within first_block).
+                            let outer: &str = if !first_block || j > 0 { "    " } else { "" };
+                            // Continuation lines must align to content column so they
+                            // are not misread as new list markers (e.g. "- " or "1. ").
+                            let continuation = format!("{}{}", outer, " ".repeat(marker.len()));
+
+                            let item_content = li
+                                .children
+                                .iter()
+                                .find_map(|c| {
+                                    if let Node::Paragraph(p) = c {
+                                        Some(p)
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .map(|p| {
+                                    indent_cell_continuation(
                                         &self.inline_nodes_to_markdown(&p.children),
-                                    ));
-                                    break;
+                                        &continuation,
+                                    )
+                                })
+                                .unwrap_or_default();
+
+                            if !any_item {
+                                if !first_block {
+                                    result.push_str("\n\n");
                                 }
-                            }
-                            items.push(item_text);
-                        }
-                    }
-                    if items.is_empty() {
-                        continue;
-                    }
-                    if first_block {
-                        for (j, item) in items.iter().enumerate() {
-                            if j == 0 {
-                                result.push_str(item);
                             } else {
-                                result.push_str("\n    ");
-                                result.push_str(item);
-                            }
-                        }
-                    } else {
-                        result.push_str("\n\n");
-                        for (j, item) in items.iter().enumerate() {
-                            if j > 0 {
                                 result.push('\n');
                             }
-                            result.push_str("    ");
-                            result.push_str(item);
+                            result.push_str(outer);
+                            result.push_str(&marker);
+                            result.push_str(&item_content);
+                            any_item = true;
                         }
                     }
-                    first_block = false;
+                    if any_item {
+                        first_block = false;
+                    }
                 }
                 Node::Code(c) => {
                     let lang = c.lang.as_deref().unwrap_or("");
@@ -1609,19 +1615,19 @@ fn code_fence(code: &str) -> String {
     "`".repeat(max_run.max(2) + 1)
 }
 
-/// Prefix every continuation line (after the first `\n`) with four spaces.
+/// Prefix every continuation line (after the first `\n`) with `prefix`.
 ///
-/// Used by `render_list_table_cell` to keep inline hard-breaks (`\cr` → `Node::Break`
-/// rendered as `"  \n"`) inside the list-table cell boundary.
-fn indent_cell_continuation(text: &str) -> String {
+/// Trims `normalize_whitespace` residue (leading space) from each continuation line
+/// before prepending the prefix. Used by `render_list_table_cell` to keep inline
+/// hard-breaks (`\cr` → `Node::Break` rendered as `"  \n"`) inside the cell boundary.
+fn indent_cell_continuation(text: &str, prefix: &str) -> String {
     let mut result = String::new();
     for (i, line) in text.split('\n').enumerate() {
         if i > 0 {
             result.push('\n');
-            // trim_start removes any normalize_whitespace residue on continuation lines
             let line = line.trim_start();
             if !line.is_empty() {
-                result.push_str("    ");
+                result.push_str(prefix);
             }
             result.push_str(line);
         } else {
