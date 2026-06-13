@@ -32,6 +32,8 @@ pub enum ArgumentsFormat {
     /// Pandoc grid table (default) - supports block elements (lists, paragraphs) in cells
     #[default]
     GridTable,
+    /// Quarto list-table (`::: {.list-table}`) - requires Quarto 1.9+
+    ListTable,
 }
 
 /// Options for Rd to mdast conversion
@@ -355,6 +357,7 @@ impl Converter {
         match self.options.arguments_format {
             ArgumentsFormat::PipeTable => self.convert_arguments_pipe(content),
             ArgumentsFormat::GridTable => self.convert_arguments_grid(content),
+            ArgumentsFormat::ListTable => self.convert_arguments_list_table(content),
         }
     }
 
@@ -452,6 +455,45 @@ impl Converter {
 
         // Output as raw text (will be rendered as grid table by Pandoc)
         vec![Node::Html(Html { value: grid_table })]
+    }
+
+    /// Convert arguments to Quarto list-table format.
+    /// Requires Quarto 1.9+. Compatible with q2 (Quarto v2 Rust rewrite).
+    fn convert_arguments_list_table(&mut self, content: &[RdNode]) -> Vec<Node> {
+        let mut rows: Vec<(String, String)> = Vec::new();
+
+        for node in content {
+            if let RdNode::Item { label, content } = node
+                && let Some(label_nodes) = label
+            {
+                let term_text = self.extract_text(label_nodes);
+                let arg_text = format!("`{}`", term_text.trim());
+                let desc_text = self.convert_to_markdown_text(content);
+                rows.push((arg_text, desc_text));
+            }
+        }
+
+        if rows.is_empty() {
+            return self.convert_content(content);
+        }
+
+        let mut output = String::new();
+        output.push_str("::: {.list-table header-rows=1}\n\n");
+        output.push_str("- - Argument\n  - Description\n");
+
+        for (arg, desc) in &rows {
+            output.push('\n');
+            output.push_str("- - ");
+            output.push_str(arg);
+            output.push('\n');
+            output.push_str("  - ");
+            output.push_str(&indent_continuation_paragraphs(desc));
+            output.push('\n');
+        }
+
+        output.push_str("\n:::\n");
+
+        vec![Node::Html(Html { value: output })]
     }
 
     /// Convert RdNode content to Markdown text for use in grid table cells.
@@ -1426,6 +1468,29 @@ fn special_char_to_string(ch: SpecialChar) -> &'static str {
         SpecialChar::Ldqb => "\u{201C}",
         SpecialChar::Rdqb => "\u{201D}",
     }
+}
+
+/// Indent continuation paragraphs for list-table cell content.
+/// The first paragraph is unchanged; paragraphs 2+ have each line prefixed with
+/// 4 spaces to align with inner list content (column 4: after `  - `).
+/// Leading whitespace from Rd source formatting is stripped before indenting.
+fn indent_continuation_paragraphs(text: &str) -> String {
+    let mut result = String::new();
+    for (i, para) in text.split("\n\n").enumerate() {
+        if i > 0 {
+            result.push_str("\n\n");
+            for (j, line) in para.lines().enumerate() {
+                if j > 0 {
+                    result.push('\n');
+                }
+                result.push_str("    ");
+                result.push_str(line.trim_start());
+            }
+        } else {
+            result.push_str(para);
+        }
+    }
+    result
 }
 
 fn normalize_whitespace(s: &str) -> String {

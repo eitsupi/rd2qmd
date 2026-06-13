@@ -1604,3 +1604,63 @@ The \abbr{HTML} and \abbr{Rd} formats are supported.
     let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
     insta::assert_snapshot!(qmd);
 }
+
+#[test]
+fn test_arguments_list_table_basic() {
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{The first argument.}
+  \item{y}{The second argument, defaults to 1.}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_table_multi_paragraph() {
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{First paragraph.
+
+  Second paragraph of the description.}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_indent_continuation_paragraphs_single() {
+    assert_eq!(indent_continuation_paragraphs("Only one paragraph."), "Only one paragraph.");
+}
+
+#[test]
+fn test_indent_continuation_paragraphs_multi() {
+    let input = "First paragraph.\n\nSecond paragraph.";
+    let expected = "First paragraph.\n\n    Second paragraph.";
+    assert_eq!(indent_continuation_paragraphs(input), expected);
+}
+
+#[test]
+fn test_indent_continuation_paragraphs_three() {
+    let input = "First.\n\nSecond.\n\nThird.";
+    let expected = "First.\n\n    Second.\n\n    Third.";
+    assert_eq!(indent_continuation_paragraphs(input), expected);
+}

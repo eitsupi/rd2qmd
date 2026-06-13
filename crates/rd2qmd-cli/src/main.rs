@@ -42,6 +42,8 @@ enum ArgumentsTableFormat {
     /// Pandoc grid table (default) - supports block elements (lists, paragraphs) in cells
     #[default]
     Grid,
+    /// Quarto list-table - requires Quarto 1.9+, compatible with q2
+    List,
 }
 
 #[derive(Parser, Debug)]
@@ -767,12 +769,14 @@ fn merge_arguments_format(cli: &Cli, config: &Config) -> ArgumentsFormat {
     {
         return match fmt.to_lowercase().as_str() {
             "pipe" => ArgumentsFormat::PipeTable,
+            "list" => ArgumentsFormat::ListTable,
             _ => ArgumentsFormat::GridTable,
         };
     }
     match cli.arguments_table {
         ArgumentsTableFormat::Pipe => ArgumentsFormat::PipeTable,
         ArgumentsTableFormat::Grid => ArgumentsFormat::GridTable,
+        ArgumentsTableFormat::List => ArgumentsFormat::ListTable,
     }
 }
 
