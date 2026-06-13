@@ -590,7 +590,13 @@ impl Converter {
                     result.push_str("\n\n    ");
                     result.push_str(&fence);
                     result.push_str(lang);
-                    for line in c.value.trim_end_matches('\n').split('\n') {
+                    let lines: Vec<&str> = c.value.split('\n').collect();
+                    let code_lines = if lines.last() == Some(&"") {
+                        &lines[..lines.len() - 1]
+                    } else {
+                        &lines[..]
+                    };
+                    for line in code_lines {
                         result.push('\n');
                         if !line.is_empty() {
                             result.push_str("    ");

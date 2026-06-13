@@ -1929,6 +1929,22 @@ fn test_arguments_list_table_inline_code_with_double_backticks() {
 }
 
 #[test]
+fn test_arguments_list_table_preformatted_with_trailing_blank_line() {
+    // A value ending with \n\n has an intentional trailing blank line that must be
+    // preserved; only the single empty segment from a terminal \n should be dropped.
+    let rd =
+        "\\name{test}\n\\title{Test}\n\\arguments{\n  \\item{x}{\\preformatted{code\n\n}}\n}\n";
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
 fn test_arguments_list_table_label_with_backticks() {
     // Argument labels containing backticks (e.g. non-syntactic R names) must be
     // rendered with safe fencing via format_inline_code, not raw backtick wrapping.
