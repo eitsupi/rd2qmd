@@ -1906,6 +1906,27 @@ fn test_arguments_list_table_list_only_with_cr_continuation_starts_with_list_mar
     insta::assert_snapshot!(qmd);
 }
 
+#[test]
+fn test_arguments_list_table_with_cr_continuation_all_marker_forms() {
+    // escape_md_list_marker handles five CommonMark list-marker forms.
+    // Verify that all of them are backslash-escaped on \cr continuation lines.
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{First line.\cr - hyphen.\cr * asterisk.\cr + plus.\cr 1. ordered period.\cr 1) ordered paren.}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
 #[cfg(feature = "roxygen")]
 #[test]
 fn test_arguments_list_table_with_python_code_block() {
