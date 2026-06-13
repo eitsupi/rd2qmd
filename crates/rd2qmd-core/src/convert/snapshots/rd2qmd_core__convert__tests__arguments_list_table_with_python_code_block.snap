@@ -1,6 +1,6 @@
 ---
 source: crates/rd2qmd-core/src/convert/tests.rs
-assertion_line: 1745
+assertion_line: 1887
 expression: qmd
 ---
 # Test
@@ -18,7 +18,6 @@ expression: qmd
     ```python
     def process(x):
         return x * 2
-
     ```
 
 :::
