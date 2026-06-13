@@ -575,11 +575,13 @@ impl Converter {
                 }
                 Node::Code(c) => {
                     let lang = c.lang.as_deref().unwrap_or("");
+                    let fence = code_fence(&c.value);
                     if first_block {
-                        result.push_str("```");
+                        result.push_str(&fence);
                         result.push_str(lang);
                     } else {
-                        result.push_str("\n\n    ```");
+                        result.push_str("\n\n    ");
+                        result.push_str(&fence);
                         result.push_str(lang);
                     }
                     for line in c.value.split('\n') {
@@ -589,7 +591,9 @@ impl Converter {
                             result.push_str(line);
                         }
                     }
-                    result.push_str("\n    ```");
+                    result.push('\n');
+                    result.push_str("    ");
+                    result.push_str(&fence);
                     first_block = false;
                 }
                 _ => {
@@ -1591,6 +1595,24 @@ fn special_char_to_string(ch: SpecialChar) -> &'static str {
 ///
 /// Used by `render_list_table_cell` to keep inline hard-breaks (`\cr` → `Node::Break`
 /// rendered as `"  \n"`) inside the list-table cell boundary.
+/// Returns a backtick fence string long enough to wrap `code`.
+/// Uses at least 3 backticks, or one more than the longest run of backticks in the content.
+fn code_fence(code: &str) -> String {
+    let max_run = code
+        .split('\n')
+        .flat_map(|line| {
+            let s = line.trim_start();
+            if s.starts_with('`') {
+                Some(s.chars().take_while(|&c| c == '`').count())
+            } else {
+                None
+            }
+        })
+        .max()
+        .unwrap_or(0);
+    "`".repeat(max_run.max(2) + 1)
+}
+
 fn indent_cell_continuation(text: &str) -> String {
     let mut result = String::new();
     for (i, line) in text.split('\n').enumerate() {
