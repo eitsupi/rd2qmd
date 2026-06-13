@@ -30,8 +30,9 @@ pub use writer::{Frontmatter, RdMetadata, WriterOptions, mdast_to_qmd};
 
 /// Format an inline code value as a Markdown code span, with safe backtick fencing.
 ///
-/// If `value` contains backticks, uses double-backtick delimiters with padding
-/// (`` `` `value` `` ``); otherwise uses single backticks (`` `value` ``).
+/// Chooses a fence one backtick longer than the longest consecutive backtick run
+/// in `value`, so the delimiter never appears inside the span. Adds padding spaces
+/// when a multi-backtick fence is used (CommonMark requirement to avoid ambiguity).
 ///
 /// Also prepends a space when `prev_ends_with_backtick` is true to prevent
 /// adjacent backtick spans from merging into a single code span.
@@ -40,14 +41,30 @@ pub fn format_inline_code(value: &str, prev_ends_with_backtick: bool) -> String 
     if prev_ends_with_backtick {
         out.push(' ');
     }
-    if value.contains('`') {
-        out.push_str("`` ");
+
+    let max_run = value
+        .chars()
+        .fold((0usize, 0usize), |(max, cur), c| {
+            if c == '`' {
+                (max.max(cur + 1), cur + 1)
+            } else {
+                (max, 0)
+            }
+        })
+        .0;
+
+    if max_run == 0 {
+        out.push('`');
         out.push_str(value);
-        out.push_str(" ``");
+        out.push('`');
     } else {
-        out.push('`');
+        let fence = "`".repeat(max_run + 1);
+        out.push_str(&fence);
+        out.push(' ');
         out.push_str(value);
-        out.push('`');
+        out.push(' ');
+        out.push_str(&fence);
     }
+
     out
 }

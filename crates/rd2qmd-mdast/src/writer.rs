@@ -750,6 +750,14 @@ mod tests {
     }
 
     #[test]
+    fn test_inline_code_with_double_backticks() {
+        // A value containing `` `` needs a triple-backtick fence
+        let root = Root::new(vec![Node::paragraph(vec![Node::inline_code("``nested``")])]);
+        let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+        assert!(qmd.contains("``` ``nested`` ```"));
+    }
+
+    #[test]
     fn test_consecutive_inline_codes() {
         // Consecutive inline codes need a space between them
         // Without a space, `foo``bar` is parsed as a single code span in CommonMark

@@ -1907,3 +1907,23 @@ fn test_arguments_list_table_inline_code_with_backticks() {
     let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
     insta::assert_snapshot!(qmd);
 }
+
+#[test]
+fn test_arguments_list_table_inline_code_with_double_backticks() {
+    // \code{} containing double backticks needs a triple-backtick fence.
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{Use \code{``nested``} for a value with double backticks.}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
