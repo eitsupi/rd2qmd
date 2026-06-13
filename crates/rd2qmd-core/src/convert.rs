@@ -540,9 +540,11 @@ impl Converter {
                             // items are indented 4 spaces (either non-first-block or
                             // subsequent items within first_block).
                             let outer: &str = if !first_block || j > 0 { "    " } else { "" };
-                            // Continuation lines must align to content column so they
-                            // are not misread as new list markers (e.g. "- " or "1. ").
-                            let continuation = format!("{}{}", outer, " ".repeat(marker.len()));
+                            // Continuation always uses the full cell indent (4 spaces)
+                            // plus marker width, even for j==0 in first_block. Without
+                            // this, a \cr continuation in a list-only cell would render
+                            // as "  - text" — matching the Quarto cell-marker pattern.
+                            let continuation = format!("    {}", " ".repeat(marker.len()));
 
                             let item_content = li
                                 .children

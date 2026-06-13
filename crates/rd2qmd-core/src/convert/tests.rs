@@ -1811,6 +1811,31 @@ fn test_arguments_list_table_with_cr_continuation_starts_with_list_marker() {
     insta::assert_snapshot!(qmd);
 }
 
+#[test]
+fn test_arguments_list_table_list_only_with_cr_continuation_starts_with_list_marker() {
+    // When the list is the first (and only) block in the cell (first_block=true, j==0),
+    // the \cr continuation must still use the full 4-space cell indent so it does not
+    // render as "  - text" which matches the Quarto list-table cell-marker pattern.
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{\itemize{
+\item First line.\cr - not a cell marker.
+\item Second item.
+}}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
 #[cfg(feature = "roxygen")]
 #[test]
 fn test_arguments_list_table_with_python_code_block() {

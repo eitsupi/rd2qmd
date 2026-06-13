@@ -1,0 +1,20 @@
+---
+source: crates/rd2qmd-core/src/convert/tests.rs
+assertion_line: 1836
+expression: qmd
+---
+# Test
+
+## Arguments
+
+::: {.list-table header-rows=1}
+
+- - Argument
+  - Description
+
+- - `x`
+  - - First line.  
+      - not a cell marker. 
+    - Second item. 
+
+:::
