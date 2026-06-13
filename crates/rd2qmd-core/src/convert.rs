@@ -584,14 +584,12 @@ impl Converter {
                 Node::Code(c) => {
                     let lang = c.lang.as_deref().unwrap_or("");
                     let fence = code_fence(&c.value);
-                    if first_block {
-                        result.push_str(&fence);
-                        result.push_str(lang);
-                    } else {
-                        result.push_str("\n\n    ");
-                        result.push_str(&fence);
-                        result.push_str(lang);
-                    }
+                    // A fenced code block must start at a line boundary; it cannot be
+                    // placed inline after the "  - " cell marker. Always use a blank
+                    // line + 4-space indent, even when this is the first block.
+                    result.push_str("\n\n    ");
+                    result.push_str(&fence);
+                    result.push_str(lang);
                     for line in c.value.split('\n') {
                         result.push('\n');
                         if !line.is_empty() {
@@ -1622,6 +1620,12 @@ fn code_fence(code: &str) -> String {
 /// Trims `normalize_whitespace` residue (leading space) from each continuation line
 /// before prepending the prefix. Used by `render_list_table_cell` to keep inline
 /// hard-breaks (`\cr` → `Node::Break` rendered as `"  \n"`) inside the cell boundary.
+///
+/// Known limitation: a continuation line that begins with a Markdown list marker
+/// (e.g. `- text` or `1. text`) will still be parsed by Quarto as a nested list
+/// item rather than literal text, even with the indentation applied here. Escaping
+/// the leading character (e.g. `\-`) would preserve literal semantics but is not
+/// implemented; revisit if this causes issues in practice.
 fn indent_cell_continuation(text: &str, prefix: &str) -> String {
     let mut result = String::new();
     for (i, line) in text.split('\n').enumerate() {

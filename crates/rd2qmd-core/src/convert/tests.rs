@@ -1719,6 +1719,30 @@ fn test_arguments_list_table_with_preformatted() {
 }
 
 #[test]
+fn test_arguments_list_table_preformatted_only() {
+    // Code block as the sole content of a cell (first_block=true). The fence must
+    // start on its own line, not inline after "  - ", or it won't be parsed as a
+    // fenced code block.
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{\preformatted{result <- foo(x)
+print(result)
+}}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
 fn test_arguments_list_table_with_backticks_in_preformatted() {
     // Content with a line starting with triple backticks would close a 3-backtick fence early.
     // The fence length must be at least max_leading_backtick_run + 1.
