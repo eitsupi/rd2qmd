@@ -1653,9 +1653,7 @@ fn indent_cell_continuation(text: &str, prefix: &str) -> String {
 fn escape_md_list_marker(line: &str) -> std::borrow::Cow<'_, str> {
     let mut chars = line.chars();
     match chars.next() {
-        Some('-' | '*' | '+') if chars.next() == Some(' ') => {
-            format!("\\{line}").into()
-        }
+        Some('-' | '*' | '+') if chars.next() == Some(' ') => format!("\\{line}").into(),
         Some(c) if c.is_ascii_digit() => {
             let digits_end = line.chars().take_while(|c| c.is_ascii_digit()).count();
             let rest = &line[digits_end..];
