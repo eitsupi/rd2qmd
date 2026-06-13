@@ -9,7 +9,7 @@ A fast Rd-to-Quarto Markdown converter written in Rust, with intelligent link re
 - **External package links**: Resolves cross-package links using pkgdown URL conventions (e.g., `\link[dplyr]{mutate}` → `https://dplyr.tidyverse.org/reference/mutate.html`)
 - **Topic index generation**: Outputs JSON index with topic metadata (name, title, aliases, lifecycle) for building reference sites
 - **Quarto-ready**: Generates `.qmd` files with `{r}` executable code blocks and YAML frontmatter
-- **Grid Table support**: Uses Pandoc-compatible Grid Tables for Arguments section, supporting lists and block elements in cells
+- **Flexible Arguments tables**: Supports Pandoc Grid Tables (default), GFM Pipe Tables, and Quarto native List-Tables (`--arguments-table list-table`) for the Arguments section
 - **pkgdown-compatible metadata**: Adds `pagetitle` in pkgdown style (`"<title> — <name>"`) for SEO
 - **No R required**: Pure Rust binary with no runtime R dependency
 
@@ -78,7 +78,7 @@ rd2qmd man/ -o docs/ -j4
 | `--no-frontmatter` | Disable YAML frontmatter |
 | `--no-pagetitle` | Skip pkgdown-style `pagetitle` metadata (`"<title> — <name>"`) |
 | `--quarto-code-blocks <BOOL>` | Use `{r}` code blocks (auto-set based on format) |
-| `--arguments-table <FORMAT>` | Arguments table format: `grid` (default) or `pipe` |
+| `--arguments-table <FORMAT>` | Arguments table format: `grid` (default), `pipe`, or `list-table` |
 | `-v, --verbose` | Verbose output |
 | `-q, --quiet` | Only show errors |
 
@@ -200,6 +200,28 @@ For Markdown environments that don't support Grid Tables, use `--arguments-table
 ```
 
 Note: GFM tables cannot contain true block elements; lists are flattened with `<br>` separators.
+
+Use `--arguments-table list-table` for Quarto native list-tables (requires Quarto 1.9+):
+
+```markdown
+::: {.list-table header-rows=1}
+
+- - Argument
+  - Description
+
+- - `x`
+  - A simple description.
+
+- - `opts`
+  - Available options:
+
+    - option A
+    - option B
+
+:::
+```
+
+List-tables support full block elements (nested lists, multiple paragraphs, code blocks) and render natively in Quarto without Pandoc extension dependencies.
 
 ## Examples
 

@@ -32,6 +32,8 @@ pub enum ArgumentsFormat {
     /// Pandoc grid table (default) - supports block elements (lists, paragraphs) in cells
     #[default]
     GridTable,
+    /// Quarto list-table (`::: {.list-table}`) - requires Quarto 1.9+
+    ListTable,
 }
 
 /// Options for Rd to mdast conversion
@@ -355,6 +357,7 @@ impl Converter {
         match self.options.arguments_format {
             ArgumentsFormat::PipeTable => self.convert_arguments_pipe(content),
             ArgumentsFormat::GridTable => self.convert_arguments_grid(content),
+            ArgumentsFormat::ListTable => self.convert_arguments_list_table(content),
         }
     }
 
@@ -421,9 +424,8 @@ impl Converter {
             if let RdNode::Item { label, content } = node
                 && let Some(label_nodes) = label
             {
-                // Argument name with backticks for inline code
                 let term_text = self.extract_text(label_nodes);
-                let arg_text = format!("`{}`", term_text.trim());
+                let arg_text = rd2qmd_mdast::format_inline_code(term_text.trim(), false);
 
                 // Convert description to Markdown text for grid table
                 let desc_text = self.convert_to_markdown_text(content);
@@ -452,6 +454,178 @@ impl Converter {
 
         // Output as raw text (will be rendered as grid table by Pandoc)
         vec![Node::Html(Html { value: grid_table })]
+    }
+
+    /// Convert arguments to Quarto list-table format.
+    /// Requires Quarto 1.9+. Compatible with q2 (Quarto v2 Rust rewrite).
+    fn convert_arguments_list_table(&mut self, content: &[RdNode]) -> Vec<Node> {
+        let mut rows: Vec<(String, String)> = Vec::new();
+
+        for node in content {
+            if let RdNode::Item { label, content } = node
+                && let Some(label_nodes) = label
+            {
+                let term_text = self.extract_text(label_nodes);
+                let arg_text = rd2qmd_mdast::format_inline_code(term_text.trim(), false);
+                let desc_nodes = self.convert_content(content);
+                let desc_text = self.render_list_table_cell(&desc_nodes);
+                rows.push((arg_text, desc_text));
+            }
+        }
+
+        if rows.is_empty() {
+            return self.convert_content(content);
+        }
+
+        let mut output = String::new();
+        output.push_str("::: {.list-table header-rows=1}\n\n");
+        output.push_str("- - Argument\n  - Description\n");
+
+        for (arg, desc) in &rows {
+            output.push('\n');
+            output.push_str("- - ");
+            output.push_str(arg);
+            output.push('\n');
+            output.push_str("  - ");
+            output.push_str(desc);
+            output.push('\n');
+        }
+
+        output.push_str("\n:::\n");
+
+        vec![Node::Html(Html { value: output })]
+    }
+
+    /// Render mdast nodes as list-table cell content with proper continuation indentation.
+    ///
+    /// Works on structured nodes so each type controls its own whitespace: paragraph text
+    /// is left-trimmed (removing any leading space from `normalize_whitespace`), while code
+    /// block content retains its original indentation unchanged. The first block starts
+    /// inline; subsequent blocks are separated by a blank line and each line is prefixed
+    /// with four spaces to satisfy the CommonMark list-continuation rule.
+    fn render_list_table_cell(&self, nodes: &[Node]) -> String {
+        let mut result = String::new();
+        let mut first_block = true;
+
+        for node in nodes {
+            match node {
+                Node::Paragraph(p) => {
+                    let text = self.inline_nodes_to_markdown(&p.children);
+                    let text = text.trim_start();
+                    if text.is_empty() {
+                        continue;
+                    }
+                    // Split on embedded newlines (e.g. from \cr → Node::Break) and
+                    // prefix each continuation line so it stays inside the cell.
+                    let indented = indent_cell_continuation(text, "    ");
+                    if first_block {
+                        result.push_str(&indented);
+                    } else {
+                        result.push_str("\n\n    ");
+                        result.push_str(&indented);
+                    }
+                    first_block = false;
+                }
+                Node::List(l) => {
+                    let mut any_item = false;
+                    for (j, list_item) in l.children.iter().enumerate() {
+                        if let Node::ListItem(li) = list_item {
+                            let marker = if l.ordered {
+                                format!("{}. ", j + 1)
+                            } else {
+                                "- ".to_string()
+                            };
+                            // j==0 in first_block has no outer cell prefix; all other
+                            // items are indented 4 spaces (either non-first-block or
+                            // subsequent items within first_block).
+                            let outer: &str = if !first_block || j > 0 { "    " } else { "" };
+                            // Continuation always uses the full cell indent (4 spaces)
+                            // plus marker width, even for j==0 in first_block. Without
+                            // this, a \cr continuation in a list-only cell would render
+                            // as "  - text" — matching the Quarto cell-marker pattern.
+                            let continuation = format!("    {}", " ".repeat(marker.len()));
+
+                            let item_content = li
+                                .children
+                                .iter()
+                                .find_map(|c| {
+                                    if let Node::Paragraph(p) = c {
+                                        Some(p)
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .map(|p| {
+                                    indent_cell_continuation(
+                                        &self.inline_nodes_to_markdown(&p.children),
+                                        &continuation,
+                                    )
+                                })
+                                .unwrap_or_default();
+
+                            if !any_item {
+                                if !first_block {
+                                    result.push_str("\n\n");
+                                }
+                            } else {
+                                result.push('\n');
+                            }
+                            result.push_str(outer);
+                            result.push_str(&marker);
+                            result.push_str(&item_content);
+                            any_item = true;
+                        }
+                    }
+                    if any_item {
+                        first_block = false;
+                    }
+                }
+                Node::Code(c) => {
+                    let lang = c.lang.as_deref().unwrap_or("");
+                    let fence = code_fence(&c.value);
+                    // A fenced code block must start at a line boundary; it cannot be
+                    // placed inline after the "  - " cell marker. Always use a blank
+                    // line + 4-space indent, even when this is the first block.
+                    result.push_str("\n\n    ");
+                    result.push_str(&fence);
+                    result.push_str(lang);
+                    let lines: Vec<&str> = c.value.split('\n').collect();
+                    let code_lines = if lines.last() == Some(&"") {
+                        &lines[..lines.len() - 1]
+                    } else {
+                        &lines[..]
+                    };
+                    for line in code_lines {
+                        result.push('\n');
+                        if !line.is_empty() {
+                            result.push_str("    ");
+                            result.push_str(line);
+                        }
+                    }
+                    result.push('\n');
+                    result.push_str("    ");
+                    result.push_str(&fence);
+                    first_block = false;
+                }
+                _ => {
+                    if let Some(text) = self.node_to_text(node) {
+                        let text = text.trim_start();
+                        if text.is_empty() {
+                            continue;
+                        }
+                        if first_block {
+                            result.push_str(text);
+                        } else {
+                            result.push_str("\n\n    ");
+                            result.push_str(text);
+                        }
+                        first_block = false;
+                    }
+                }
+            }
+        }
+
+        result
     }
 
     /// Convert RdNode content to Markdown text for use in grid table cells.
@@ -519,13 +693,15 @@ impl Converter {
                     }
                 }
                 Node::Code(c) => {
-                    result.push_str("```");
+                    let fence = code_fence(&c.value);
+                    result.push_str(&fence);
                     if let Some(lang) = &c.lang {
                         result.push_str(lang);
                     }
                     result.push('\n');
                     result.push_str(&c.value);
-                    result.push_str("\n```");
+                    result.push('\n');
+                    result.push_str(&fence);
                 }
                 _ => {
                     // For other nodes, try to extract text
@@ -550,9 +726,10 @@ impl Converter {
             match node {
                 Node::Text(t) => result.push_str(&t.value),
                 Node::InlineCode(c) => {
-                    result.push('`');
-                    result.push_str(&c.value);
-                    result.push('`');
+                    result.push_str(&rd2qmd_mdast::format_inline_code(
+                        &c.value,
+                        result.ends_with('`'),
+                    ));
                 }
                 Node::Emphasis(e) => {
                     result.push('*');
@@ -1425,6 +1602,68 @@ fn special_char_to_string(ch: SpecialChar) -> &'static str {
         SpecialChar::Rsqb => "\u{2019}",
         SpecialChar::Ldqb => "\u{201C}",
         SpecialChar::Rdqb => "\u{201D}",
+    }
+}
+
+/// Returns a backtick fence string long enough to wrap `code`.
+/// Uses at least 3 backticks, or one more than the longest run of backticks in the content.
+fn code_fence(code: &str) -> String {
+    let max_run = code
+        .split('\n')
+        .flat_map(|line| {
+            let s = line.trim_start();
+            if s.starts_with('`') {
+                Some(s.chars().take_while(|&c| c == '`').count())
+            } else {
+                None
+            }
+        })
+        .max()
+        .unwrap_or(0);
+    "`".repeat(max_run.max(2) + 1)
+}
+
+/// Prefix every continuation line (after the first `\n`) with `prefix`.
+///
+/// Trims `normalize_whitespace` residue (leading space) from each continuation line
+/// before prepending the prefix. Used by `render_list_table_cell` to keep inline
+/// hard-breaks (`\cr` → `Node::Break` rendered as `"  \n"`) inside the cell boundary.
+///
+/// Continuation lines that start with a CommonMark list marker (`- `, `* `, `+ `,
+/// or `N.`/`N)`) are backslash-escaped so Quarto does not treat them as nested list items.
+fn indent_cell_continuation(text: &str, prefix: &str) -> String {
+    let mut result = String::new();
+    for (i, line) in text.split('\n').enumerate() {
+        if i > 0 {
+            result.push('\n');
+            let line = line.trim_start();
+            if !line.is_empty() {
+                result.push_str(prefix);
+                result.push_str(&escape_md_list_marker(line));
+            }
+        } else {
+            result.push_str(line);
+        }
+    }
+    result
+}
+
+/// Backslash-escape the punctuation character of a CommonMark list marker so the
+/// line is rendered as literal text rather than a new list item.
+fn escape_md_list_marker(line: &str) -> std::borrow::Cow<'_, str> {
+    let mut chars = line.chars();
+    match chars.next() {
+        Some('-' | '*' | '+') if chars.next() == Some(' ') => format!("\\{line}").into(),
+        Some(c) if c.is_ascii_digit() => {
+            let digits_end = line.chars().take_while(|c| c.is_ascii_digit()).count();
+            let rest = &line[digits_end..];
+            if rest.starts_with(". ") || rest.starts_with(") ") {
+                format!("{}\\{rest}", &line[..digits_end]).into()
+            } else {
+                line.into()
+            }
+        }
+        _ => line.into(),
     }
 }
 

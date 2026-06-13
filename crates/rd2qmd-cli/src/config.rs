@@ -44,7 +44,7 @@ pub struct OutputConfig {
     /// Add pkgdown-style pagetitle metadata ("<title> — <name>") (default: true)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pagetitle: Option<bool>,
-    /// Table format for Arguments section: "grid" (Pandoc grid table) or "pipe" (default: "grid")
+    /// Table format for Arguments section: "grid" (Pandoc grid table), "pipe" (GFM pipe table), or "list-table" (Quarto list-table, requires Quarto 1.9+). Default: "grid"
     #[serde(skip_serializing_if = "Option::is_none")]
     pub arguments_table: Option<String>,
     /// Include topics with \keyword{internal} (default: false)

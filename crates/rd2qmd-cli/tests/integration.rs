@@ -154,6 +154,18 @@ fn test_init_config() {
 }
 
 #[test]
+fn test_simple_pipe_table() {
+    let output = convert_fixture("simple", &["--arguments-table", "pipe"]);
+    insta::assert_snapshot!("simple_pipe_table", output);
+}
+
+#[test]
+fn test_simple_list_table() {
+    let output = convert_fixture("simple", &["--arguments-table", "list-table"]);
+    insta::assert_snapshot!("simple_list_table", output);
+}
+
+#[test]
 fn test_init_schema() {
     let output = Command::new(rd2qmd_binary())
         .arg("init")

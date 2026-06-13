@@ -1257,6 +1257,52 @@ Use a flag instead.}
     insta::assert_snapshot!(qmd);
 }
 
+#[test]
+fn test_arguments_grid_table_label_with_backticks() {
+    // Argument labels containing backticks must use safe fencing via format_inline_code,
+    // not raw backtick wrapping. Single-backtick label → double-backtick fence.
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{`a`}{A non-syntactic argument name with single backticks.}
+  \item{``b``}{A label with a double-backtick run.}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::GridTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_grid_table_with_preformatted() {
+    // \preformatted{} in an argument description renders as a fenced code block
+    // inside the grid-table cell, with backtick-quoted variable names preserved.
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{Example usage:
+\preformatted{`my var` <- foo(x)
+result <- bar(`my var`)}
+}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::GridTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
 // ============================================================================
 // Integration tests for \figure tag conversion
 // ============================================================================
@@ -1601,6 +1647,389 @@ The \abbr{HTML} and \abbr{Rd} formats are supported.
 "#;
     let doc = parse(rd).unwrap();
     let mdast = rd_to_mdast(&doc);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_table_basic() {
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{The first argument.}
+  \item{y}{The second argument, defaults to 1.}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_table_multi_paragraph() {
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{First paragraph.
+
+  Second paragraph of the description.}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_table_with_nested_list() {
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{A basic argument.}
+  \item{method}{The method to use:
+\itemize{
+\item \code{"a"}: Use method A, the default.
+\item \code{"b"}: Use method B.
+}
+
+Additional details after the list.}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_table_list_only_description() {
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{method}{
+\itemize{
+\item \code{"a"}: Use method A.
+\item \code{"b"}: Use method B.
+}}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_table_with_preformatted() {
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{Description with code:
+\preformatted{
+  result <- foo(x)
+  print(result)
+}}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_table_preformatted_only() {
+    // Code block as the sole content of a cell (first_block=true). The fence must
+    // start on its own line, not inline after "  - ", or it won't be parsed as a
+    // fenced code block.
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{\preformatted{result <- foo(x)
+print(result)
+}}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_table_with_backticks_in_preformatted() {
+    // Content with a line starting with triple backticks would close a 3-backtick fence early.
+    // The fence length must be at least max_leading_backtick_run + 1.
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{Code containing a fence-like line:
+\preformatted{```r
+x <- 1
+```
+}}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_table_with_cr() {
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{First line.\cr Second line.}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_table_with_cr_in_list_item() {
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{method}{One of:
+\itemize{
+\item \code{"a"}: First line.\cr Second line.
+\item \code{"b"}: Use method B.
+}}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_table_with_cr_continuation_starts_with_list_marker() {
+    // If the \cr continuation line starts with "- ", it must be indented to the
+    // content column of the enclosing list item so it is not parsed as a new
+    // sibling list marker.
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{Options:
+\itemize{
+\item First line.\cr - not a new item.
+\item Second item.
+}}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_table_list_only_with_cr_continuation_starts_with_list_marker() {
+    // When the list is the first (and only) block in the cell (first_block=true, j==0),
+    // the \cr continuation must still use the full 4-space cell indent so it does not
+    // render as "  - text" which matches the Quarto list-table cell-marker pattern.
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{\itemize{
+\item First line.\cr - not a cell marker.
+\item Second item.
+}}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_table_with_cr_continuation_all_marker_forms() {
+    // escape_md_list_marker handles five CommonMark list-marker forms.
+    // Verify that all of them are backslash-escaped on \cr continuation lines.
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{First line.\cr - hyphen.\cr * asterisk.\cr + plus.\cr 1. ordered period.\cr 1) ordered paren.}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[cfg(feature = "roxygen")]
+#[test]
+fn test_arguments_list_table_with_python_code_block() {
+    // Roxygen2 markdown fenced code blocks produce \if{html}{\out{<div class="sourceCode lang">}}
+    // \preformatted{code}\if{html}{\out{</div>}} in Rd files. Python code is indent-sensitive
+    // so this test verifies that the 4-space indentation inside the Python function is preserved.
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{fn}{The processing function to use:
+\if{html}{\out{<div class="sourceCode python">}}\preformatted{def process(x):
+    return x * 2
+}\if{html}{\out{</div>}}
+}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_table_inline_code_with_backticks() {
+    // \code{} containing backticks (e.g. backtick-quoted R names) must be rendered with
+    // double-backtick fencing: `` `value` `` instead of ` `value` ` (invalid Markdown).
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{Use \code{`a`} or \code{`b`} for non-syntactic names.}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_table_inline_code_with_double_backticks() {
+    // \code{} containing double backticks needs a triple-backtick fence.
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{Use \code{``nested``} for a value with double backticks.}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_table_preformatted_with_trailing_blank_line() {
+    // A value ending with \n\n has an intentional trailing blank line that must be
+    // preserved; only the single empty segment from a terminal \n should be dropped.
+    let rd =
+        "\\name{test}\n\\title{Test}\n\\arguments{\n  \\item{x}{\\preformatted{code\n\n}}\n}\n";
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_table_label_with_backticks() {
+    // Argument labels containing backticks (e.g. non-syntactic R names) must be
+    // rendered with safe fencing via format_inline_code, not raw backtick wrapping.
+    // Single-backtick label → double-backtick fence; double-backtick label → triple.
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{`a`}{A non-syntactic argument name with single backticks.}
+  \item{``b``}{A label with a double-backtick run.}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
     let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
     insta::assert_snapshot!(qmd);
 }

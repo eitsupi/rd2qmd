@@ -1,0 +1,18 @@
+---
+source: crates/rd2qmd-core/src/convert/tests.rs
+assertion_line: 1908
+expression: qmd
+---
+# Test
+
+## Arguments
+
+::: {.list-table header-rows=1}
+
+- - Argument
+  - Description
+
+- - `x`
+  - Use `` `a` `` or `` `b` `` for non-syntactic names.
+
+:::

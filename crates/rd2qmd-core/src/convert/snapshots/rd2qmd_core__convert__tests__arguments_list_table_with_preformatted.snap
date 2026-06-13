@@ -1,0 +1,24 @@
+---
+source: crates/rd2qmd-core/src/convert/tests.rs
+assertion_line: 1718
+expression: qmd
+---
+# Test
+
+## Arguments
+
+::: {.list-table header-rows=1}
+
+- - Argument
+  - Description
+
+- - `x`
+  - Description with code: 
+
+    ```
+
+      result <- foo(x)
+      print(result)
+    ```
+
+:::

@@ -1,0 +1,23 @@
+---
+source: crates/rd2qmd-core/src/convert/tests.rs
+assertion_line: 1943
+expression: qmd
+---
+# Test
+
+## Arguments
+
+::: {.list-table header-rows=1}
+
+- - Argument
+  - Description
+
+- - `x`
+  - 
+
+    ```
+    code
+
+    ```
+
+:::

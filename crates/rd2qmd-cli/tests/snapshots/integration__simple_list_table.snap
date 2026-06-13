@@ -1,0 +1,48 @@
+---
+source: crates/rd2qmd-cli/tests/integration.rs
+expression: output
+---
+---
+title: "A Simple Function"
+pagetitle: "A Simple Function — simple"
+aliases:
+  - "simple"
+---
+
+# A Simple Function
+
+## Description
+
+ This is a simple function for testing. 
+
+## Usage
+
+```r
+simple(x, y = 1)
+```
+
+## Arguments
+
+::: {.list-table header-rows=1}
+
+- - Argument
+  - Description
+
+- - `x`
+  - The first argument.
+
+- - `y`
+  - The second argument, defaults to 1.
+
+:::
+
+## Value
+
+ Returns the sum of `x` and `y`. 
+
+## Examples
+
+```{r}
+simple(1, 2)
+simple(10)
+```

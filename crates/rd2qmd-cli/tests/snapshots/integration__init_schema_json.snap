@@ -1,5 +1,6 @@
 ---
 source: crates/rd2qmd-cli/tests/integration.rs
+assertion_line: 179
 expression: schema
 ---
 {
@@ -108,7 +109,7 @@ expression: schema
       "type": "object",
       "properties": {
         "arguments_table": {
-          "description": "Table format for Arguments section: \"grid\" (Pandoc grid table) or \"pipe\" (default: \"grid\")",
+          "description": "Table format for Arguments section: \"grid\" (Pandoc grid table), \"pipe\" (GFM pipe table), or \"list-table\" (Quarto list-table, requires Quarto 1.9+). Default: \"grid\"",
           "type": [
             "string",
             "null"
