@@ -1591,10 +1591,6 @@ fn special_char_to_string(ch: SpecialChar) -> &'static str {
     }
 }
 
-/// Prefix every continuation line (after the first `\n`) with four spaces.
-///
-/// Used by `render_list_table_cell` to keep inline hard-breaks (`\cr` → `Node::Break`
-/// rendered as `"  \n"`) inside the list-table cell boundary.
 /// Returns a backtick fence string long enough to wrap `code`.
 /// Uses at least 3 backticks, or one more than the longest run of backticks in the content.
 fn code_fence(code: &str) -> String {
@@ -1613,6 +1609,10 @@ fn code_fence(code: &str) -> String {
     "`".repeat(max_run.max(2) + 1)
 }
 
+/// Prefix every continuation line (after the first `\n`) with four spaces.
+///
+/// Used by `render_list_table_cell` to keep inline hard-breaks (`\cr` → `Node::Break`
+/// rendered as `"  \n"`) inside the list-table cell boundary.
 fn indent_cell_continuation(text: &str) -> String {
     let mut result = String::new();
     for (i, line) in text.split('\n').enumerate() {
