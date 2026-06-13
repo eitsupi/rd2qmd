@@ -487,7 +487,7 @@ impl Converter {
             output.push_str(arg);
             output.push('\n');
             output.push_str("  - ");
-            output.push_str(&indent_continuation_paragraphs(desc));
+            output.push_str(&indent_list_table_cell(desc));
             output.push('\n');
         }
 
@@ -1470,24 +1470,22 @@ fn special_char_to_string(ch: SpecialChar) -> &'static str {
     }
 }
 
-/// Indent continuation paragraphs for list-table cell content.
-/// The first paragraph is unchanged; paragraphs 2+ have each line prefixed with
-/// 4 spaces to align with inner list content (column 4: after `  - `).
-/// Leading whitespace from Rd source formatting is stripped before indenting.
-fn indent_continuation_paragraphs(text: &str) -> String {
+/// Indent all lines after the first for list-table cell content.
+/// Every line after the first is prefixed with 4 spaces to align with the inner
+/// list content start position (column 4: after `  - `). Blank lines are kept
+/// blank (no spurious indent). Leading whitespace from Rd source formatting is
+/// stripped so the 4-space indent is always exact.
+fn indent_list_table_cell(text: &str) -> String {
     let mut result = String::new();
-    for (i, para) in text.split("\n\n").enumerate() {
+    for (i, line) in text.split('\n').enumerate() {
         if i > 0 {
-            result.push_str("\n\n");
-            for (j, line) in para.lines().enumerate() {
-                if j > 0 {
-                    result.push('\n');
-                }
+            result.push('\n');
+            if !line.is_empty() {
                 result.push_str("    ");
                 result.push_str(line.trim_start());
             }
         } else {
-            result.push_str(para);
+            result.push_str(line.trim_start());
         }
     }
     result

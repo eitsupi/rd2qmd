@@ -156,8 +156,9 @@ struct Cli {
     #[arg(long)]
     include_internal: bool,
 
-    /// Table format for the Arguments section: grid (Pandoc grid table) or pipe (pipe table)
-    /// Grid tables support block elements (lists, paragraphs) in cells. Use pipe for simpler Markdown output.
+    /// Table format for the Arguments section: grid (Pandoc grid table), pipe (GFM pipe table),
+    /// or list (Quarto list-table, requires Quarto 1.9+, compatible with q2).
+    /// Grid and list tables support block elements (lists, paragraphs) in cells.
     #[arg(long, value_enum, default_value_t = ArgumentsTableFormat::Grid)]
     arguments_table: ArgumentsTableFormat,
 

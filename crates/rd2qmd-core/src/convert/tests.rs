@@ -1673,20 +1673,50 @@ Additional details after the list.}
 }
 
 #[test]
-fn test_indent_continuation_paragraphs_single() {
-    assert_eq!(indent_continuation_paragraphs("Only one paragraph."), "Only one paragraph.");
+fn test_arguments_list_table_list_only_description() {
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{method}{
+\itemize{
+\item \code{"a"}: Use method A.
+\item \code{"b"}: Use method B.
+}}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
 }
 
 #[test]
-fn test_indent_continuation_paragraphs_multi() {
+fn test_indent_list_table_cell_list_only() {
+    let input = "- option A\n- option B";
+    let expected = "- option A\n    - option B";
+    assert_eq!(indent_list_table_cell(input), expected);
+}
+
+#[test]
+fn test_indent_list_table_cell_single() {
+    assert_eq!(indent_list_table_cell("Only one paragraph."), "Only one paragraph.");
+}
+
+#[test]
+fn test_indent_list_table_cell_multi() {
     let input = "First paragraph.\n\nSecond paragraph.";
     let expected = "First paragraph.\n\n    Second paragraph.";
-    assert_eq!(indent_continuation_paragraphs(input), expected);
+    assert_eq!(indent_list_table_cell(input), expected);
 }
 
 #[test]
-fn test_indent_continuation_paragraphs_three() {
+fn test_indent_list_table_cell_three() {
     let input = "First.\n\nSecond.\n\nThird.";
     let expected = "First.\n\n    Second.\n\n    Third.";
-    assert_eq!(indent_continuation_paragraphs(input), expected);
+    assert_eq!(indent_list_table_cell(input), expected);
 }
