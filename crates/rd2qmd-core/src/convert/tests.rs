@@ -1886,3 +1886,24 @@ fn test_arguments_list_table_with_python_code_block() {
     let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
     insta::assert_snapshot!(qmd);
 }
+
+#[test]
+fn test_arguments_list_table_inline_code_with_backticks() {
+    // \code{} containing backticks (e.g. backtick-quoted R names) must be rendered with
+    // double-backtick fencing: `` `value` `` instead of ` `value` ` (invalid Markdown).
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{Use \code{`a`} or \code{`b`} for non-syntactic names.}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}

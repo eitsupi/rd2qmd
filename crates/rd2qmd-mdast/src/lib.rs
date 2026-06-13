@@ -27,3 +27,27 @@ pub use mdast::{
     Root, Strong, Table, TableCell, TableRow, Text,
 };
 pub use writer::{Frontmatter, RdMetadata, WriterOptions, mdast_to_qmd};
+
+/// Format an inline code value as a Markdown code span, with safe backtick fencing.
+///
+/// If `value` contains backticks, uses double-backtick delimiters with padding
+/// (`` `` `value` `` ``); otherwise uses single backticks (`` `value` ``).
+///
+/// Also prepends a space when `prev_ends_with_backtick` is true to prevent
+/// adjacent backtick spans from merging into a single code span.
+pub fn format_inline_code(value: &str, prev_ends_with_backtick: bool) -> String {
+    let mut out = String::new();
+    if prev_ends_with_backtick {
+        out.push(' ');
+    }
+    if value.contains('`') {
+        out.push_str("`` ");
+        out.push_str(value);
+        out.push_str(" ``");
+    } else {
+        out.push('`');
+        out.push_str(value);
+        out.push('`');
+    }
+    out
+}

@@ -508,23 +508,8 @@ impl<'a> Writer<'a> {
     }
 
     fn write_inline_code(&mut self, c: &crate::mdast::InlineCode) {
-        // Add space before if the previous character is a backtick
-        // This prevents `foo``bar` which CommonMark parses as a single code span
-        if self.output.ends_with('`') {
-            self.output.push(' ');
-        }
-
-        // Handle backticks in content
-        let value = &c.value;
-        if value.contains('`') {
-            self.output.push_str("`` ");
-            self.output.push_str(value);
-            self.output.push_str(" ``");
-        } else {
-            self.output.push('`');
-            self.output.push_str(value);
-            self.output.push('`');
-        }
+        let formatted = crate::format_inline_code(&c.value, self.output.ends_with('`'));
+        self.output.push_str(&formatted);
     }
 
     fn write_break(&mut self) {
