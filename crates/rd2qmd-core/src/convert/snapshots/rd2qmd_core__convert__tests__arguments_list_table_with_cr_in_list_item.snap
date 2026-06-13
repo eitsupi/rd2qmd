@@ -1,0 +1,22 @@
+---
+source: crates/rd2qmd-core/src/convert/tests.rs
+assertion_line: 1760
+expression: qmd
+---
+# Test
+
+## Arguments
+
+::: {.list-table header-rows=1}
+
+- - Argument
+  - Description
+
+- - `method`
+  - One of: 
+
+    - `"a"`: First line.  
+    Second line. 
+    - `"b"`: Use method B. 
+
+:::
