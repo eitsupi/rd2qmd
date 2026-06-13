@@ -19,7 +19,6 @@ expression: qmd
 
       result <- foo(x)
       print(result)
-
     ```
 
 :::

@@ -590,7 +590,7 @@ impl Converter {
                     result.push_str("\n\n    ");
                     result.push_str(&fence);
                     result.push_str(lang);
-                    for line in c.value.split('\n') {
+                    for line in c.value.trim_end_matches('\n').split('\n') {
                         result.push('\n');
                         if !line.is_empty() {
                             result.push_str("    ");

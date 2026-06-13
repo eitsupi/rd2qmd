@@ -1,6 +1,6 @@
 ---
 source: crates/rd2qmd-core/src/convert/tests.rs
-assertion_line: 1743
+assertion_line: 1767
 expression: qmd
 ---
 # Test
@@ -19,7 +19,6 @@ expression: qmd
     ```r
     x <- 1
     ```
-
     ````
 
 :::
