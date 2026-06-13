@@ -516,11 +516,14 @@ impl Converter {
                     if text.is_empty() {
                         continue;
                     }
+                    // Split on embedded newlines (e.g. from \cr → Node::Break) and
+                    // prefix each continuation line so it stays inside the cell.
+                    let indented = indent_cell_continuation(text);
                     if first_block {
-                        result.push_str(text);
+                        result.push_str(&indented);
                     } else {
                         result.push_str("\n\n    ");
-                        result.push_str(text);
+                        result.push_str(&indented);
                     }
                     first_block = false;
                 }
@@ -536,8 +539,10 @@ impl Converter {
                             let mut item_text = marker;
                             for child in &li.children {
                                 if let Node::Paragraph(p) = child {
-                                    item_text
-                                        .push_str(&self.inline_nodes_to_markdown(&p.children));
+                                    // Also handle \cr inside list item text.
+                                    item_text.push_str(&indent_cell_continuation(
+                                        &self.inline_nodes_to_markdown(&p.children),
+                                    ));
                                     break;
                                 }
                             }
@@ -1582,11 +1587,27 @@ fn special_char_to_string(ch: SpecialChar) -> &'static str {
     }
 }
 
-/// Indent all lines after the first for list-table cell content.
-/// Every line after the first is prefixed with 4 spaces to align with the inner
-/// list content start position (column 4: after `  - `). Blank lines are kept
-/// blank (no spurious indent). Leading whitespace from Rd source formatting is
-/// stripped so the 4-space indent is always exact.
+/// Prefix every continuation line (after the first `\n`) with four spaces.
+///
+/// Used by `render_list_table_cell` to keep inline hard-breaks (`\cr` → `Node::Break`
+/// rendered as `"  \n"`) inside the list-table cell boundary.
+fn indent_cell_continuation(text: &str) -> String {
+    let mut result = String::new();
+    for (i, line) in text.split('\n').enumerate() {
+        if i > 0 {
+            result.push('\n');
+            // trim_start removes any normalize_whitespace residue on continuation lines
+            let line = line.trim_start();
+            if !line.is_empty() {
+                result.push_str("    ");
+            }
+            result.push_str(line);
+        } else {
+            result.push_str(line);
+        }
+    }
+    result
+}
 
 fn normalize_whitespace(s: &str) -> String {
     if s.is_empty() {
