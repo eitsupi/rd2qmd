@@ -467,11 +467,7 @@ impl Converter {
                 && let Some(label_nodes) = label
             {
                 let term_text = self.extract_text(label_nodes);
-                // Known limitation: if an argument name contains backticks (e.g. a
-                // non-syntactic R identifier), the single-backtick wrapping below will
-                // produce invalid Markdown. R argument names are valid identifiers in
-                // practice, so this is left unhandled.
-                let arg_text = format!("`{}`", term_text.trim());
+                let arg_text = rd2qmd_mdast::format_inline_code(term_text.trim(), false);
                 let desc_nodes = self.convert_content(content);
                 let desc_text = self.render_list_table_cell(&desc_nodes);
                 rows.push((arg_text, desc_text));
