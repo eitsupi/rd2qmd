@@ -1,6 +1,6 @@
 ---
 source: crates/rd2qmd-core/src/convert/tests.rs
-assertion_line: 1811
+assertion_line: 1835
 expression: qmd
 ---
 # Test
@@ -16,7 +16,7 @@ expression: qmd
   - Options: 
 
     - First line.  
-      - not a new item. 
+      \- not a new item. 
     - Second item. 
 
 :::

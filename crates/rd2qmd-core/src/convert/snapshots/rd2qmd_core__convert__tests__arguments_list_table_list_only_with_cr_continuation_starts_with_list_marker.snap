@@ -1,6 +1,6 @@
 ---
 source: crates/rd2qmd-core/src/convert/tests.rs
-assertion_line: 1836
+assertion_line: 1860
 expression: qmd
 ---
 # Test
@@ -14,7 +14,7 @@ expression: qmd
 
 - - `x`
   - - First line.  
-      - not a cell marker. 
+      \- not a cell marker. 
     - Second item. 
 
 :::

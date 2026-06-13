@@ -1629,11 +1629,8 @@ fn code_fence(code: &str) -> String {
 /// before prepending the prefix. Used by `render_list_table_cell` to keep inline
 /// hard-breaks (`\cr` → `Node::Break` rendered as `"  \n"`) inside the cell boundary.
 ///
-/// Known limitation: a continuation line that begins with a Markdown list marker
-/// (e.g. `- text` or `1. text`) will still be parsed by Quarto as a nested list
-/// item rather than literal text, even with the indentation applied here. Escaping
-/// the leading character (e.g. `\-`) would preserve literal semantics but is not
-/// implemented; revisit if this causes issues in practice.
+/// Continuation lines that start with a CommonMark list marker (`- `, `* `, `+ `,
+/// or `N.`/`N)`) are backslash-escaped so Quarto does not treat them as nested list items.
 fn indent_cell_continuation(text: &str, prefix: &str) -> String {
     let mut result = String::new();
     for (i, line) in text.split('\n').enumerate() {
@@ -1642,13 +1639,34 @@ fn indent_cell_continuation(text: &str, prefix: &str) -> String {
             let line = line.trim_start();
             if !line.is_empty() {
                 result.push_str(prefix);
+                result.push_str(&escape_md_list_marker(line));
             }
-            result.push_str(line);
         } else {
             result.push_str(line);
         }
     }
     result
+}
+
+/// Backslash-escape the punctuation character of a CommonMark list marker so the
+/// line is rendered as literal text rather than a new list item.
+fn escape_md_list_marker(line: &str) -> std::borrow::Cow<'_, str> {
+    let mut chars = line.chars();
+    match chars.next() {
+        Some('-' | '*' | '+') if chars.next() == Some(' ') => {
+            format!("\\{line}").into()
+        }
+        Some(c) if c.is_ascii_digit() => {
+            let digits_end = line.chars().take_while(|c| c.is_ascii_digit()).count();
+            let rest = &line[digits_end..];
+            if rest.starts_with(". ") || rest.starts_with(") ") {
+                format!("{}\\{rest}", &line[..digits_end]).into()
+            } else {
+                line.into()
+            }
+        }
+        _ => line.into(),
+    }
 }
 
 fn normalize_whitespace(s: &str) -> String {
