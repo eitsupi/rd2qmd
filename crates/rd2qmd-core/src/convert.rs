@@ -468,7 +468,8 @@ impl Converter {
             {
                 let term_text = self.extract_text(label_nodes);
                 let arg_text = format!("`{}`", term_text.trim());
-                let desc_text = self.convert_to_markdown_text(content);
+                let desc_nodes = self.convert_content(content);
+                let desc_text = self.render_list_table_cell(&desc_nodes);
                 rows.push((arg_text, desc_text));
             }
         }
@@ -487,13 +488,124 @@ impl Converter {
             output.push_str(arg);
             output.push('\n');
             output.push_str("  - ");
-            output.push_str(&indent_list_table_cell(desc));
+            output.push_str(desc);
             output.push('\n');
         }
 
         output.push_str("\n:::\n");
 
         vec![Node::Html(Html { value: output })]
+    }
+
+    /// Render mdast nodes as list-table cell content with proper continuation indentation.
+    ///
+    /// Works on structured nodes so each type controls its own whitespace: paragraph text
+    /// is left-trimmed (removing any leading space from `normalize_whitespace`), while code
+    /// block content retains its original indentation unchanged. The first block starts
+    /// inline; subsequent blocks are separated by a blank line and each line is prefixed
+    /// with four spaces to satisfy the CommonMark list-continuation rule.
+    fn render_list_table_cell(&self, nodes: &[Node]) -> String {
+        let mut result = String::new();
+        let mut first_block = true;
+
+        for node in nodes {
+            match node {
+                Node::Paragraph(p) => {
+                    let text = self.inline_nodes_to_markdown(&p.children);
+                    let text = text.trim_start();
+                    if text.is_empty() {
+                        continue;
+                    }
+                    if first_block {
+                        result.push_str(text);
+                    } else {
+                        result.push_str("\n\n    ");
+                        result.push_str(text);
+                    }
+                    first_block = false;
+                }
+                Node::List(l) => {
+                    let mut items: Vec<String> = Vec::new();
+                    for (j, item) in l.children.iter().enumerate() {
+                        if let Node::ListItem(li) = item {
+                            let marker = if l.ordered {
+                                format!("{}. ", j + 1)
+                            } else {
+                                "- ".to_string()
+                            };
+                            let mut item_text = marker;
+                            for child in &li.children {
+                                if let Node::Paragraph(p) = child {
+                                    item_text
+                                        .push_str(&self.inline_nodes_to_markdown(&p.children));
+                                    break;
+                                }
+                            }
+                            items.push(item_text);
+                        }
+                    }
+                    if items.is_empty() {
+                        continue;
+                    }
+                    if first_block {
+                        for (j, item) in items.iter().enumerate() {
+                            if j == 0 {
+                                result.push_str(item);
+                            } else {
+                                result.push_str("\n    ");
+                                result.push_str(item);
+                            }
+                        }
+                    } else {
+                        result.push_str("\n\n");
+                        for (j, item) in items.iter().enumerate() {
+                            if j > 0 {
+                                result.push('\n');
+                            }
+                            result.push_str("    ");
+                            result.push_str(item);
+                        }
+                    }
+                    first_block = false;
+                }
+                Node::Code(c) => {
+                    let lang = c.lang.as_deref().unwrap_or("");
+                    if first_block {
+                        result.push_str("```");
+                        result.push_str(lang);
+                    } else {
+                        result.push_str("\n\n    ```");
+                        result.push_str(lang);
+                    }
+                    for line in c.value.split('\n') {
+                        result.push('\n');
+                        if !line.is_empty() {
+                            result.push_str("    ");
+                            result.push_str(line);
+                        }
+                    }
+                    result.push_str("\n    ```");
+                    first_block = false;
+                }
+                _ => {
+                    if let Some(text) = self.node_to_text(node) {
+                        let text = text.trim_start();
+                        if text.is_empty() {
+                            continue;
+                        }
+                        if first_block {
+                            result.push_str(text);
+                        } else {
+                            result.push_str("\n\n    ");
+                            result.push_str(text);
+                        }
+                        first_block = false;
+                    }
+                }
+            }
+        }
+
+        result
     }
 
     /// Convert RdNode content to Markdown text for use in grid table cells.
@@ -1475,21 +1587,6 @@ fn special_char_to_string(ch: SpecialChar) -> &'static str {
 /// list content start position (column 4: after `  - `). Blank lines are kept
 /// blank (no spurious indent). Leading whitespace from Rd source formatting is
 /// stripped so the 4-space indent is always exact.
-fn indent_list_table_cell(text: &str) -> String {
-    let mut result = String::new();
-    for (i, line) in text.split('\n').enumerate() {
-        if i > 0 {
-            result.push('\n');
-            if !line.is_empty() {
-                result.push_str("    ");
-                result.push_str(line.trim_start());
-            }
-        } else {
-            result.push_str(line.trim_start());
-        }
-    }
-    result
-}
 
 fn normalize_whitespace(s: &str) -> String {
     if s.is_empty() {

@@ -1,6 +1,6 @@
 ---
 source: crates/rd2qmd-core/src/convert/tests.rs
-assertion_line: 1718
+assertion_line: 1745
 expression: qmd
 ---
 # Test
@@ -12,13 +12,12 @@ expression: qmd
 - - Argument
   - Description
 
-- - `x`
-  - Description with code: 
+- - `fn`
+  - The processing function to use: 
 
-    ```
-
-      result <- foo(x)
-      print(result)
+    ```python
+    def process(x):
+        return x * 2
 
     ```
 

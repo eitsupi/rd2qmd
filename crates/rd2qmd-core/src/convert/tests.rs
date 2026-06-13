@@ -1718,28 +1718,30 @@ fn test_arguments_list_table_with_preformatted() {
     insta::assert_snapshot!(qmd);
 }
 
+#[cfg(feature = "roxygen")]
 #[test]
-fn test_indent_list_table_cell_list_only() {
-    let input = "- option A\n- option B";
-    let expected = "- option A\n    - option B";
-    assert_eq!(indent_list_table_cell(input), expected);
+fn test_arguments_list_table_with_python_code_block() {
+    // Roxygen2 markdown fenced code blocks produce \if{html}{\out{<div class="sourceCode lang">}}
+    // \preformatted{code}\if{html}{\out{</div>}} in Rd files. Python code is indent-sensitive
+    // so this test verifies that the 4-space indentation inside the Python function is preserved.
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{fn}{The processing function to use:
+\if{html}{\out{<div class="sourceCode python">}}\preformatted{def process(x):
+    return x * 2
+}\if{html}{\out{</div>}}
+}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
 }
 
-#[test]
-fn test_indent_list_table_cell_single() {
-    assert_eq!(indent_list_table_cell("Only one paragraph."), "Only one paragraph.");
-}
-
-#[test]
-fn test_indent_list_table_cell_multi() {
-    let input = "First paragraph.\n\nSecond paragraph.";
-    let expected = "First paragraph.\n\n    Second paragraph.";
-    assert_eq!(indent_list_table_cell(input), expected);
-}
-
-#[test]
-fn test_indent_list_table_cell_three() {
-    let input = "First.\n\nSecond.\n\nThird.";
-    let expected = "First.\n\n    Second.\n\n    Third.";
-    assert_eq!(indent_list_table_cell(input), expected);
-}
