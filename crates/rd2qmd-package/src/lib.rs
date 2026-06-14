@@ -423,7 +423,6 @@ fn convert_single_file(
             exec_donttest: options.exec_donttest,
             quarto_code_blocks: options.quarto_code_blocks,
             arguments_format: options.arguments_format.clone(),
-            ..Default::default()
         };
 
         // Convert to mdast

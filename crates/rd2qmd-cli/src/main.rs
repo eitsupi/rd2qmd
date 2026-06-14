@@ -35,6 +35,8 @@ enum OutputFormat {
 }
 
 /// Table format for the Arguments section
+// All current variants end with `Table`, but future formats (e.g. list-based) may not.
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, clap::ValueEnum)]
 enum ArgumentsTableFormat {
     /// Pipe table - limited to inline content
