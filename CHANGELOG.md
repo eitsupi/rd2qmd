@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-14
+
+### Added
+
+- Add `list` format for arguments output (#28).
+
+### Changed
+
+- **Breaking:** Rename `--arguments-table` and `arguments_table` to `--arguments-format` and `arguments_format` (#28).
+- **Breaking:** Rename `grid` and `pipe` values to `grid-table` and `pipe-table`, and change the default arguments output format to `list-table` (#27).
+
+### Fixed
+
+- Preserve nested lists, tables, definition lists, and multi-paragraph content in argument descriptions (#28).
+
 ## [0.1.1] - 2026-05-19
 
 ### Fixed
