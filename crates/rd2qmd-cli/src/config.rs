@@ -10,7 +10,9 @@ use std::path::{Path, PathBuf};
 /// Table format for the Arguments section
 // All current variants end with `Table`, but future formats (e.g. list-based) may not.
 #[allow(clippy::enum_variant_names)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, JsonSchema, clap::ValueEnum)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, JsonSchema, clap::ValueEnum,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum ArgumentsTableFormat {
     /// Pipe table - limited to inline content

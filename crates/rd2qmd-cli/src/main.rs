@@ -34,7 +34,6 @@ enum OutputFormat {
     Rmd,
 }
 
-
 #[derive(Parser, Debug)]
 #[command(name = "rd2qmd")]
 #[command(about = "Convert Rd files to Quarto Markdown")]
