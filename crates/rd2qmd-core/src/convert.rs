@@ -18,7 +18,7 @@ use rd_parser::{
 };
 use rd2qmd_mdast::{
     Align, DefinitionDescription, DefinitionList, DefinitionTerm, Html, Image, Node, Root, Table,
-    TableCell, TableRow,
+    TableCell, TableRow, WriterOptions, mdast_to_qmd,
 };
 use std::collections::HashMap;
 use tabled::settings::Style;
@@ -668,6 +668,25 @@ impl Converter {
                     result.push_str(&fence);
                     first_block = false;
                 }
+                Node::DefinitionList(_) | Node::Table(_) => {
+                    let text = self.node_to_markdown_string(node);
+                    if text.is_empty() {
+                        continue;
+                    }
+                    // Block elements always need a blank line before them
+                    result.push_str("\n\n");
+                    result.push_str(indent);
+                    for (i, line) in text.split('\n').enumerate() {
+                        if i > 0 {
+                            result.push('\n');
+                            if !line.is_empty() {
+                                result.push_str(indent);
+                            }
+                        }
+                        result.push_str(line);
+                    }
+                    first_block = false;
+                }
                 _ => {
                     if let Some(text) = self.node_to_text(node) {
                         let text = text.trim_start();
@@ -688,6 +707,16 @@ impl Converter {
         }
 
         result
+    }
+
+    /// Serialize a single mdast node to a Markdown string via the main writer.
+    fn node_to_markdown_string(&self, node: &Node) -> String {
+        let root = Root::new(vec![node.clone()]);
+        let options = WriterOptions {
+            frontmatter: None,
+            quarto_code_blocks: self.options.quarto_code_blocks,
+        };
+        mdast_to_qmd(&root, &options).trim().to_string()
     }
 
     /// Convert RdNode content to Markdown text for use in grid table cells.
