@@ -4,7 +4,7 @@ mod config;
 
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
-use config::Config;
+use config::{ArgumentsTableFormat, Config};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -34,19 +34,6 @@ enum OutputFormat {
     Rmd,
 }
 
-/// Table format for the Arguments section
-// All current variants end with `Table`, but future formats (e.g. list-based) may not.
-#[allow(clippy::enum_variant_names)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, clap::ValueEnum)]
-enum ArgumentsTableFormat {
-    /// Pipe table - limited to inline content
-    PipeTable,
-    /// Pandoc grid table - supports block elements (lists, paragraphs) in cells
-    GridTable,
-    /// Quarto list-table (default) - requires Quarto 1.9+, compatible with q2
-    #[default]
-    ListTable,
-}
 
 #[derive(Parser, Debug)]
 #[command(name = "rd2qmd")]
@@ -769,21 +756,15 @@ fn merge_unresolved_link_url(cli: &Cli, config: &Config) -> Option<String> {
 
 /// Merge arguments table format: explicit CLI > config > default (list-table)
 fn merge_arguments_format(cli: &Cli, config: &Config) -> ArgumentsFormat {
-    if let Some(fmt) = cli.arguments_table {
-        return match fmt {
-            ArgumentsTableFormat::PipeTable => ArgumentsFormat::PipeTable,
-            ArgumentsTableFormat::GridTable => ArgumentsFormat::GridTable,
-            ArgumentsTableFormat::ListTable => ArgumentsFormat::ListTable,
-        };
+    let fmt = cli
+        .arguments_table
+        .or(config.output.arguments_table)
+        .unwrap_or_default();
+    match fmt {
+        ArgumentsTableFormat::PipeTable => ArgumentsFormat::PipeTable,
+        ArgumentsTableFormat::GridTable => ArgumentsFormat::GridTable,
+        ArgumentsTableFormat::ListTable => ArgumentsFormat::ListTable,
     }
-    if let Some(ref fmt) = config.output.arguments_table {
-        return match fmt.to_lowercase().as_str() {
-            "pipe-table" => ArgumentsFormat::PipeTable,
-            "grid-table" => ArgumentsFormat::GridTable,
-            _ => ArgumentsFormat::ListTable,
-        };
-    }
-    ArgumentsFormat::ListTable
 }
 
 /// Merge external link options
@@ -1014,7 +995,7 @@ mod tests {
         let cli = default_cli();
         let config = Config {
             output: config::OutputConfig {
-                arguments_table: Some("pipe-table".to_string()),
+                arguments_table: Some(ArgumentsTableFormat::PipeTable),
                 ..Default::default()
             },
             ..Default::default()
@@ -1031,7 +1012,7 @@ mod tests {
         cli.arguments_table = Some(ArgumentsTableFormat::PipeTable);
         let config = Config {
             output: config::OutputConfig {
-                arguments_table: Some("grid-table".to_string()),
+                arguments_table: Some(ArgumentsTableFormat::GridTable),
                 ..Default::default()
             },
             ..Default::default()
@@ -1049,7 +1030,7 @@ mod tests {
         cli.arguments_table = Some(ArgumentsTableFormat::ListTable);
         let config = Config {
             output: config::OutputConfig {
-                arguments_table: Some("grid-table".to_string()),
+                arguments_table: Some(ArgumentsTableFormat::GridTable),
                 ..Default::default()
             },
             ..Default::default()

@@ -7,6 +7,21 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+/// Table format for the Arguments section
+// All current variants end with `Table`, but future formats (e.g. list-based) may not.
+#[allow(clippy::enum_variant_names)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, JsonSchema, clap::ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+pub enum ArgumentsTableFormat {
+    /// Pipe table - limited to inline content
+    PipeTable,
+    /// Pandoc grid table - supports block elements (lists, paragraphs) in cells
+    GridTable,
+    /// Quarto list-table (default) - requires Quarto 1.9+, compatible with q2
+    #[default]
+    ListTable,
+}
+
 /// Default configuration file name (following Quarto's `_quarto.yml` convention)
 pub const CONFIG_FILE_NAME: &str = "_rd2qmd.toml";
 
@@ -44,9 +59,9 @@ pub struct OutputConfig {
     /// Add pkgdown-style pagetitle metadata ("<title> — <name>") (default: true)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pagetitle: Option<bool>,
-    /// Table format for Arguments section: "list-table" (Quarto list-table, requires Quarto 1.9+), "grid-table" (Pandoc grid table), or "pipe-table" (GFM pipe table). Default: "list-table"
+    /// Table format for Arguments section (default: list-table)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub arguments_table: Option<String>,
+    pub arguments_table: Option<ArgumentsTableFormat>,
     /// Include topics with \keyword{internal} (default: false)
     /// By default, internal topics are skipped (matching pkgdown behavior).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -179,7 +194,7 @@ impl Config {
                 format: Some("qmd".to_string()),
                 frontmatter: Some(true),
                 pagetitle: Some(true),
-                arguments_table: Some("list-table".to_string()),
+                arguments_table: Some(ArgumentsTableFormat::ListTable),
                 include_internal: Some(false),
             },
             code: CodeConfig {
@@ -229,7 +244,7 @@ mod tests {
         assert_eq!(config.output.pagetitle, Some(true));
         assert_eq!(
             config.output.arguments_table,
-            Some("pipe-table".to_string())
+            Some(ArgumentsTableFormat::PipeTable)
         );
     }
 
