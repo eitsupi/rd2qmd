@@ -218,9 +218,15 @@ impl Parser {
             }
         }
 
-        // Flush remaining content; trailing whitespace after the last \cr
-        // (e.g. a newline before the closing `}`) must not create a spurious empty row.
-        if !current_text.trim_end().is_empty() {
+        // Flush remaining content. Between rows (after the last \cr, both current_row and
+        // current_cell are empty), skip whitespace-only text to avoid a spurious empty row.
+        // Within a row (current_row already has cells from a trailing \tab), preserve the
+        // text so that the final cell is not silently dropped.
+        if current_row.is_empty() && current_cell.is_empty() {
+            if !current_text.trim_end().is_empty() {
+                current_cell.push(RdNode::Text(current_text));
+            }
+        } else if !current_text.is_empty() {
             current_cell.push(RdNode::Text(current_text));
         }
         if !current_cell.is_empty() {
