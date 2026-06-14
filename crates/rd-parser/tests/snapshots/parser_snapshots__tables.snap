@@ -98,13 +98,6 @@ expression: ast_json
                     "text": " 123 "
                   }
                 ]
-              ],
-              [
-                [
-                  {
-                    "text": "\n"
-                  }
-                ]
               ]
             ]
           }

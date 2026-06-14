@@ -2175,3 +2175,57 @@ fn test_arguments_list_table_with_describe() {
     let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
     insta::assert_snapshot!(qmd);
 }
+
+#[test]
+fn test_arguments_list_with_tabular() {
+    // \tabular{} in an item description produces a Table node;
+    // render_block_content must not silently drop it.
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{The argument. See the table:
+\tabular{ll}{
+  Col1 \tab Col2 \cr
+  a \tab 1 \cr
+  b \tab 2 \cr
+}
+}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::List,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_table_with_tabular() {
+    // Same as above but for list-table format, verifying render_block_content
+    // handles Table consistently across both formats.
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{The argument. See the table:
+\tabular{ll}{
+  Col1 \tab Col2 \cr
+  a \tab 1 \cr
+  b \tab 2 \cr
+}
+}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}

@@ -218,8 +218,9 @@ impl Parser {
             }
         }
 
-        // Flush remaining content
-        if !current_text.is_empty() {
+        // Flush remaining content; trailing whitespace after the last \cr
+        // (e.g. a newline before the closing `}`) must not create a spurious empty row.
+        if !current_text.trim_end().is_empty() {
             current_cell.push(RdNode::Text(current_text));
         }
         if !current_cell.is_empty() {
