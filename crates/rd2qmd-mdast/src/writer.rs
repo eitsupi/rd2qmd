@@ -218,6 +218,15 @@ impl<'a> Writer<'a> {
 
     fn write_list_at_indent(&mut self, l: &crate::mdast::List, base_indent: usize) {
         self.ensure_newline();
+        // A list is "loose" when any item contains more than one block child.
+        // Loose lists require blank lines between items and between blocks within an item.
+        let is_loose = l.children.iter().any(|child| {
+            if let Node::ListItem(li) = child {
+                li.children.len() > 1
+            } else {
+                false
+            }
+        });
         let mut num = l.start.unwrap_or(1);
         for child in &l.children {
             if let Node::ListItem(li) = child {
@@ -237,7 +246,8 @@ impl<'a> Writer<'a> {
                     match item_child {
                         Node::Paragraph(p) => {
                             if i > 0 {
-                                // Subsequent paragraphs need indent
+                                // Subsequent paragraphs in a loose item need a blank line
+                                self.output.push('\n');
                                 self.output.push('\n');
                                 for _ in 0..item_indent {
                                     self.output.push(' ');
@@ -250,11 +260,18 @@ impl<'a> Writer<'a> {
                         Node::List(nested) => {
                             // Nested list - write with increased indent
                             self.output.push('\n');
+                            if is_loose {
+                                self.output.push('\n');
+                                for _ in 0..item_indent {
+                                    self.output.push(' ');
+                                }
+                            }
                             self.write_list_at_indent(nested, item_indent);
                             continue; // Skip the newline at the end since nested list handles it
                         }
                         _ => {
                             if i > 0 {
+                                self.output.push('\n');
                                 self.output.push('\n');
                                 for _ in 0..item_indent {
                                     self.output.push(' ');
@@ -265,6 +282,9 @@ impl<'a> Writer<'a> {
                     }
                 }
                 self.output.push('\n');
+                if is_loose {
+                    self.output.push('\n');
+                }
             }
         }
         self.at_line_start = true;
@@ -894,6 +914,31 @@ mod tests {
         let qmd = mdast_to_qmd(&root, &WriterOptions::default());
         assert!(qmd.contains("- Parent"));
         assert!(qmd.contains("  - Child"));
+    }
+
+    #[test]
+    fn test_loose_list_multi_paragraph() {
+        let root = Root::new(vec![Node::list(
+            false,
+            vec![
+                Node::list_item(vec![
+                    Node::paragraph(vec![Node::text("First paragraph")]),
+                    Node::paragraph(vec![Node::text("Second paragraph")]),
+                ]),
+                Node::list_item(vec![Node::paragraph(vec![Node::text("Another item")])]),
+            ],
+        )]);
+        let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+        // Blank line between paragraphs within the same item
+        assert!(
+            qmd.contains("- First paragraph\n\n  Second paragraph"),
+            "got: {qmd:?}"
+        );
+        // Blank line between items in a loose list
+        assert!(
+            qmd.contains("Second paragraph\n\n- Another item"),
+            "got: {qmd:?}"
+        );
     }
 
     #[test]

@@ -2282,3 +2282,31 @@ Second paragraph of this item.
     let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
     insta::assert_snapshot!(qmd);
 }
+
+#[test]
+fn test_arguments_list_item_starting_with_block() {
+    // A nested \itemize inside an argument description where the first (and only)
+    // child of a list item is a block node (\preformatted{}) rather than a
+    // paragraph. Previously render_block_content would drop it via skip(1).
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{Options:
+\itemize{
+\item \preformatted{some_code()}
+\item Normal item.
+}}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::List,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    // The preformatted block must not be dropped
+    assert!(qmd.contains("some_code()"), "preformatted block was dropped; got: {qmd}");
+    assert!(qmd.contains("Normal item."), "second item was dropped; got: {qmd}");
+}

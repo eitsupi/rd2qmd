@@ -607,23 +607,24 @@ impl Converter {
 
                             // First child: inline paragraph content, possibly with \cr
                             // continuations that need escaping via indent_cell_continuation.
-                            let first_child_text = li
+                            // If the first child is not a paragraph (e.g. \tabular{},
+                            // \preformatted{}), treat it as a block child instead so it
+                            // is not silently dropped by the skip(1) below.
+                            let (first_child_text, first_was_para) = li
                                 .children
                                 .first()
-                                .and_then(|c| {
+                                .map(|c| {
                                     if let Node::Paragraph(p) = c {
-                                        Some(p)
+                                        let text = indent_cell_continuation(
+                                            &self.inline_nodes_to_markdown(&p.children),
+                                            &continuation,
+                                        );
+                                        (text, true)
                                     } else {
-                                        None
+                                        (String::new(), false)
                                     }
                                 })
-                                .map(|p| {
-                                    indent_cell_continuation(
-                                        &self.inline_nodes_to_markdown(&p.children),
-                                        &continuation,
-                                    )
-                                })
-                                .unwrap_or_default();
+                                .unwrap_or((String::new(), false));
 
                             if !any_item {
                                 if !first_block {
@@ -638,8 +639,10 @@ impl Converter {
                             any_item = true;
 
                             // Additional children (second paragraph, nested list, code
-                            // block, table, etc.) that the first-child-only path dropped.
-                            for child in li.children.iter().skip(1) {
+                            // block, table, etc.). When the first child was not a paragraph
+                            // it was not consumed above, so start from index 0.
+                            let skip_n = usize::from(first_was_para);
+                            for child in li.children.iter().skip(skip_n) {
                                 let text = self.node_to_markdown_string(child);
                                 if text.is_empty() {
                                     continue;
