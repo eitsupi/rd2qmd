@@ -175,14 +175,13 @@ Use `-f md` for standard markdown with:
 
 ### Arguments table format
 
-The Arguments section is rendered as a table. Use `--arguments-table` to select the format:
+The Arguments section is rendered as a table. Rd argument descriptions can contain rich content such as lists and multiple paragraphs — `pipe-table` cannot fully represent this and flattens it with `<br>`. Use `--arguments-table` to select the format based on your target renderer:
 
-| Format | `list-table` (default) | `grid-table` | `pipe-table` |
+| | `list-table` (default) | `grid-table` | `pipe-table` |
 |---|---|---|---|
-| Block elements in cells | ✅ | ✅ | ❌ (flattened with `<br>`) |
-| Quarto 1.x | ✅ (requires 1.9+) | ✅ | ✅ |
-| Quarto 2 / q2 | ✅ | ❌ | ✅ |
-| Pandoc (without filters) | ❌ | ✅ | ✅ |
+| Quarto 1.9+ | ✅ | ✅ | ✅ |
+| Quarto 2 (q2) | ✅ | ❌ | ✅ |
+| Plain Pandoc / Quarto < 1.9 | ❌ | ✅ | ✅ |
 | GFM / general Markdown | ❌ | ❌ | ✅ |
 
 **`list-table`** (default) — Quarto native syntax, supports full block elements. Recommended for Quarto 1.9+ and q2 workflows:
