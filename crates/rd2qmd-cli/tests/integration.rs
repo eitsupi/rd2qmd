@@ -134,6 +134,33 @@ fn test_directory_conversion() {
 }
 
 #[test]
+fn test_directory_conversion_pipe_table() {
+    let fixtures = fixtures_dir();
+    let output_dir = std::env::temp_dir().join("rd2qmd_test_dir_pipe_table");
+
+    let _ = fs::remove_dir_all(&output_dir);
+    fs::create_dir_all(&output_dir).expect("Failed to create output dir");
+
+    let status = Command::new(rd2qmd_binary())
+        .arg(&fixtures)
+        .arg("-o")
+        .arg(&output_dir)
+        .arg("--arguments-table")
+        .arg("pipe-table")
+        .arg("-q")
+        .status()
+        .expect("Failed to run rd2qmd");
+
+    assert!(status.success(), "rd2qmd directory conversion failed");
+
+    let content =
+        fs::read_to_string(output_dir.join("simple.qmd")).expect("Failed to read simple.qmd");
+    let _ = fs::remove_dir_all(&output_dir);
+
+    insta::assert_snapshot!("directory_pipe_table_simple", content);
+}
+
+#[test]
 fn test_init_config() {
     let output_file = std::env::temp_dir().join("rd2qmd_test_init_config.toml");
     let _ = fs::remove_file(&output_file);
