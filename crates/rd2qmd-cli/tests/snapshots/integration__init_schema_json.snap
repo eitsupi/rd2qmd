@@ -26,8 +26,8 @@ expression: schema
     }
   },
   "$defs": {
-    "ArgumentsTableFormat": {
-      "description": "Table format for the Arguments section",
+    "ArgumentsFormat": {
+      "description": "Output format for the Arguments section",
       "oneOf": [
         {
           "description": "Pipe table - limited to inline content",
@@ -43,6 +43,11 @@ expression: schema
           "description": "Quarto list-table (default) - requires Quarto 1.9+, compatible with q2",
           "type": "string",
           "const": "list-table"
+        },
+        {
+          "description": "Markdown loose list - bold inline code name + indented description; compatible everywhere",
+          "type": "string",
+          "const": "list"
         }
       ]
     },
@@ -127,11 +132,11 @@ expression: schema
       "description": "Output format configuration",
       "type": "object",
       "properties": {
-        "arguments_table": {
-          "description": "Table format for Arguments section (default: list-table)",
+        "arguments_format": {
+          "description": "Output format for Arguments section (default: list-table)",
           "anyOf": [
             {
-              "$ref": "#/$defs/ArgumentsTableFormat"
+              "$ref": "#/$defs/ArgumentsFormat"
             },
             {
               "type": "null"

@@ -8,7 +8,7 @@ expression: content
 format = "qmd"
 frontmatter = true
 pagetitle = true
-arguments_table = "list-table"
+arguments_format = "list-table"
 include_internal = false
 
 [code]

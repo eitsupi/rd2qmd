@@ -9,7 +9,7 @@ A fast Rd-to-Quarto Markdown converter written in Rust, with intelligent link re
 - **External package links**: Resolves cross-package links using pkgdown URL conventions (e.g., `\link[dplyr]{mutate}` → `https://dplyr.tidyverse.org/reference/mutate.html`)
 - **Topic index generation**: Outputs JSON index with topic metadata (name, title, aliases, lifecycle) for building reference sites
 - **Quarto-ready**: Generates `.qmd` files with `{r}` executable code blocks and YAML frontmatter
-- **Flexible Arguments tables**: Supports Quarto native List-Tables (default), Pandoc Grid Tables, and GFM Pipe Tables for the Arguments section (`--arguments-table list-table|grid-table|pipe-table`)
+- **Flexible Arguments format**: Supports Quarto native List-Tables (default), Pandoc Grid Tables, GFM Pipe Tables, and Markdown loose lists for the Arguments section (`--arguments-format list-table|grid-table|pipe-table|list`)
 - **pkgdown-compatible metadata**: Adds `pagetitle` in pkgdown style (`"<title> — <name>"`) for SEO
 - **No R required**: Pure Rust binary with no runtime R dependency
 
@@ -78,7 +78,7 @@ rd2qmd man/ -o docs/ -j4
 | `--no-frontmatter` | Disable YAML frontmatter |
 | `--no-pagetitle` | Skip pkgdown-style `pagetitle` metadata (`"<title> — <name>"`) |
 | `--quarto-code-blocks <BOOL>` | Use `{r}` code blocks (auto-set based on format) |
-| `--arguments-table <FORMAT>` | Arguments table format: `list-table` (default), `grid-table`, or `pipe-table` |
+| `--arguments-format <FORMAT>` | Arguments format: `list-table` (default), `grid-table`, `pipe-table`, or `list` |
 | `-v, --verbose` | Verbose output |
 | `-q, --quiet` | Only show errors |
 
@@ -173,16 +173,16 @@ Use `-f md` for standard markdown with:
 - Plain `r` code blocks (non-executable)
 - Internal links resolved to `.md` files
 
-### Arguments table format
+### Arguments format
 
-The Arguments section is rendered as a table. Rd argument descriptions can contain rich content such as lists and multiple paragraphs — `pipe-table` cannot fully represent this and flattens it with `<br>`. Use `--arguments-table` to select the format based on your target renderer:
+The Arguments section is rendered using `--arguments-format`. Rd argument descriptions can contain rich content such as lists and multiple paragraphs — `pipe-table` cannot fully represent this and flattens it with `<br>`. Use `--arguments-format` to select the format based on your target renderer:
 
-| | `list-table` (default) | `grid-table` | `pipe-table` |
-|---|---|---|---|
-| Quarto 1.9+ | ✅ | ✅ | ✅ |
-| Quarto 2 (q2) | ✅ | ❌ | ✅ |
-| Plain Pandoc / Quarto < 1.9 | ❌ | ✅ | ✅ |
-| GFM / general Markdown | ❌ | ❌ | ✅ |
+| | `list-table` (default) | `grid-table` | `pipe-table` | `list` |
+|---|---|---|---|---|
+| Quarto 1.9+ | ✅ | ✅ | ✅ | ✅ |
+| Quarto 2 (q2) | ✅ | ❌ | ✅ | ✅ |
+| Plain Pandoc / Quarto < 1.9 | ❌ | ✅ | ✅ | ✅ |
+| GFM / general Markdown | ❌ | ❌ | ✅ | ✅ |
 
 **`list-table`** (default) — Quarto native syntax, supports full block elements. Recommended for Quarto 1.9+ and q2 workflows:
 
@@ -226,6 +226,21 @@ The Arguments section is rendered as a table. Rd argument descriptions can conta
 |:---|:---|
 | `x` | A simple description. |
 | `opts` | Available options: <br>- option A <br>- option B |
+```
+
+**`list`** — Markdown loose list with argument names as bold inline code. Supports full block elements and works everywhere (GFM, Pandoc, Quarto):
+
+```markdown
+- **`x`**
+
+  A simple description.
+
+- **`opts`**
+
+  Available options:
+
+  - option A
+  - option B
 ```
 
 ## Examples

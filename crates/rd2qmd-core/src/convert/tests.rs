@@ -2033,3 +2033,286 @@ fn test_arguments_list_table_label_with_backticks() {
     let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
     insta::assert_snapshot!(qmd);
 }
+
+#[test]
+fn test_arguments_list_basic() {
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{The first argument.}
+  \item{y}{The second argument, defaults to 1.}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::List,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_with_nested_list() {
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{A basic argument.}
+  \item{method}{The method to use:
+\itemize{
+\item \code{"a"}: Use method A, the default.
+\item \code{"b"}: Use method B.
+}
+
+Additional details after the list.}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::List,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_list_only_description() {
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{method}{
+\itemize{
+\item \code{"a"}: Use method A.
+\item \code{"b"}: Use method B.
+}}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::List,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_multi_paragraph() {
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{First paragraph.
+
+  Second paragraph of the description.}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::List,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_with_describe() {
+    // \describe{} in an item description produces a DefinitionList node;
+    // render_block_content must not silently drop it.
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{method}{The method to use:
+\describe{
+\item{"a"}{Use method A.}
+\item{"b"}{Use method B.}
+}
+}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::List,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_table_with_describe() {
+    // Same as above but for list-table format, verifying render_block_content
+    // handles DefinitionList consistently across both formats.
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{method}{The method to use:
+\describe{
+\item{"a"}{Use method A.}
+\item{"b"}{Use method B.}
+}
+}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_with_tabular() {
+    // \tabular{} in an item description produces a Table node;
+    // render_block_content must not silently drop it.
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{The argument. See the table:
+\tabular{ll}{
+  Col1 \tab Col2 \cr
+  a \tab 1 \cr
+  b \tab 2 \cr
+}
+}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::List,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_table_with_tabular() {
+    // Same as above but for list-table format, verifying render_block_content
+    // handles Table consistently across both formats.
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{The argument. See the table:
+\tabular{ll}{
+  Col1 \tab Col2 \cr
+  a \tab 1 \cr
+  b \tab 2 \cr
+}
+}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_item_with_multi_paragraph() {
+    // A list item description that contains multiple paragraphs; the second
+    // paragraph must not be silently dropped.
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{Options:
+\itemize{
+\item First paragraph.
+
+Second paragraph of this item.
+\item Another item.
+}}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::List,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_table_item_with_multi_paragraph() {
+    // Same as above but for list-table format.
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{Options:
+\itemize{
+\item First paragraph.
+
+Second paragraph of this item.
+\item Another item.
+}}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_item_starting_with_block() {
+    // A nested \itemize inside an argument description where the first (and only)
+    // child of a list item is a block node (\preformatted{}) rather than a
+    // paragraph. Previously render_block_content would drop it via skip(1).
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{Options:
+\itemize{
+\item \preformatted{some_code()}
+\item Normal item.
+}}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::List,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    // The preformatted block must not be dropped
+    assert!(
+        qmd.contains("some_code()"),
+        "preformatted block was dropped; got: {qmd}"
+    );
+    assert!(
+        qmd.contains("Normal item."),
+        "second item was dropped; got: {qmd}"
+    );
+}

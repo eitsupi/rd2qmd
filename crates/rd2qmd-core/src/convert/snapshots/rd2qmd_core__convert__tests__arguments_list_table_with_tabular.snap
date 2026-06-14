@@ -1,0 +1,22 @@
+---
+source: crates/rd2qmd-core/src/convert/tests.rs
+expression: qmd
+---
+# Test
+
+## Arguments
+
+::: {.list-table header-rows=1}
+
+- - Argument
+  - Description
+
+- - `x`
+  - The argument. See the table: 
+
+    |  Col1  |  Col2  |
+    |:---|:---|
+    |  a  |  1  |
+    |  b  |  2  |
+
+:::

@@ -1,0 +1,22 @@
+---
+source: crates/rd2qmd-core/src/convert/tests.rs
+expression: qmd
+---
+# Test
+
+## Arguments
+
+::: {.list-table header-rows=1}
+
+- - Argument
+  - Description
+
+- - `x`
+  - Options: 
+
+    - First paragraph.
+
+      Second paragraph of this item.
+    - Another item. 
+
+:::

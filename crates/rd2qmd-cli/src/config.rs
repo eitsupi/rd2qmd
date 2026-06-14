@@ -7,14 +7,12 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-/// Table format for the Arguments section
-// All current variants end with `Table`, but future formats (e.g. list-based) may not.
-#[allow(clippy::enum_variant_names)]
+/// Output format for the Arguments section
 #[derive(
     Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, JsonSchema, clap::ValueEnum,
 )]
 #[serde(rename_all = "kebab-case")]
-pub enum ArgumentsTableFormat {
+pub enum ArgumentsFormat {
     /// Pipe table - limited to inline content
     PipeTable,
     /// Pandoc grid table - supports block elements (lists, paragraphs) in cells
@@ -22,6 +20,8 @@ pub enum ArgumentsTableFormat {
     /// Quarto list-table (default) - requires Quarto 1.9+, compatible with q2
     #[default]
     ListTable,
+    /// Markdown loose list - bold inline code name + indented description; compatible everywhere
+    List,
 }
 
 /// Default configuration file name (following Quarto's `_quarto.yml` convention)
@@ -61,9 +61,9 @@ pub struct OutputConfig {
     /// Add pkgdown-style pagetitle metadata ("<title> — <name>") (default: true)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pagetitle: Option<bool>,
-    /// Table format for Arguments section (default: list-table)
+    /// Output format for Arguments section (default: list-table)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub arguments_table: Option<ArgumentsTableFormat>,
+    pub arguments_format: Option<ArgumentsFormat>,
     /// Include topics with \keyword{internal} (default: false)
     /// By default, internal topics are skipped (matching pkgdown behavior).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -75,7 +75,7 @@ impl OutputConfig {
         self.format.is_none()
             && self.frontmatter.is_none()
             && self.pagetitle.is_none()
-            && self.arguments_table.is_none()
+            && self.arguments_format.is_none()
             && self.include_internal.is_none()
     }
 }
@@ -196,7 +196,7 @@ impl Config {
                 format: Some("qmd".to_string()),
                 frontmatter: Some(true),
                 pagetitle: Some(true),
-                arguments_table: Some(ArgumentsTableFormat::ListTable),
+                arguments_format: Some(ArgumentsFormat::ListTable),
                 include_internal: Some(false),
             },
             code: CodeConfig {
@@ -236,7 +236,7 @@ mod tests {
             format = "md"
             frontmatter = false
             pagetitle = true
-            arguments_table = "pipe-table"
+            arguments_format = "pipe-table"
             "#,
         )
         .unwrap();
@@ -245,8 +245,8 @@ mod tests {
         assert_eq!(config.output.frontmatter, Some(false));
         assert_eq!(config.output.pagetitle, Some(true));
         assert_eq!(
-            config.output.arguments_table,
-            Some(ArgumentsTableFormat::PipeTable)
+            config.output.arguments_format,
+            Some(ArgumentsFormat::PipeTable)
         );
     }
 
@@ -319,7 +319,7 @@ mod tests {
             format = "qmd"
             frontmatter = true
             pagetitle = true
-            arguments_table = "grid-table"
+            arguments_format = "grid-table"
 
             [code]
             quarto_code_blocks = true
