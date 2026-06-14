@@ -535,7 +535,7 @@ impl Converter {
 
             if !desc.is_empty() {
                 output.push('\n');
-                output.push_str("  ");  // indent the first block (render_block_content omits it)
+                output.push_str("  "); // indent the first block (render_block_content omits it)
                 output.push_str(desc);
                 output.push('\n');
             }
