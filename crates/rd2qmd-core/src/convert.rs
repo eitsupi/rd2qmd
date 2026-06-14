@@ -34,6 +34,9 @@ pub enum ArgumentsFormat {
     /// Quarto list-table (`::: {.list-table}`) - requires Quarto 1.9+ (default)
     #[default]
     ListTable,
+    /// Markdown loose list - bold inline code name + indented description
+    /// Supports block elements; compatible with GFM, Pandoc, and Quarto
+    List,
 }
 
 /// Options for Rd to mdast conversion
@@ -358,6 +361,7 @@ impl Converter {
             ArgumentsFormat::PipeTable => self.convert_arguments_pipe(content),
             ArgumentsFormat::GridTable => self.convert_arguments_grid(content),
             ArgumentsFormat::ListTable => self.convert_arguments_list_table(content),
+            ArgumentsFormat::List => self.convert_arguments_list(content),
         }
     }
 
@@ -496,6 +500,50 @@ impl Converter {
         vec![Node::Html(Html { value: output })]
     }
 
+    /// Convert arguments to Markdown loose list format.
+    /// Each argument is a list item with the name as bold inline code and the
+    /// description indented as continuation content (supports block elements).
+    /// Compatible with GFM, Pandoc, and Quarto.
+    fn convert_arguments_list(&mut self, content: &[RdNode]) -> Vec<Node> {
+        let mut items: Vec<(String, String)> = Vec::new();
+
+        for node in content {
+            if let RdNode::Item { label, content } = node
+                && let Some(label_nodes) = label
+            {
+                let term_text = self.extract_text(label_nodes);
+                let arg_code = rd2qmd_mdast::format_inline_code(term_text.trim(), false);
+                let desc_nodes = self.convert_content(content);
+                let desc_text = self.render_block_content(&desc_nodes, 2);
+                items.push((arg_code, desc_text));
+            }
+        }
+
+        if items.is_empty() {
+            return self.convert_content(content);
+        }
+
+        let mut output = String::new();
+
+        for (i, (arg, desc)) in items.iter().enumerate() {
+            if i > 0 {
+                output.push('\n');
+            }
+            output.push_str("- **");
+            output.push_str(arg);
+            output.push_str("**\n");
+
+            if !desc.is_empty() {
+                output.push('\n');
+                output.push_str("  ");  // indent the first block (render_block_content omits it)
+                output.push_str(desc);
+                output.push('\n');
+            }
+        }
+
+        vec![Node::Html(Html { value: output })]
+    }
+
     /// Render mdast nodes as list-table cell content with proper continuation indentation.
     ///
     /// Works on structured nodes so each type controls its own whitespace: paragraph text
@@ -504,6 +552,19 @@ impl Converter {
     /// inline; subsequent blocks are separated by a blank line and each line is prefixed
     /// with four spaces to satisfy the CommonMark list-continuation rule.
     fn render_list_table_cell(&self, nodes: &[Node]) -> String {
+        self.render_block_content(nodes, 4)
+    }
+
+    /// Render mdast nodes as indented block content for use in list items or table cells.
+    ///
+    /// `indent` is the prefix applied to continuation blocks (e.g. `"    "` for list-table
+    /// cells, `"  "` for loose list items). Paragraph text is left-trimmed to remove
+    /// spurious leading spaces from Rd source indentation after normalization. Code block
+    /// content retains its original indentation. The first block starts inline; subsequent
+    /// blocks are separated by a blank line and prefixed with `indent` spaces.
+    fn render_block_content(&self, nodes: &[Node], indent: u8) -> String {
+        let indent = " ".repeat(indent as usize);
+        let indent = indent.as_str();
         let mut result = String::new();
         let mut first_block = true;
 
@@ -516,12 +577,13 @@ impl Converter {
                         continue;
                     }
                     // Split on embedded newlines (e.g. from \cr → Node::Break) and
-                    // prefix each continuation line so it stays inside the cell.
-                    let indented = indent_cell_continuation(text, "    ");
+                    // prefix each continuation line so it stays inside the block.
+                    let indented = indent_cell_continuation(text, indent);
                     if first_block {
                         result.push_str(&indented);
                     } else {
-                        result.push_str("\n\n    ");
+                        result.push_str("\n\n");
+                        result.push_str(indent);
                         result.push_str(&indented);
                     }
                     first_block = false;
@@ -535,15 +597,13 @@ impl Converter {
                             } else {
                                 "- ".to_string()
                             };
-                            // j==0 in first_block has no outer cell prefix; all other
-                            // items are indented 4 spaces (either non-first-block or
-                            // subsequent items within first_block).
-                            let outer: &str = if !first_block || j > 0 { "    " } else { "" };
-                            // Continuation always uses the full cell indent (4 spaces)
-                            // plus marker width, even for j==0 in first_block. Without
-                            // this, a \cr continuation in a list-only cell would render
-                            // as "  - text" — matching the Quarto cell-marker pattern.
-                            let continuation = format!("    {}", " ".repeat(marker.len()));
+                            // j==0 in first_block has no outer prefix; all other items
+                            // are indented (either non-first-block or subsequent items).
+                            let outer: &str = if !first_block || j > 0 { indent } else { "" };
+                            // Continuation always uses the full indent plus marker width,
+                            // even for j==0 in first_block. Without this, a \cr
+                            // continuation in a list-only cell would render incorrectly.
+                            let continuation = format!("{}{}", indent, " ".repeat(marker.len()));
 
                             let item_content = li
                                 .children
@@ -584,9 +644,10 @@ impl Converter {
                     let lang = c.lang.as_deref().unwrap_or("");
                     let fence = code_fence(&c.value);
                     // A fenced code block must start at a line boundary; it cannot be
-                    // placed inline after the "  - " cell marker. Always use a blank
-                    // line + 4-space indent, even when this is the first block.
-                    result.push_str("\n\n    ");
+                    // placed inline after a cell/item marker. Always use a blank line +
+                    // indent, even when this is the first block.
+                    result.push_str("\n\n");
+                    result.push_str(indent);
                     result.push_str(&fence);
                     result.push_str(lang);
                     let lines: Vec<&str> = c.value.split('\n').collect();
@@ -598,12 +659,12 @@ impl Converter {
                     for line in code_lines {
                         result.push('\n');
                         if !line.is_empty() {
-                            result.push_str("    ");
+                            result.push_str(indent);
                             result.push_str(line);
                         }
                     }
                     result.push('\n');
-                    result.push_str("    ");
+                    result.push_str(indent);
                     result.push_str(&fence);
                     first_block = false;
                 }
@@ -616,7 +677,8 @@ impl Converter {
                         if first_block {
                             result.push_str(text);
                         } else {
-                            result.push_str("\n\n    ");
+                            result.push_str("\n\n");
+                            result.push_str(indent);
                             result.push_str(text);
                         }
                         first_block = false;

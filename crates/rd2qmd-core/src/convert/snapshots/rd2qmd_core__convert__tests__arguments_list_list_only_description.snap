@@ -1,0 +1,12 @@
+---
+source: crates/rd2qmd-core/src/convert/tests.rs
+expression: qmd
+---
+# Test
+
+## Arguments
+
+- **`method`**
+
+  - `"a"`: Use method A. 
+  - `"b"`: Use method B.

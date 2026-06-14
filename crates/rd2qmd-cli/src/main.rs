@@ -4,7 +4,7 @@ mod config;
 
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
-use config::{ArgumentsTableFormat, Config};
+use config::{ArgumentsFormat as CliArgumentsFormat, Config};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -144,11 +144,10 @@ struct Cli {
     #[arg(long)]
     include_internal: bool,
 
-    /// Table format for the Arguments section: list-table (Quarto list-table, default), grid-table
-    /// (Pandoc grid table), or pipe-table (GFM pipe table, inline content only).
-    /// List-table and grid-table support block elements (lists, paragraphs) in cells.
+    /// Output format for the Arguments section: list-table (Quarto list-table, default), grid-table
+    /// (Pandoc grid table), pipe-table (GFM pipe table, inline only), or list (Markdown loose list).
     #[arg(long, value_enum)]
-    arguments_table: Option<ArgumentsTableFormat>,
+    arguments_format: Option<CliArgumentsFormat>,
 
     /// Generate topic index JSON file (directory mode only)
     /// Contains topic names, files, titles, aliases, and lifecycle stages
@@ -753,16 +752,17 @@ fn merge_unresolved_link_url(cli: &Cli, config: &Config) -> Option<String> {
     )
 }
 
-/// Merge arguments table format: explicit CLI > config > default (list-table)
+/// Merge arguments format: explicit CLI > config > default (list-table)
 fn merge_arguments_format(cli: &Cli, config: &Config) -> ArgumentsFormat {
     let fmt = cli
-        .arguments_table
-        .or(config.output.arguments_table)
+        .arguments_format
+        .or(config.output.arguments_format)
         .unwrap_or_default();
     match fmt {
-        ArgumentsTableFormat::PipeTable => ArgumentsFormat::PipeTable,
-        ArgumentsTableFormat::GridTable => ArgumentsFormat::GridTable,
-        ArgumentsTableFormat::ListTable => ArgumentsFormat::ListTable,
+        CliArgumentsFormat::PipeTable => ArgumentsFormat::PipeTable,
+        CliArgumentsFormat::GridTable => ArgumentsFormat::GridTable,
+        CliArgumentsFormat::ListTable => ArgumentsFormat::ListTable,
+        CliArgumentsFormat::List => ArgumentsFormat::List,
     }
 }
 
@@ -832,7 +832,7 @@ mod tests {
             exec_dontrun: false,
             no_exec_donttest: false,
             include_internal: false,
-            arguments_table: None,
+            arguments_format: None,
             topic_index: None,
             config: None,
             no_config: false,
@@ -994,7 +994,7 @@ mod tests {
         let cli = default_cli();
         let config = Config {
             output: config::OutputConfig {
-                arguments_table: Some(ArgumentsTableFormat::PipeTable),
+                arguments_format: Some(CliArgumentsFormat::PipeTable),
                 ..Default::default()
             },
             ..Default::default()
@@ -1008,10 +1008,10 @@ mod tests {
     #[test]
     fn test_merge_arguments_format_cli_overrides() {
         let mut cli = default_cli();
-        cli.arguments_table = Some(ArgumentsTableFormat::PipeTable);
+        cli.arguments_format = Some(CliArgumentsFormat::PipeTable);
         let config = Config {
             output: config::OutputConfig {
-                arguments_table: Some(ArgumentsTableFormat::GridTable),
+                arguments_format: Some(CliArgumentsFormat::GridTable),
                 ..Default::default()
             },
             ..Default::default()
@@ -1026,15 +1026,15 @@ mod tests {
     #[test]
     fn test_merge_arguments_format_list_table_cli_overrides_config() {
         let mut cli = default_cli();
-        cli.arguments_table = Some(ArgumentsTableFormat::ListTable);
+        cli.arguments_format = Some(CliArgumentsFormat::ListTable);
         let config = Config {
             output: config::OutputConfig {
-                arguments_table: Some(ArgumentsTableFormat::GridTable),
+                arguments_format: Some(CliArgumentsFormat::GridTable),
                 ..Default::default()
             },
             ..Default::default()
         };
-        // Explicit --arguments-table list-table must override config grid-table
+        // Explicit --arguments-format list-table must override config grid-table
         assert_eq!(
             merge_arguments_format(&cli, &config),
             ArgumentsFormat::ListTable

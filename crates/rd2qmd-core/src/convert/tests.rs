@@ -2033,3 +2033,93 @@ fn test_arguments_list_table_label_with_backticks() {
     let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
     insta::assert_snapshot!(qmd);
 }
+
+#[test]
+fn test_arguments_list_basic() {
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{The first argument.}
+  \item{y}{The second argument, defaults to 1.}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::List,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_with_nested_list() {
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{A basic argument.}
+  \item{method}{The method to use:
+\itemize{
+\item \code{"a"}: Use method A, the default.
+\item \code{"b"}: Use method B.
+}
+
+Additional details after the list.}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::List,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_list_only_description() {
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{method}{
+\itemize{
+\item \code{"a"}: Use method A.
+\item \code{"b"}: Use method B.
+}}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::List,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_multi_paragraph() {
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{First paragraph.
+
+  Second paragraph of the description.}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::List,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}

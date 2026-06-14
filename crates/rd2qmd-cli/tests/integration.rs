@@ -145,7 +145,7 @@ fn test_directory_conversion_pipe_table() {
         .arg(&fixtures)
         .arg("-o")
         .arg(&output_dir)
-        .arg("--arguments-table")
+        .arg("--arguments-format")
         .arg("pipe-table")
         .arg("-q")
         .status()
@@ -182,14 +182,20 @@ fn test_init_config() {
 
 #[test]
 fn test_simple_pipe_table() {
-    let output = convert_fixture("simple", &["--arguments-table", "pipe-table"]);
+    let output = convert_fixture("simple", &["--arguments-format", "pipe-table"]);
     insta::assert_snapshot!("simple_pipe_table", output);
 }
 
 #[test]
 fn test_simple_list_table() {
-    let output = convert_fixture("simple", &["--arguments-table", "list-table"]);
+    let output = convert_fixture("simple", &["--arguments-format", "list-table"]);
     insta::assert_snapshot!("simple_list_table", output);
+}
+
+#[test]
+fn test_simple_list() {
+    let output = convert_fixture("simple", &["--arguments-format", "list"]);
+    insta::assert_snapshot!("simple_list", output);
 }
 
 #[test]
