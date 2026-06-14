@@ -2229,3 +2229,56 @@ fn test_arguments_list_table_with_tabular() {
     let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
     insta::assert_snapshot!(qmd);
 }
+
+#[test]
+fn test_arguments_list_item_with_multi_paragraph() {
+    // A list item description that contains multiple paragraphs; the second
+    // paragraph must not be silently dropped.
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{Options:
+\itemize{
+\item First paragraph.
+
+Second paragraph of this item.
+\item Another item.
+}}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::List,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}
+
+#[test]
+fn test_arguments_list_table_item_with_multi_paragraph() {
+    // Same as above but for list-table format.
+    let rd = r#"
+\name{test}
+\title{Test}
+\arguments{
+  \item{x}{Options:
+\itemize{
+\item First paragraph.
+
+Second paragraph of this item.
+\item Another item.
+}}
+}
+"#;
+    let doc = parse(rd).unwrap();
+    let options = RdToMdastOptions {
+        arguments_format: ArgumentsFormat::ListTable,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+    let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
+    insta::assert_snapshot!(qmd);
+}

@@ -605,10 +605,12 @@ impl Converter {
                             // continuation in a list-only cell would render incorrectly.
                             let continuation = format!("{}{}", indent, " ".repeat(marker.len()));
 
-                            let item_content = li
+                            // First child: inline paragraph content, possibly with \cr
+                            // continuations that need escaping via indent_cell_continuation.
+                            let first_child_text = li
                                 .children
-                                .iter()
-                                .find_map(|c| {
+                                .first()
+                                .and_then(|c| {
                                     if let Node::Paragraph(p) = c {
                                         Some(p)
                                     } else {
@@ -632,8 +634,28 @@ impl Converter {
                             }
                             result.push_str(outer);
                             result.push_str(&marker);
-                            result.push_str(&item_content);
+                            result.push_str(&first_child_text);
                             any_item = true;
+
+                            // Additional children (second paragraph, nested list, code
+                            // block, table, etc.) that the first-child-only path dropped.
+                            for child in li.children.iter().skip(1) {
+                                let text = self.node_to_markdown_string(child);
+                                if text.is_empty() {
+                                    continue;
+                                }
+                                result.push_str("\n\n");
+                                result.push_str(&continuation);
+                                for (i, line) in text.split('\n').enumerate() {
+                                    if i > 0 {
+                                        result.push('\n');
+                                        if !line.is_empty() {
+                                            result.push_str(&continuation);
+                                        }
+                                    }
+                                    result.push_str(line);
+                                }
+                            }
                         }
                     }
                     if any_item {
@@ -1272,17 +1294,13 @@ impl Converter {
         }
     }
 
-    fn convert_list(&self, items: &[RdNode], ordered: bool) -> Node {
+    fn convert_list(&mut self, items: &[RdNode], ordered: bool) -> Node {
         let list_items: Vec<Node> = items
             .iter()
             .filter_map(|item| {
                 if let RdNode::Item { content, .. } = item {
-                    let children = self.convert_inline_nodes(content);
-                    Some(Node::list_item(if children.is_empty() {
-                        vec![]
-                    } else {
-                        vec![Node::paragraph(children)]
-                    }))
+                    let children = self.convert_content(content);
+                    Some(Node::list_item(children))
                 } else {
                     None
                 }

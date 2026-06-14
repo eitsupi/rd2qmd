@@ -887,6 +887,7 @@ fn test_tabular_trailing_tab_without_cr() {
         assert_eq!(alignment, "ll");
         assert_eq!(rows.len(), 1, "Expected 1 row, got: {rows:?}");
         assert_eq!(rows[0].len(), 2, "Expected 2 cells (second is whitespace-only), got: {:?}", rows[0]);
+        assert_eq!(rows[0][1], vec![RdNode::Text(" ".to_string())], "Second cell must preserve the whitespace text");
     } else {
         panic!("Expected Tabular node, got {:?}", content[0]);
     }
