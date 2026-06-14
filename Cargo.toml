@@ -31,7 +31,7 @@ toml = "1"
 schemars = "1"
 
 # Table generation (for Grid Tables)
-tabled = { version = "0.20", default-features = false, features = ["std"] }
+tabled = { version = "0.21", default-features = false, features = ["std"] }
 
 # External link resolution (optional)
 r-description = "0.3.7"
