@@ -877,6 +877,21 @@ fn test_tabular_tab_cr_with_empty_brace_terminator() {
     }
 }
 
+/// A row ending with `\tab` but no `\cr` must produce two cells; the trailing
+/// whitespace-only cell must not be silently dropped.
+#[test]
+fn test_tabular_trailing_tab_without_cr() {
+    let doc = parse(r#"\details{\tabular{ll}{a \tab }}"#).unwrap();
+    let content = &doc.sections[0].content;
+    if let RdNode::Tabular { alignment, rows } = &content[0] {
+        assert_eq!(alignment, "ll");
+        assert_eq!(rows.len(), 1, "Expected 1 row, got: {rows:?}");
+        assert_eq!(rows[0].len(), 2, "Expected 2 cells (second is whitespace-only), got: {:?}", rows[0]);
+    } else {
+        panic!("Expected Tabular node, got {:?}", content[0]);
+    }
+}
+
 /// In non-code sections (e.g. `\description{}`), bare `{{...}}` remains
 /// Rd text grouping: the braces are unwrapped and the inner content is kept.
 #[test]
