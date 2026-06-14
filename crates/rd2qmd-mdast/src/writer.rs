@@ -234,14 +234,19 @@ impl<'a> Writer<'a> {
                 for _ in 0..base_indent {
                     self.output.push(' ');
                 }
-                if l.ordered {
-                    self.output.push_str(&format!("{}. ", num));
+                // Build the marker first so item_indent matches the actual marker width.
+                // "- " is always 2 chars, but "10. " is 4 — a fixed +2 would mis-indent
+                // continuation lines for ordered lists with wide numbers.
+                let marker = if l.ordered {
+                    let m = format!("{}. ", num);
                     num += 1;
+                    m
                 } else {
-                    self.output.push_str("- ");
-                }
+                    "- ".to_string()
+                };
+                self.output.push_str(&marker);
+                let item_indent = base_indent + marker.len();
 
-                let item_indent = base_indent + 2;
                 for (i, item_child) in li.children.iter().enumerate() {
                     match item_child {
                         Node::Paragraph(p) => {
@@ -258,26 +263,38 @@ impl<'a> Writer<'a> {
                             }
                         }
                         Node::List(nested) => {
-                            // Nested list - write with increased indent
+                            // Nested list - write with increased indent.
+                            // Do not manually pre-indent here; write_list_at_indent already
+                            // emits base_indent spaces per item, so pre-indenting would double it.
                             self.output.push('\n');
                             if is_loose {
                                 self.output.push('\n');
-                                for _ in 0..item_indent {
-                                    self.output.push(' ');
-                                }
                             }
                             self.write_list_at_indent(nested, item_indent);
                             continue; // Skip the newline at the end since nested list handles it
                         }
                         _ => {
+                            let indent_str = " ".repeat(item_indent);
                             if i > 0 {
                                 self.output.push('\n');
                                 self.output.push('\n');
-                                for _ in 0..item_indent {
-                                    self.output.push(' ');
-                                }
+                                self.output.push_str(&indent_str);
                             }
+                            // Capture the block output, then re-indent every continuation line
+                            // so multi-line blocks (code fences, tables) stay inside the item.
+                            let start = self.output.len();
                             self.write_node(item_child);
+                            let raw = self.output[start..].to_string();
+                            self.output.truncate(start);
+                            for (j, part) in raw.split('\n').enumerate() {
+                                if j > 0 {
+                                    self.output.push('\n');
+                                    if !part.is_empty() {
+                                        self.output.push_str(&indent_str);
+                                    }
+                                }
+                                self.output.push_str(part);
+                            }
                         }
                     }
                 }
@@ -938,6 +955,65 @@ mod tests {
         assert!(
             qmd.contains("Second paragraph\n\n- Another item"),
             "got: {qmd:?}"
+        );
+    }
+
+    #[test]
+    fn test_ordered_list_loose_continuation_indent() {
+        // "1. " is 3 chars; continuation lines must be indented by 3 spaces, not 2
+        let root = Root::new(vec![Node::list(
+            true,
+            vec![Node::list_item(vec![
+                Node::paragraph(vec![Node::text("First")]),
+                Node::paragraph(vec![Node::text("Second")]),
+            ])],
+        )]);
+        let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+        assert!(
+            qmd.contains("1. First\n\n   Second"),
+            "expected 3-space continuation; got: {qmd:?}"
+        );
+    }
+
+    #[test]
+    fn test_nested_list_not_double_indented() {
+        // Nested item indent must be exactly item_indent (2 for "- "),
+        // not 2 * item_indent (from pre-indent + recursive base_indent).
+        let root = Root::new(vec![Node::list(
+            false,
+            vec![Node::list_item(vec![
+                Node::paragraph(vec![Node::text("Parent")]),
+                Node::list(
+                    false,
+                    vec![Node::list_item(vec![Node::paragraph(vec![Node::text(
+                        "Child",
+                    )])])],
+                ),
+            ])],
+        )]);
+        let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+        assert!(qmd.contains("\n  - Child"), "got: {qmd:?}");
+        assert!(
+            !qmd.contains("    - Child"),
+            "double-indent detected; got: {qmd:?}"
+        );
+    }
+
+    #[test]
+    fn test_loose_list_block_child_continuation_indent() {
+        // All lines of a multi-line block inside a list item must be indented
+        // by item_indent, not just the first line.
+        let root = Root::new(vec![Node::list(
+            false,
+            vec![Node::list_item(vec![
+                Node::paragraph(vec![Node::text("Description:")]),
+                Node::code(Some("r".to_string()), "x <- 1\ny <- 2"),
+            ])],
+        )]);
+        let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+        assert!(
+            qmd.contains("- Description:\n\n  ```r\n  x <- 1\n  y <- 2\n  ```"),
+            "code block continuation lines not indented; got: {qmd:?}"
         );
     }
 
