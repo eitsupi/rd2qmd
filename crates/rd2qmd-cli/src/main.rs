@@ -38,11 +38,11 @@ enum OutputFormat {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, clap::ValueEnum)]
 enum ArgumentsTableFormat {
     /// Pipe table - limited to inline content
-    Pipe,
-    /// Pandoc grid table (default) - supports block elements (lists, paragraphs) in cells
+    PipeTable,
+    /// Pandoc grid table - supports block elements (lists, paragraphs) in cells
+    GridTable,
+    /// Quarto list-table (default) - requires Quarto 1.9+, compatible with q2
     #[default]
-    Grid,
-    /// Quarto list-table - requires Quarto 1.9+, compatible with q2
     ListTable,
 }
 
@@ -156,10 +156,10 @@ struct Cli {
     #[arg(long)]
     include_internal: bool,
 
-    /// Table format for the Arguments section: grid (Pandoc grid table), pipe (GFM pipe table),
-    /// or list-table (Quarto list-table, requires Quarto 1.9+, compatible with q2).
-    /// Grid and list-table support block elements (lists, paragraphs) in cells.
-    #[arg(long, value_enum, default_value_t = ArgumentsTableFormat::Grid)]
+    /// Table format for the Arguments section: list-table (Quarto list-table, default), grid-table
+    /// (Pandoc grid table), or pipe-table (GFM pipe table, inline content only).
+    /// List-table and grid-table support block elements (lists, paragraphs) in cells.
+    #[arg(long, value_enum, default_value_t = ArgumentsTableFormat::ListTable)]
     arguments_table: ArgumentsTableFormat,
 
     /// Generate topic index JSON file (directory mode only)
@@ -766,17 +766,17 @@ fn merge_unresolved_link_url(cli: &Cli, config: &Config) -> Option<String> {
 fn merge_arguments_format(cli: &Cli, config: &Config) -> ArgumentsFormat {
     // If config specifies a format, check if CLI is using the default
     if let Some(ref fmt) = config.output.arguments_table
-        && cli.arguments_table == ArgumentsTableFormat::Grid
+        && cli.arguments_table == ArgumentsTableFormat::ListTable
     {
         return match fmt.to_lowercase().as_str() {
-            "pipe" => ArgumentsFormat::PipeTable,
-            "list-table" => ArgumentsFormat::ListTable,
-            _ => ArgumentsFormat::GridTable,
+            "pipe-table" => ArgumentsFormat::PipeTable,
+            "grid-table" => ArgumentsFormat::GridTable,
+            _ => ArgumentsFormat::ListTable,
         };
     }
     match cli.arguments_table {
-        ArgumentsTableFormat::Pipe => ArgumentsFormat::PipeTable,
-        ArgumentsTableFormat::Grid => ArgumentsFormat::GridTable,
+        ArgumentsTableFormat::PipeTable => ArgumentsFormat::PipeTable,
+        ArgumentsTableFormat::GridTable => ArgumentsFormat::GridTable,
         ArgumentsTableFormat::ListTable => ArgumentsFormat::ListTable,
     }
 }
@@ -847,7 +847,7 @@ mod tests {
             exec_dontrun: false,
             no_exec_donttest: false,
             include_internal: false,
-            arguments_table: ArgumentsTableFormat::Grid,
+            arguments_table: ArgumentsTableFormat::ListTable,
             topic_index: None,
             config: None,
             no_config: false,
@@ -1000,7 +1000,7 @@ mod tests {
         let config = Config::default();
         assert_eq!(
             merge_arguments_format(&cli, &config),
-            ArgumentsFormat::GridTable
+            ArgumentsFormat::ListTable
         );
     }
 
@@ -1009,7 +1009,7 @@ mod tests {
         let cli = default_cli();
         let config = Config {
             output: config::OutputConfig {
-                arguments_table: Some("pipe".to_string()),
+                arguments_table: Some("pipe-table".to_string()),
                 ..Default::default()
             },
             ..Default::default()
@@ -1023,15 +1023,15 @@ mod tests {
     #[test]
     fn test_merge_arguments_format_cli_overrides() {
         let mut cli = default_cli();
-        cli.arguments_table = ArgumentsTableFormat::Pipe;
+        cli.arguments_table = ArgumentsTableFormat::PipeTable;
         let config = Config {
             output: config::OutputConfig {
-                arguments_table: Some("grid".to_string()),
+                arguments_table: Some("grid-table".to_string()),
                 ..Default::default()
             },
             ..Default::default()
         };
-        // CLI is not default (Grid), so CLI wins
+        // CLI is not default (ListTable), so CLI wins
         assert_eq!(
             merge_arguments_format(&cli, &config),
             ArgumentsFormat::PipeTable

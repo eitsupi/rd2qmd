@@ -155,7 +155,7 @@ fn test_init_config() {
 
 #[test]
 fn test_simple_pipe_table() {
-    let output = convert_fixture("simple", &["--arguments-table", "pipe"]);
+    let output = convert_fixture("simple", &["--arguments-table", "pipe-table"]);
     insta::assert_snapshot!("simple_pipe_table", output);
 }
 

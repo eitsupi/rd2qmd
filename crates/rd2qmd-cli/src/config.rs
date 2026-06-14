@@ -44,7 +44,7 @@ pub struct OutputConfig {
     /// Add pkgdown-style pagetitle metadata ("<title> — <name>") (default: true)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pagetitle: Option<bool>,
-    /// Table format for Arguments section: "grid" (Pandoc grid table), "pipe" (GFM pipe table), or "list-table" (Quarto list-table, requires Quarto 1.9+). Default: "grid"
+    /// Table format for Arguments section: "list-table" (Quarto list-table, requires Quarto 1.9+), "grid-table" (Pandoc grid table), or "pipe-table" (GFM pipe table). Default: "list-table"
     #[serde(skip_serializing_if = "Option::is_none")]
     pub arguments_table: Option<String>,
     /// Include topics with \keyword{internal} (default: false)
@@ -179,7 +179,7 @@ impl Config {
                 format: Some("qmd".to_string()),
                 frontmatter: Some(true),
                 pagetitle: Some(true),
-                arguments_table: Some("grid".to_string()),
+                arguments_table: Some("list-table".to_string()),
                 include_internal: Some(false),
             },
             code: CodeConfig {
@@ -219,7 +219,7 @@ mod tests {
             format = "md"
             frontmatter = false
             pagetitle = true
-            arguments_table = "pipe"
+            arguments_table = "pipe-table"
             "#,
         )
         .unwrap();
@@ -227,7 +227,7 @@ mod tests {
         assert_eq!(config.output.format, Some("md".to_string()));
         assert_eq!(config.output.frontmatter, Some(false));
         assert_eq!(config.output.pagetitle, Some(true));
-        assert_eq!(config.output.arguments_table, Some("pipe".to_string()));
+        assert_eq!(config.output.arguments_table, Some("pipe-table".to_string()));
     }
 
     #[test]
@@ -299,7 +299,7 @@ mod tests {
             format = "qmd"
             frontmatter = true
             pagetitle = true
-            arguments_table = "grid"
+            arguments_table = "grid-table"
 
             [code]
             quarto_code_blocks = true
