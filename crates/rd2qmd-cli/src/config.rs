@@ -227,7 +227,10 @@ mod tests {
         assert_eq!(config.output.format, Some("md".to_string()));
         assert_eq!(config.output.frontmatter, Some(false));
         assert_eq!(config.output.pagetitle, Some(true));
-        assert_eq!(config.output.arguments_table, Some("pipe-table".to_string()));
+        assert_eq!(
+            config.output.arguments_table,
+            Some("pipe-table".to_string())
+        );
     }
 
     #[test]
