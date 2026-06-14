@@ -1,6 +1,5 @@
 ---
 source: crates/rd2qmd-cli/tests/integration.rs
-assertion_line: 179
 expression: schema
 ---
 {
@@ -27,6 +26,26 @@ expression: schema
     }
   },
   "$defs": {
+    "ArgumentsTableFormat": {
+      "description": "Table format for the Arguments section",
+      "oneOf": [
+        {
+          "description": "Pipe table - limited to inline content",
+          "type": "string",
+          "const": "pipe-table"
+        },
+        {
+          "description": "Pandoc grid table - supports block elements (lists, paragraphs) in cells",
+          "type": "string",
+          "const": "grid-table"
+        },
+        {
+          "description": "Quarto list-table (default) - requires Quarto 1.9+, compatible with q2",
+          "type": "string",
+          "const": "list-table"
+        }
+      ]
+    },
     "CodeConfig": {
       "description": "Code block configuration",
       "type": "object",
@@ -109,10 +128,14 @@ expression: schema
       "type": "object",
       "properties": {
         "arguments_table": {
-          "description": "Table format for Arguments section: \"grid\" (Pandoc grid table), \"pipe\" (GFM pipe table), or \"list-table\" (Quarto list-table, requires Quarto 1.9+). Default: \"grid\"",
-          "type": [
-            "string",
-            "null"
+          "description": "Table format for Arguments section (default: list-table)",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArgumentsTableFormat"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "format": {

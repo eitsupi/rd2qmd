@@ -1,6 +1,6 @@
 ---
 source: crates/rd2qmd-cli/tests/integration.rs
-expression: output
+expression: content
 ---
 ---
 title: "A Simple Function"
@@ -23,18 +23,10 @@ simple(x, y = 1)
 
 ## Arguments
 
-::: {.list-table header-rows=1}
-
-- - Argument
-  - Description
-
-- - `x`
-  - The first argument.
-
-- - `y`
-  - The second argument, defaults to 1.
-
-:::
+| Argument | Description |
+|:---|:---|
+| `x` | The first argument. |
+| `y` | The second argument, defaults to 1. |
 
 ## Value
 
@@ -42,7 +34,7 @@ simple(x, y = 1)
 
 ## Examples
 
-```r
+```{r}
 simple(1, 2)
 simple(10)
 ```

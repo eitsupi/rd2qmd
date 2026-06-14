@@ -33,8 +33,9 @@ pub enum FallbackReason {
 
 use rayon::prelude::*;
 use rd2qmd_core::{
-    Frontmatter, RdMetadata, RdToMdastOptions, SectionTag, WriterOptions, extract_rd_metadata,
-    extract_text, mdast_to_qmd, parse, parse_roxygen_comments, rd_to_mdast_with_options,
+    ArgumentsFormat, Frontmatter, RdMetadata, RdToMdastOptions, SectionTag, WriterOptions,
+    extract_rd_metadata, extract_text, mdast_to_qmd, parse, parse_roxygen_comments,
+    rd_to_mdast_with_options,
 };
 use serde::Serialize;
 use std::collections::HashMap;
@@ -159,6 +160,8 @@ pub struct PackageConvertOptions {
     /// By default, internal topics are skipped (matching pkgdown behavior).
     /// Set to true to include internal topics in the output.
     pub include_internal: bool,
+    /// Table format for the Arguments section
+    pub arguments_format: ArgumentsFormat,
 }
 
 impl Default for PackageConvertOptions {
@@ -175,6 +178,7 @@ impl Default for PackageConvertOptions {
             exec_dontrun: false,
             exec_donttest: true, // pkgdown-compatible: \donttest{} is executable by default
             include_internal: false, // pkgdown-compatible: skip internal topics by default
+            arguments_format: ArgumentsFormat::default(),
         }
     }
 }
@@ -418,7 +422,7 @@ fn convert_single_file(
             exec_dontrun: options.exec_dontrun,
             exec_donttest: options.exec_donttest,
             quarto_code_blocks: options.quarto_code_blocks,
-            ..Default::default()
+            arguments_format: options.arguments_format.clone(),
         };
 
         // Convert to mdast
@@ -951,6 +955,7 @@ An old deprecated function.
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false,
+            arguments_format: ArgumentsFormat::default(),
         };
 
         let result = PackageConverter::new(&package, options).convert().unwrap();
@@ -1006,6 +1011,7 @@ An old deprecated function.
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false,
+            arguments_format: ArgumentsFormat::default(),
         };
 
         let result = PackageConverter::new(&package, options).convert().unwrap();
@@ -1048,6 +1054,7 @@ x <- 1
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false,
+            arguments_format: ArgumentsFormat::default(),
         };
 
         let result = PackageConverter::new(&package, options).convert().unwrap();
@@ -1115,6 +1122,7 @@ x <- 1
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false,
+            arguments_format: ArgumentsFormat::default(),
         };
 
         let result = PackageConverter::new(&package, options).convert().unwrap();
@@ -1162,6 +1170,7 @@ x <- 1
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false,
+            arguments_format: ArgumentsFormat::default(),
         };
 
         let result = PackageConverter::new(&package, options).convert().unwrap();
@@ -1200,6 +1209,7 @@ x <- 1
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false,
+            arguments_format: ArgumentsFormat::default(),
         };
 
         let result = PackageConverter::new(&package, options).convert().unwrap();
@@ -1234,6 +1244,7 @@ x <- 1
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false,
+            arguments_format: ArgumentsFormat::default(),
         };
 
         let result = PackageConverter::new(&package, options).convert().unwrap();
@@ -1286,6 +1297,7 @@ x <- 1
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false, // Default: skip internal
+            arguments_format: ArgumentsFormat::default(),
         };
 
         let result = PackageConverter::new(&package, options).convert().unwrap();
@@ -1341,6 +1353,7 @@ x <- 1
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: true, // Include internal topics
+            arguments_format: ArgumentsFormat::default(),
         };
 
         let result = PackageConverter::new(&package, options).convert().unwrap();

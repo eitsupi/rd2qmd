@@ -29,10 +29,10 @@ use tabled::settings::style::HorizontalLine;
 pub enum ArgumentsFormat {
     /// Pipe table - limited to inline content in cells
     PipeTable,
-    /// Pandoc grid table (default) - supports block elements (lists, paragraphs) in cells
-    #[default]
+    /// Pandoc grid table - supports block elements (lists, paragraphs) in cells
     GridTable,
-    /// Quarto list-table (`::: {.list-table}`) - requires Quarto 1.9+
+    /// Quarto list-table (`::: {.list-table}`) - requires Quarto 1.9+ (default)
+    #[default]
     ListTable,
 }
 
