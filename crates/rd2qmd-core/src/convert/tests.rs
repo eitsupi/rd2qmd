@@ -2307,6 +2307,12 @@ fn test_arguments_list_item_starting_with_block() {
     let mdast = rd_to_mdast_with_options(&doc, &options);
     let qmd = mdast_to_qmd(&mdast, &rd2qmd_mdast::WriterOptions::default());
     // The preformatted block must not be dropped
-    assert!(qmd.contains("some_code()"), "preformatted block was dropped; got: {qmd}");
-    assert!(qmd.contains("Normal item."), "second item was dropped; got: {qmd}");
+    assert!(
+        qmd.contains("some_code()"),
+        "preformatted block was dropped; got: {qmd}"
+    );
+    assert!(
+        qmd.contains("Normal item."),
+        "second item was dropped; got: {qmd}"
+    );
 }
