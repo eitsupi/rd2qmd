@@ -1247,8 +1247,8 @@ impl Converter {
                 Some(Node::inline_code(text))
             }
             RdNode::If { format, content } => {
-                let include = format == "text"
-                    || (format == "html" && self.options.include_html_output);
+                let include =
+                    format == "text" || (format == "html" && self.options.include_html_output);
                 if include {
                     let inline = self.convert_inline_nodes(content);
                     if inline.len() == 1 {

@@ -879,6 +879,7 @@ Sys.sleep(10)
                 external_package_urls: None,
             },
             arguments_format: ArgumentsFormat::PipeTable,
+            include_html_output: false,
         };
 
         let result = RdConverter::new(content)

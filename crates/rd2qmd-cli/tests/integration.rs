@@ -113,7 +113,10 @@ fn test_conditionals_default() {
 /// \if{html} is included when --include-html-output is set
 #[test]
 fn test_conditionals_include_html() {
-    let output = convert_fixture("conditionals", &["--no-frontmatter", "--include-html-output"]);
+    let output = convert_fixture(
+        "conditionals",
+        &["--no-frontmatter", "--include-html-output"],
+    );
     insta::assert_snapshot!("conditionals_include_html", output);
 }
 
