@@ -1,0 +1,23 @@
+---
+source: crates/rd2qmd-cli/tests/integration.rs
+expression: output
+---
+# Conditional Examples
+
+## Description
+
+ Lifecycle badge: [![[Stable]](lifecycle-stable.svg)](https://lifecycle.r-lib.org/articles/stages.html)
+
+Conditional content for different output formats.
+
+HTML only text: 
+
+Text only: This appears in plain text output.
+
+## Details
+
+ Example with asciicast output (cli-style): 
+
+```r
+example_function("hello")
+```

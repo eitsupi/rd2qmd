@@ -73,6 +73,12 @@ pub struct RdToMdastOptions {
     /// GfmTable (default): GFM pipe table, limited to inline content
     /// GridTable: Pandoc grid table, supports block elements in cells
     pub arguments_format: ArgumentsFormat,
+    /// Include \if{html}{...} content in the output (default: false)
+    /// By default, HTML-conditional blocks are excluded because they target
+    /// HTML renderers (CRAN HTML manual, pkgdown, etc.) and often contain raw
+    /// HTML markup that produces noise in plain Markdown. Set to true when
+    /// targeting an HTML-capable renderer such as Quarto HTML output.
+    pub include_html_output: bool,
 }
 
 impl Default for RdToMdastOptions {
@@ -86,6 +92,7 @@ impl Default for RdToMdastOptions {
             exec_donttest: true, // pkgdown-compatible: \donttest{} is executable by default
             quarto_code_blocks: true,
             arguments_format: ArgumentsFormat::default(),
+            include_html_output: false,
         }
     }
 }
@@ -1240,8 +1247,9 @@ impl Converter {
                 Some(Node::inline_code(text))
             }
             RdNode::If { format, content } => {
-                // For markdown/html output, include content if format matches
-                if format == "html" || format == "text" {
+                let include =
+                    format == "text" || (format == "html" && self.options.include_html_output);
+                if include {
                     let inline = self.convert_inline_nodes(content);
                     if inline.len() == 1 {
                         inline.into_iter().next()
