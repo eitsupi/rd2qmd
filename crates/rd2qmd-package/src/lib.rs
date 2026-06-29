@@ -1368,6 +1368,7 @@ x <- 1
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: true, // Include internal topics
+            include_html_output: false,
             arguments_format: ArgumentsFormat::default(),
         };
 
