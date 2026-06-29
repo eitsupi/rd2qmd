@@ -149,6 +149,8 @@ pub struct RdConvertOptions {
     pub links: LinkOptions,
     /// Arguments section table format
     pub arguments_format: ArgumentsFormat,
+    /// Include \if{html}{...} content in the output (default: false)
+    pub include_html_output: bool,
 }
 
 // ============================================================================
@@ -398,6 +400,12 @@ impl RdConverter {
         self
     }
 
+    /// Include \if{html}{...} blocks in the output (default: false)
+    pub fn include_html_output(mut self, enabled: bool) -> Self {
+        self.options.include_html_output = enabled;
+        self
+    }
+
     /// Set all options at once
     pub fn with_options(mut self, options: RdConvertOptions) -> Self {
         self.options = options;
@@ -455,6 +463,7 @@ pub fn convert_rd_content(
         exec_donttest: options.code.exec_donttest,
         quarto_code_blocks: options.code.quarto_code_blocks,
         arguments_format: options.arguments_format.clone(),
+        include_html_output: options.include_html_output,
     };
 
     // Convert to mdast

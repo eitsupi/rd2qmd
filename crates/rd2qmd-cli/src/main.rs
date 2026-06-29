@@ -144,6 +144,14 @@ struct Cli {
     #[arg(long)]
     include_internal: bool,
 
+    /// Include \if{html}{...} blocks in the output
+    /// By default, HTML-conditional content is excluded because it targets HTML
+    /// renderers (CRAN HTML manual, pkgdown, etc.) and often contains raw HTML
+    /// markup that produces noise in plain Markdown. Enable when targeting an
+    /// HTML-capable renderer such as Quarto HTML output.
+    #[arg(long)]
+    include_html_output: bool,
+
     /// Output format for the Arguments section: list-table (Quarto list-table, default), grid-table
     /// (Pandoc grid table), pipe-table (GFM pipe table, inline only), or list (Markdown loose list).
     #[arg(long, value_enum)]
@@ -282,6 +290,8 @@ fn main() -> Result<()> {
         config.output.include_internal.unwrap_or(false)
     };
 
+    let include_html_output = cli.include_html_output;
+
     if input.is_file() {
         // Single file conversion (no alias resolution)
         convert_single_file(
@@ -294,6 +304,7 @@ fn main() -> Result<()> {
             unresolved_link_url.as_deref(),
             exec_dontrun,
             exec_donttest,
+            include_html_output,
             arguments_format,
             cli.verbose,
             cli.quiet,
@@ -316,6 +327,7 @@ fn main() -> Result<()> {
             exec_dontrun,
             exec_donttest,
             include_internal,
+            include_html_output,
             arguments_format,
             cli.topic_index.as_deref(),
             cli.verbose,
@@ -341,6 +353,7 @@ fn convert_single_file(
     unresolved_link_url: Option<&str>,
     exec_dontrun: bool,
     exec_donttest: bool,
+    include_html_output: bool,
     arguments_format: ArgumentsFormat,
     verbose: bool,
     quiet: bool,
@@ -369,6 +382,7 @@ fn convert_single_file(
         .quarto_code_blocks(quarto_code_blocks)
         .exec_dontrun(exec_dontrun)
         .exec_donttest(exec_donttest)
+        .include_html_output(include_html_output)
         .arguments_format(arguments_format);
 
     if let Some(url) = unresolved_link_url {
@@ -409,6 +423,7 @@ fn convert_directory(
     exec_dontrun: bool,
     exec_donttest: bool,
     include_internal: bool,
+    include_html_output: bool,
     arguments_format: ArgumentsFormat,
     topic_index_path: Option<&Path>,
     verbose: bool,
@@ -455,6 +470,7 @@ fn convert_directory(
         exec_dontrun,
         exec_donttest,
         include_internal,
+        include_html_output,
         arguments_format,
     };
 
@@ -832,6 +848,7 @@ mod tests {
             exec_dontrun: false,
             no_exec_donttest: false,
             include_internal: false,
+            include_html_output: false,
             arguments_format: None,
             topic_index: None,
             config: None,

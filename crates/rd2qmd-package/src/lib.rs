@@ -160,6 +160,11 @@ pub struct PackageConvertOptions {
     /// By default, internal topics are skipped (matching pkgdown behavior).
     /// Set to true to include internal topics in the output.
     pub include_internal: bool,
+    /// Include \if{html}{...} content in the output (default: false)
+    /// By default, HTML-conditional blocks are excluded because they target
+    /// HTML renderers and often contain raw HTML markup that produces noise in
+    /// plain Markdown. Set to true when targeting an HTML-capable renderer.
+    pub include_html_output: bool,
     /// Table format for the Arguments section
     pub arguments_format: ArgumentsFormat,
 }
@@ -178,6 +183,7 @@ impl Default for PackageConvertOptions {
             exec_dontrun: false,
             exec_donttest: true, // pkgdown-compatible: \donttest{} is executable by default
             include_internal: false, // pkgdown-compatible: skip internal topics by default
+            include_html_output: false,
             arguments_format: ArgumentsFormat::default(),
         }
     }
@@ -423,6 +429,7 @@ fn convert_single_file(
             exec_donttest: options.exec_donttest,
             quarto_code_blocks: options.quarto_code_blocks,
             arguments_format: options.arguments_format.clone(),
+            include_html_output: options.include_html_output,
         };
 
         // Convert to mdast
@@ -955,6 +962,7 @@ An old deprecated function.
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false,
+            include_html_output: false,
             arguments_format: ArgumentsFormat::default(),
         };
 
@@ -1011,6 +1019,7 @@ An old deprecated function.
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false,
+            include_html_output: false,
             arguments_format: ArgumentsFormat::default(),
         };
 
@@ -1054,6 +1063,7 @@ x <- 1
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false,
+            include_html_output: false,
             arguments_format: ArgumentsFormat::default(),
         };
 
@@ -1122,6 +1132,7 @@ x <- 1
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false,
+            include_html_output: false,
             arguments_format: ArgumentsFormat::default(),
         };
 
@@ -1170,6 +1181,7 @@ x <- 1
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false,
+            include_html_output: false,
             arguments_format: ArgumentsFormat::default(),
         };
 
@@ -1209,6 +1221,7 @@ x <- 1
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false,
+            include_html_output: false,
             arguments_format: ArgumentsFormat::default(),
         };
 
@@ -1244,6 +1257,7 @@ x <- 1
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false,
+            include_html_output: false,
             arguments_format: ArgumentsFormat::default(),
         };
 
@@ -1297,6 +1311,7 @@ x <- 1
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false, // Default: skip internal
+            include_html_output: false,
             arguments_format: ArgumentsFormat::default(),
         };
 

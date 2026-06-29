@@ -103,6 +103,20 @@ fn test_examplesif_md() {
     insta::assert_snapshot!("examplesif_md", output);
 }
 
+/// \if{html} is excluded by default; \ifelse{html} (lifecycle badge) always renders
+#[test]
+fn test_conditionals_default() {
+    let output = convert_fixture("conditionals", &["--no-frontmatter"]);
+    insta::assert_snapshot!("conditionals_default", output);
+}
+
+/// \if{html} is included when --include-html-output is set
+#[test]
+fn test_conditionals_include_html() {
+    let output = convert_fixture("conditionals", &["--no-frontmatter", "--include-html-output"]);
+    insta::assert_snapshot!("conditionals_include_html", output);
+}
+
 #[test]
 fn test_directory_conversion() {
     let fixtures = fixtures_dir();
