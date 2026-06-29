@@ -155,6 +155,14 @@ Default behavior (pkgdown-compatible):
 
 Use `--exec-dontrun` to make `\dontrun{}` code executable, or `--no-exec-donttest` to make `\donttest{}` code non-executable.
 
+### HTML conditional content
+
+Rd files use `\if{html}{...}` to embed content intended only for HTML renderers (CRAN HTML manual, pkgdown, etc.). This often includes raw HTML such as asciicast terminal-output blocks with inline `<span>` styling. By default, rd2qmd **excludes** this content to produce clean Markdown suitable for GitHub, LLMs, and other non-HTML contexts.
+
+Use `--include-html-output` to include `\if{html}{...}` blocks when targeting an HTML-capable renderer such as Quarto HTML output.
+
+`\ifelse{html}{then}{else}` is not affected by this flag — the `then` branch is always used, which preserves lifecycle badges (rendered as Markdown image links) and similar structured content that has a meaningful non-HTML representation.
+
 ## Output formats
 
 ### Quarto Markdown (`.qmd`)
