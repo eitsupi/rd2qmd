@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-02
+
+### Changed
+
+- **Breaking:** `\if{html}{...}` blocks are now excluded from Markdown output by default. Use `--include-html-output` to restore the previous behavior for HTML-capable renderers such as Quarto HTML (#35).
+
 ## [0.2.0] - 2026-06-14
 
 ### Added
