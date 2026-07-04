@@ -149,6 +149,13 @@ pub struct PackageConvertOptions {
     /// Used for resolving `\link[pkg]{topic}` patterns to actual URLs.
     /// Example: `{"dplyr" -> "https://dplyr.tidyverse.org/reference"}`
     pub external_package_urls: Option<HashMap<String, String>>,
+    /// URL pattern for help topic links, applied as a fallback after
+    /// alias / `external_package_urls` / `unresolved_link_url` resolution fails.
+    /// Use `{package}` and `{topic}` as placeholders; `{package}` is replaced
+    /// with the empty string for links within the same package.
+    /// Example: `https://rdrr.io/cran/{package}/man/{topic}.html`
+    /// If None, such links become inline code instead of hyperlinks
+    pub topic_link_url: Option<String>,
     /// Make \dontrun{} example code executable (default: false)
     /// Matches pkgdown semantics: \dontrun{} means "never run this code"
     pub exec_dontrun: bool,
@@ -180,6 +187,7 @@ impl Default for PackageConvertOptions {
             parallel_jobs: None,
             unresolved_link_url: None,
             external_package_urls: None,
+            topic_link_url: None,
             exec_dontrun: false,
             exec_donttest: true, // pkgdown-compatible: \donttest{} is executable by default
             include_internal: false, // pkgdown-compatible: skip internal topics by default
@@ -425,7 +433,7 @@ fn convert_single_file(
             alias_map: Some(package.alias_index.clone()),
             unresolved_link_url: options.unresolved_link_url.clone(),
             external_package_urls: options.external_package_urls.clone(),
-            topic_link_url: None,
+            topic_link_url: options.topic_link_url.clone(),
             exec_dontrun: options.exec_dontrun,
             exec_donttest: options.exec_donttest,
             quarto_code_blocks: options.quarto_code_blocks,
@@ -960,6 +968,7 @@ An old deprecated function.
             parallel_jobs: Some(1),
             unresolved_link_url: None,
             external_package_urls: None,
+            topic_link_url: None,
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false,
@@ -1017,6 +1026,7 @@ An old deprecated function.
             parallel_jobs: Some(1),
             unresolved_link_url: None,
             external_package_urls: None,
+            topic_link_url: None,
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false,
@@ -1061,6 +1071,7 @@ x <- 1
             parallel_jobs: Some(1),
             unresolved_link_url: None,
             external_package_urls: None,
+            topic_link_url: None,
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false,
@@ -1130,6 +1141,7 @@ x <- 1
             parallel_jobs: Some(1),
             unresolved_link_url: Some("https://rdrr.io/r/base/{topic}.html".to_string()),
             external_package_urls: None,
+            topic_link_url: None,
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false,
@@ -1144,6 +1156,50 @@ x <- 1
         // Link text has backticks
         assert!(
             content.contains("[`unknown_external`](https://rdrr.io/r/base/unknown_external.html)")
+        );
+    }
+
+    #[test]
+    fn test_package_converter_with_topic_link_url() {
+        let dir = tempdir().unwrap();
+        let out_dir = tempdir().unwrap();
+
+        let rd = r#"\name{caller}
+\alias{caller}
+\title{Caller}
+\description{Uses \link{caller} and \link[somepkg]{something}.}
+"#;
+        fs::write(dir.path().join("caller.Rd"), rd).unwrap();
+
+        let package = RdPackage::from_directory(dir.path(), false).unwrap();
+        let options = PackageConvertOptions {
+            output_dir: out_dir.path().to_path_buf(),
+            output_extension: "qmd".to_string(),
+            frontmatter: false,
+            pagetitle: false,
+            quarto_code_blocks: true,
+            parallel_jobs: Some(1),
+            unresolved_link_url: None,
+            external_package_urls: None,
+            topic_link_url: Some("https://rdrr.io/cran/{package}/man/{topic}.html".to_string()),
+            exec_dontrun: false,
+            exec_donttest: true,
+            include_internal: false,
+            include_html_output: false,
+            arguments_format: ArgumentsFormat::default(),
+        };
+
+        let result = PackageConverter::new(&package, options).convert().unwrap();
+        assert_eq!(result.conversion.success_count, 1);
+
+        let content = fs::read_to_string(out_dir.path().join("caller.qmd")).unwrap();
+        // Alias-resolved internal link takes precedence over topic_link_url
+        assert!(content.contains("[`caller`](caller.qmd)"));
+        // External package link not in external_package_urls falls back to the pattern
+        assert!(
+            content.contains(
+                "[`somepkg::something`](https://rdrr.io/cran/somepkg/man/something.html)"
+            )
         );
     }
 
@@ -1179,6 +1235,7 @@ x <- 1
             parallel_jobs: Some(1),
             unresolved_link_url: None,
             external_package_urls: Some(external_urls),
+            topic_link_url: None,
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false,
@@ -1219,6 +1276,7 @@ x <- 1
             parallel_jobs: Some(1),
             unresolved_link_url: None,
             external_package_urls: None,
+            topic_link_url: None,
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false,
@@ -1255,6 +1313,7 @@ x <- 1
             parallel_jobs: Some(1),
             unresolved_link_url: None,
             external_package_urls: None,
+            topic_link_url: None,
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false,
@@ -1309,6 +1368,7 @@ x <- 1
             parallel_jobs: Some(1),
             unresolved_link_url: None,
             external_package_urls: None,
+            topic_link_url: None,
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false, // Default: skip internal
@@ -1366,6 +1426,7 @@ x <- 1
             parallel_jobs: Some(1),
             unresolved_link_url: None,
             external_package_urls: None,
+            topic_link_url: None,
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: true, // Include internal topics

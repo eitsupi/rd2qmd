@@ -194,6 +194,7 @@ fn run_single_benchmark(
         parallel_jobs: Some(jobs),
         unresolved_link_url: Some("https://rdrr.io/r/base/{topic}.html".to_string()),
         external_package_urls: external_urls.cloned(),
+        topic_link_url: None,
         exec_dontrun: false,
         exec_donttest: true,     // pkgdown-compatible default
         include_internal: false, // skip internal topics by default

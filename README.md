@@ -88,7 +88,57 @@ rd2qmd man/ -o docs/ -j4
 |--------|-------------|
 | `--unresolved-link-url <URL>` | URL pattern for unresolved links. Default: `https://rdrr.io/r/base/{topic}.html` |
 | `--no-unresolved-link-url` | Disable fallback URL for unresolved links |
-| `--topic-link-url <URL>` | URL pattern for help topic links, applied when other link resolution fails. Use `{package}` and `{topic}` as placeholders; `{package}` is empty for links within the same package |
+| `--topic-link-url <URL>` | Last-resort URL pattern for help topic links that would otherwise lose their target. Use `{package}` and `{topic}` as placeholders; `{package}` is empty for links within the same package |
+
+#### When to use `--topic-link-url`
+
+Without this option, a help topic link that no other mechanism can resolve
+is rendered as plain inline code — the link target is silently dropped.
+`--topic-link-url` is a pure string template applied per link as the final
+fallback, after alias resolution (directory mode), `--unresolved-link-url`,
+and external package URLs have all failed. The `{package}` placeholder is
+filled from each link's own Rd markup (`\link[dplyr]{mutate}` → `dplyr`),
+so a single pattern works even when one file links to many packages.
+
+Two intended uses:
+
+- **Aggregator fallback for static sites**: send cross-package links to a
+  site that hosts documentation for all packages under one URL structure:
+
+  ```sh
+  rd2qmd man/ -o docs/ --topic-link-url "https://rdrr.io/cran/{package}/man/{topic}.html"
+  ```
+
+- **Custom URI scheme for documentation viewers**: emit a machine-readable
+  target (e.g. `--topic-link-url "x-r-help:{package}/{topic}"` produces
+  `` [`dplyr::mutate`](x-r-help:dplyr/mutate) ``) so that a Markdown viewer
+  with access to R's help system — such as a terminal help browser — can
+  intercept the link and open the topic itself. Nothing needs to serve
+  these URIs; the scheme is chosen and interpreted by the consumer.
+
+Because it is a fixed template, this option cannot point different packages
+at their own documentation sites — that is what the per-package external
+link options below are for, and those always take precedence.
+
+#### `--topic-link-url` vs `--external-package-fallback`
+
+Both accept a `{package}`/`{topic}` URL pattern, but they belong to
+different mechanisms:
+
+| | `--external-package-fallback` | `--topic-link-url` |
+|--|-------------------------------|--------------------|
+| Applies to | Cross-package links (`\link[pkg]{topic}`) only | Any topic link that nothing else resolved, including same-package links |
+| Mechanism | Part of external link resolution: rd2qmd searches your local R libraries for each referenced package's own documentation site, and this pattern covers the packages where that search fails | A plain template; no lookup of any kind |
+| Requirements | Directory mode, `--r-lib-path`, `external-links` feature | None (works in single-file mode, without R installed) |
+| Precedence | Higher (fills the external package URL map) | Last resort |
+
+In short: if you run directory conversion with external link resolution
+enabled, `--external-package-fallback` already covers unresolved
+cross-package links, and `--topic-link-url` only adds coverage for
+unresolved same-package links. `--topic-link-url` becomes the primary tool
+when external link resolution is unavailable or disabled (single-file mode,
+no local R libraries, `--no-external-links`), or when you want non-HTTP
+targets such as a custom URI scheme.
 
 ### External link options
 

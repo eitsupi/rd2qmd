@@ -102,9 +102,16 @@ struct Cli {
     #[arg(long, conflicts_with = "unresolved_link_url")]
     no_unresolved_link_url: bool,
 
-    /// URL pattern for help topic links, applied when other link resolution fails
+    /// Last-resort URL pattern for help topic links that would otherwise
+    /// lose their target (rendered as plain inline code). Applied after
+    /// alias resolution, --unresolved-link-url, and external package URL
+    /// resolution (including --external-package-fallback) all fail.
     /// Use {package} and {topic} as placeholders; {package} is empty for
-    /// links within the same package. Example: x-r-help:{package}/{topic}
+    /// links within the same package.
+    /// Typical uses: point cross-package links at an aggregator site
+    /// (e.g. https://rdrr.io/cran/{package}/man/{topic}.html), or emit a
+    /// custom URI scheme (e.g. x-r-help:{package}/{topic}) for viewers
+    /// that resolve help topics themselves.
     #[arg(long, value_name = "URL_PATTERN")]
     topic_link_url: Option<String>,
 
@@ -331,6 +338,7 @@ fn main() -> Result<()> {
             use_pagetitle,
             quarto_code_blocks,
             unresolved_link_url,
+            topic_link_url,
             external_link_options,
             exec_dontrun,
             exec_donttest,
@@ -432,6 +440,7 @@ fn convert_directory(
     use_pagetitle: bool,
     quarto_code_blocks: bool,
     unresolved_link_url: Option<String>,
+    topic_link_url: Option<String>,
     external_link_options: Option<ExternalLinkOptions>,
     exec_dontrun: bool,
     exec_donttest: bool,
@@ -480,6 +489,7 @@ fn convert_directory(
         parallel_jobs: jobs,
         unresolved_link_url,
         external_package_urls: None, // Will be set by convert_package_with_external_links
+        topic_link_url,
         exec_dontrun,
         exec_donttest,
         include_internal,
