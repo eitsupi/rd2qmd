@@ -555,6 +555,18 @@ impl<'a> Writer<'a> {
     }
 
     fn write_link(&mut self, l: &crate::mdast::Link) {
+        // CommonMark autolinks require an absolute URI (with scheme) and
+        // no whitespace or angle brackets
+        if l.title.is_none()
+            && matches!(l.children.as_slice(),
+                [crate::mdast::Node::Text(t)] if t.value == l.url)
+            && is_absolute_uri(&l.url)
+        {
+            self.output.push('<');
+            self.output.push_str(&l.url);
+            self.output.push('>');
+            return;
+        }
         self.output.push('[');
         for child in &l.children {
             self.write_node(child);
@@ -618,6 +630,23 @@ impl<'a> Writer<'a> {
 
 fn escape_yaml_string(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+/// Whether `s` is a valid CommonMark autolink URI: a scheme
+/// (`[A-Za-z][A-Za-z0-9+.-]{1,31}`) followed by `:` and any characters
+/// other than ASCII control, space, `<`, or `>`.
+fn is_absolute_uri(s: &str) -> bool {
+    let Some((scheme, rest)) = s.split_once(':') else {
+        return false;
+    };
+    (2..=32).contains(&scheme.len())
+        && scheme.starts_with(|c: char| c.is_ascii_alphabetic())
+        && scheme
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '.' | '-'))
+        && !rest
+            .chars()
+            .any(|c| c.is_ascii_control() || matches!(c, ' ' | '<' | '>'))
 }
 
 /// Calculate the minimum fence length needed for a code block.
@@ -838,6 +867,27 @@ mod tests {
         )])]);
         let qmd = mdast_to_qmd(&root, &WriterOptions::default());
         assert!(qmd.contains("[Example](https://example.com)"));
+    }
+
+    #[test]
+    fn test_link_autolink() {
+        // A link whose only child is a text equal to its URL is written as
+        // an autolink, but only when the URL is a valid CommonMark
+        // absolute URI (scheme prefix, no spaces)
+        let cases = [
+            "https://example.com",
+            "x-r-help:topic",
+            "topic.html",
+            "https://example.com/a b",
+        ];
+        let root = Root::new(
+            cases
+                .into_iter()
+                .map(|url| Node::paragraph(vec![Node::link(url, vec![Node::text(url)])]))
+                .collect(),
+        );
+        let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+        insta::assert_snapshot!(qmd);
     }
 
     #[test]
