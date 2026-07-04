@@ -13,7 +13,7 @@ aliases:
 
 ## Description
 
- This function demonstrates various link types. See [`simple`](x-r-help:/simple) for a simpler example. Also see [`stats::lm`](x-r-help:stats/lm) for linear models. 
+ This function demonstrates various link types. See [`simple`](x-r-help:simple) for a simpler example. Also see [`stats::lm`](x-r-help:stats/lm) for linear models. 
 
 ## Usage
 
@@ -35,7 +35,7 @@ with_links(data)
 
 ## See Also
 
-[`simple`](x-r-help:/simple), [`ggplot2::ggplot`](x-r-help:ggplot2/ggplot)
+[`simple`](x-r-help:simple), [`ggplot2::ggplot`](x-r-help:ggplot2/ggplot)
 
 ## Examples
 

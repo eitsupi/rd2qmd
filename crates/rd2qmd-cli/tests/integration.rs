@@ -73,25 +73,39 @@ fn test_simple_no_pagetitle() {
     insta::assert_snapshot!("simple_no_pagetitle", output);
 }
 
+/// Defaults: --external-link-url and --unqualified-link-url are applied even
+/// when not passed explicitly
 #[test]
 fn test_with_links() {
     let output = convert_fixture("with_links", &[]);
     insta::assert_snapshot!("with_links_qmd", output);
 }
 
-/// --topic-link-url applies to both internal and external links when other
-/// resolution fails (--no-unresolved-link-url disables the default fallback)
+/// --no-external-link-url and --no-unqualified-link-url disable the fallback
+/// templates: unresolvable links degrade to plain inline code
 #[test]
-fn test_with_links_topic_link_url() {
+fn test_with_links_no_link_fallbacks() {
+    let output = convert_fixture(
+        "with_links",
+        &["--no-external-link-url", "--no-unqualified-link-url"],
+    );
+    insta::assert_snapshot!("with_links_no_link_fallbacks", output);
+}
+
+/// Custom templates: qualified links use --external-link-url, unqualified
+/// links use --unqualified-link-url
+#[test]
+fn test_with_links_custom_templates() {
     let output = convert_fixture(
         "with_links",
         &[
-            "--no-unresolved-link-url",
-            "--topic-link-url",
+            "--external-link-url",
             "x-r-help:{package}/{topic}",
+            "--unqualified-link-url",
+            "x-r-help:{topic}",
         ],
     );
-    insta::assert_snapshot!("with_links_topic_link_url", output);
+    insta::assert_snapshot!("with_links_custom_templates", output);
 }
 
 #[test]

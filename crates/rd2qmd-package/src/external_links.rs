@@ -23,9 +23,11 @@ use rd2qmd_core::RdNode;
 /// Result of resolving external package URLs
 #[derive(Debug, Clone, Default)]
 pub struct PackageResolveResult {
-    /// Map of package name to resolved reference URL
+    /// Map of package name to resolved full URL template with a `{topic}`
+    /// placeholder (e.g. `https://dplyr.tidyverse.org/reference/{topic}.html`)
     pub urls: HashMap<String, String>,
-    /// Packages that used fallback URLs, with the reason
+    /// Packages that could not be resolved, with the reason.
+    /// Links to these packages fall back to the `external_link_url` template.
     pub fallbacks: HashMap<String, FallbackReason>,
 }
 
@@ -36,10 +38,6 @@ pub struct PackageUrlResolverOptions {
     pub lib_paths: Vec<PathBuf>,
     /// Cache directory for pkgdown.yml files (default: system temp)
     pub cache_dir: Option<PathBuf>,
-    /// Fallback URL pattern for packages without pkgdown
-    /// Use `{package}` and `{topic}` as placeholders
-    /// Default: "https://rdrr.io/pkg/{package}/man/{topic}.html"
-    pub fallback_url: Option<String>,
     /// Enable HTTP fetching of pkgdown.yml (can be disabled for offline mode)
     pub enable_http: bool,
 }
@@ -49,7 +47,6 @@ impl Default for PackageUrlResolverOptions {
         Self {
             lib_paths: Vec::new(),
             cache_dir: None,
-            fallback_url: Some("https://rdrr.io/pkg/{package}/man/{topic}.html".to_string()),
             enable_http: true,
         }
     }
@@ -242,10 +239,13 @@ impl PackageUrlResolver {
         response.text().ok()
     }
 
-    /// Build a URL map for external packages
+    /// Build a URL template map for external packages
     ///
-    /// Takes a set of package names and returns a map of package -> reference URL,
-    /// along with information about which packages used fallback URLs.
+    /// Takes a set of package names and returns a map of package -> full URL
+    /// template with a `{topic}` placeholder, along with information about
+    /// which packages could not be resolved. Unresolved packages are NOT
+    /// inserted into the map; their reason is recorded in `fallbacks` so
+    /// callers can fall back to the `external_link_url` template.
     pub fn resolve_packages(&mut self, packages: &HashSet<String>) -> PackageResolveResult {
         let mut result = PackageResolveResult::default();
 
@@ -253,23 +253,12 @@ impl PackageUrlResolver {
             // Check if package is installed first
             let is_installed = self.find_package_dir(package).is_some();
 
-            if let Some(url) = self.resolve(package) {
-                result.urls.insert(package.clone(), url);
-                // Note: If resolve() succeeded, the package was installed and had a pkgdown site
-            } else if let Some(pattern) = &self.options.fallback_url {
-                // Use fallback URL pattern
-                // Extract base URL by removing {topic}.html part
-                // e.g., "https://rdrr.io/pkg/{package}/man/{topic}.html"
-                //    -> "https://rdrr.io/pkg/dplyr/man"
-                let base_url = pattern
-                    .replace("{package}", package)
-                    .replace("{topic}.html", "")
-                    .replace("{topic}", "")
-                    .trim_end_matches('/')
-                    .to_string();
-                result.urls.insert(package.clone(), base_url);
-
-                // Track the fallback reason
+            if let Some(base_url) = self.resolve(package) {
+                // Build a full URL template with a literal {topic} placeholder
+                let template = format!("{}/{{topic}}.html", base_url.trim_end_matches('/'));
+                result.urls.insert(package.clone(), template);
+            } else {
+                // Track the reason why this package could not be resolved
                 let reason = if is_installed {
                     FallbackReason::NoPkgdownSite
                 } else {
@@ -284,18 +273,10 @@ impl PackageUrlResolver {
 
     /// Generate a full URL for a topic in a package
     ///
-    /// If the package has a resolved reference URL, uses that.
-    /// Otherwise, uses the fallback URL pattern.
+    /// Returns None if the package cannot be resolved to a pkgdown site.
     pub fn topic_url(&mut self, package: &str, topic: &str) -> Option<String> {
-        if let Some(base_url) = self.resolve(package) {
-            Some(format!("{}/{}.html", base_url.trim_end_matches('/'), topic))
-        } else {
-            self.options.fallback_url.as_ref().map(|pattern| {
-                pattern
-                    .replace("{package}", package)
-                    .replace("{topic}", topic)
-            })
-        }
+        self.resolve(package)
+            .map(|base_url| format!("{}/{}.html", base_url.trim_end_matches('/'), topic))
     }
 }
 
@@ -477,20 +458,16 @@ Also \link[base]{paste} and \link{local_func}.
     }
 
     #[test]
-    fn test_topic_url_with_fallback() {
+    fn test_topic_url_unresolved_returns_none() {
         let mut resolver = PackageUrlResolver::new(PackageUrlResolverOptions {
             lib_paths: vec![],
             cache_dir: None,
-            fallback_url: Some("https://rdrr.io/pkg/{package}/man/{topic}.html".to_string()),
             enable_http: false,
         });
 
-        // Package not found, should use fallback
+        // Package not found: no URL is produced
         let url = resolver.topic_url("dplyr", "mutate");
-        assert_eq!(
-            url,
-            Some("https://rdrr.io/pkg/dplyr/man/mutate.html".to_string())
-        );
+        assert_eq!(url, None);
     }
 
     #[test]
@@ -512,7 +489,6 @@ URL: https://testpkg.example.com
         let mut resolver = PackageUrlResolver::new(PackageUrlResolverOptions {
             lib_paths: vec![dir.path().to_path_buf()],
             cache_dir: None,
-            fallback_url: None,
             enable_http: false, // Don't actually fetch
         });
 
@@ -525,11 +501,42 @@ URL: https://testpkg.example.com
     }
 
     #[test]
-    fn test_resolve_packages_with_fallback_for_uninstalled() {
+    fn test_resolve_packages_produces_full_templates() {
+        let dir = tempdir().unwrap();
+        let pkg_dir = dir.path().join("testpkg");
+        fs::create_dir_all(&pkg_dir).unwrap();
+
+        let desc = r#"Package: testpkg
+Title: Test Package
+Version: 1.0.0
+Description: A test package.
+License: MIT
+URL: https://testpkg.example.com
+"#;
+        fs::write(pkg_dir.join("DESCRIPTION"), desc).unwrap();
+
+        let mut resolver = PackageUrlResolver::new(PackageUrlResolverOptions {
+            lib_paths: vec![dir.path().to_path_buf()],
+            cache_dir: None,
+            enable_http: false,
+        });
+
+        let packages: HashSet<String> = ["testpkg"].iter().map(|s| s.to_string()).collect();
+        let result = resolver.resolve_packages(&packages);
+
+        // Resolved packages get a full URL template with a {topic} placeholder
+        assert_eq!(
+            result.urls.get("testpkg"),
+            Some(&"https://testpkg.example.com/reference/{topic}.html".to_string())
+        );
+        assert!(result.fallbacks.is_empty());
+    }
+
+    #[test]
+    fn test_resolve_packages_records_fallbacks_for_uninstalled() {
         let mut resolver = PackageUrlResolver::new(PackageUrlResolverOptions {
             lib_paths: vec![], // No lib paths, so no packages can be resolved
             cache_dir: None,
-            fallback_url: Some("https://rdrr.io/pkg/{package}/man/{topic}.html".to_string()),
             enable_http: false,
         });
 
@@ -540,22 +547,10 @@ URL: https://testpkg.example.com
 
         let result = resolver.resolve_packages(&packages);
 
-        // All packages should have fallback URLs
-        assert_eq!(result.urls.len(), 3);
-        assert_eq!(
-            result.urls.get("dplyr"),
-            Some(&"https://rdrr.io/pkg/dplyr/man".to_string())
-        );
-        assert_eq!(
-            result.urls.get("ggplot2"),
-            Some(&"https://rdrr.io/pkg/ggplot2/man".to_string())
-        );
-        assert_eq!(
-            result.urls.get("tidyr"),
-            Some(&"https://rdrr.io/pkg/tidyr/man".to_string())
-        );
+        // Unresolved packages are not inserted into the URL map
+        assert!(result.urls.is_empty());
 
-        // All should be marked as NotInstalled fallbacks
+        // All should be recorded as NotInstalled fallbacks
         assert_eq!(result.fallbacks.len(), 3);
         assert_eq!(
             result.fallbacks.get("dplyr"),
@@ -589,7 +584,6 @@ License: MIT
         let mut resolver = PackageUrlResolver::new(PackageUrlResolverOptions {
             lib_paths: vec![dir.path().to_path_buf()],
             cache_dir: None,
-            fallback_url: Some("https://rdrr.io/pkg/{package}/man/{topic}.html".to_string()),
             enable_http: false,
         });
 
@@ -600,8 +594,8 @@ License: MIT
 
         let result = resolver.resolve_packages(&packages);
 
-        // Both should have URLs (fallback)
-        assert_eq!(result.urls.len(), 2);
+        // Neither could be resolved, so no URLs are produced
+        assert!(result.urls.is_empty());
 
         // Check fallback reasons
         assert_eq!(result.fallbacks.len(), 2);

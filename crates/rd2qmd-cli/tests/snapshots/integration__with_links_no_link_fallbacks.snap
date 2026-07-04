@@ -13,7 +13,7 @@ aliases:
 
 ## Description
 
- This function demonstrates various link types. See [`simple`](https://rdrr.io/r/base/simple.html) for a simpler example. Also see [`stats::lm`](https://rdrr.io/pkg/stats/man/lm.html) for linear models. 
+ This function demonstrates various link types. See `simple` for a simpler example. Also see `stats::lm` for linear models. 
 
 ## Usage
 
@@ -29,13 +29,13 @@ with_links(data)
   - Description
 
 - - `data`
-  - A data frame. See [`base::data.frame`](https://rdrr.io/pkg/base/man/data.frame.html).
+  - A data frame. See `base::data.frame`.
 
 :::
 
 ## See Also
 
-[`simple`](https://rdrr.io/r/base/simple.html), [`ggplot2::ggplot`](https://rdrr.io/pkg/ggplot2/man/ggplot.html)
+`simple`, `ggplot2::ggplot`
 
 ## Examples
 

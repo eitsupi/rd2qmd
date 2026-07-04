@@ -126,21 +126,32 @@ impl Default for CodeExecutionOptions {
 }
 
 /// Link resolution options
+///
+/// Rd links come in two classes, each with its own resolution chain:
+///
+/// - Qualified links (`\link[pkg]{topic}`): `package_urls[pkg]` template,
+///   then the `external_link_url` template, then inline code.
+/// - Unqualified links (`\link{topic}`): `alias_map` lookup rendered with the
+///   `internal_link_url` template, then the `unqualified_link_url` template,
+///   then inline code.
 #[derive(Debug, Clone, Default)]
 pub struct LinkOptions {
-    /// Output file extension for internal links (e.g., "qmd", "md")
-    pub output_extension: String,
-    /// Fallback URL pattern for unresolved links. Use {topic} as placeholder.
-    pub unresolved_url: Option<String>,
-    /// URL pattern for help topic links. Use {package} and {topic} as placeholders;
-    /// {package} is replaced with the empty string for links within the same package.
-    /// Applied as a fallback after `alias_map` / `external_package_urls` /
-    /// `unresolved_url` resolution fails; works even when `output_extension` is not set.
-    pub topic_link_url: Option<String>,
+    /// URL template for internal links resolved via `alias_map`.
+    /// Use {file} for the alias-resolved file basename and {topic} for the
+    /// link topic (e.g. `{file}.qmd`).
+    /// If None, alias-resolved links become inline code.
+    pub internal_link_url: Option<String>,
+    /// URL template for unqualified links when alias lookup fails.
+    /// Use {topic} as placeholder.
+    pub unqualified_link_url: Option<String>,
+    /// URL template for qualified links whose package is not in `package_urls`.
+    /// Use {package} and {topic} as placeholders.
+    pub external_link_url: Option<String>,
     /// Alias to filename map for internal link resolution
     pub alias_map: Option<HashMap<String, String>>,
-    /// External package URL map: package name -> reference documentation base URL
-    pub external_package_urls: Option<HashMap<String, String>>,
+    /// Package URL map: package name -> full URL template with a {topic}
+    /// placeholder (e.g. `https://dplyr.tidyverse.org/reference/{topic}.html`)
+    pub package_urls: Option<HashMap<String, String>>,
 }
 
 /// Options for single-file Rd to QMD conversion
@@ -322,7 +333,7 @@ pub fn extract_rd_metadata(doc: &RdDocument, source_files: Vec<String>) -> RdMet
 ///
 /// // Conversion with custom options
 /// let qmd = RdConverter::new(rd_content)
-///     .output_extension("md")
+///     .internal_link_url("{file}.md")
 ///     .frontmatter(true)
 ///     .pagetitle(true)
 ///     .quarto_code_blocks(false)
@@ -345,9 +356,10 @@ impl RdConverter {
         }
     }
 
-    /// Set the output file extension for link generation (default: "qmd")
-    pub fn output_extension(mut self, ext: impl Into<String>) -> Self {
-        self.options.links.output_extension = ext.into();
+    /// Set the URL template for internal links resolved via the alias map
+    /// (e.g. `{file}.qmd`; placeholders: `{file}`, `{topic}`)
+    pub fn internal_link_url(mut self, template: impl Into<String>) -> Self {
+        self.options.links.internal_link_url = Some(template.into());
         self
     }
 
@@ -381,15 +393,17 @@ impl RdConverter {
         self
     }
 
-    /// Set the fallback URL for unresolved links
-    pub fn unresolved_link_url(mut self, url: impl Into<String>) -> Self {
-        self.options.links.unresolved_url = Some(url.into());
+    /// Set the URL template for unqualified links (`\link{topic}`) when alias
+    /// lookup fails (placeholder: `{topic}`)
+    pub fn unqualified_link_url(mut self, template: impl Into<String>) -> Self {
+        self.options.links.unqualified_link_url = Some(template.into());
         self
     }
 
-    /// Set the URL pattern for help topic links (e.g., `x-r-help:{package}/{topic}`)
-    pub fn topic_link_url(mut self, url: impl Into<String>) -> Self {
-        self.options.links.topic_link_url = Some(url.into());
+    /// Set the URL template for qualified links (`\link[pkg]{topic}`) whose
+    /// package is not in `package_urls` (placeholders: `{package}`, `{topic}`)
+    pub fn external_link_url(mut self, template: impl Into<String>) -> Self {
+        self.options.links.external_link_url = Some(template.into());
         self
     }
 
@@ -399,9 +413,10 @@ impl RdConverter {
         self
     }
 
-    /// Set the external package URL map
-    pub fn external_package_urls(mut self, urls: HashMap<String, String>) -> Self {
-        self.options.links.external_package_urls = Some(urls);
+    /// Set the package URL map (package name -> full URL template with a
+    /// `{topic}` placeholder)
+    pub fn package_urls(mut self, urls: HashMap<String, String>) -> Self {
+        self.options.links.package_urls = Some(urls);
         self
     }
 
@@ -450,7 +465,7 @@ impl RdConverter {
 /// let options = RdConvertOptions {
 ///     frontmatter: FrontmatterOptions { enabled: true, pagetitle: true },
 ///     code: CodeExecutionOptions::default(),
-///     links: LinkOptions { output_extension: "qmd".to_string(), ..Default::default() },
+///     links: LinkOptions { internal_link_url: Some("{file}.qmd".to_string()), ..Default::default() },
 ///     ..Default::default()
 /// };
 ///
@@ -466,11 +481,11 @@ pub fn convert_rd_content(
 
     // Build converter options
     let converter_options = RdToMdastOptions {
-        link_extension: Some(options.links.output_extension.clone()),
+        internal_link_url: options.links.internal_link_url.clone(),
         alias_map: options.links.alias_map.clone(),
-        unresolved_link_url: options.links.unresolved_url.clone(),
-        external_package_urls: options.links.external_package_urls.clone(),
-        topic_link_url: options.links.topic_link_url.clone(),
+        unqualified_link_url: options.links.unqualified_link_url.clone(),
+        package_urls: options.links.package_urls.clone(),
+        external_link_url: options.links.external_link_url.clone(),
         exec_dontrun: options.code.exec_dontrun,
         exec_donttest: options.code.exec_donttest,
         quarto_code_blocks: options.code.quarto_code_blocks,
@@ -564,10 +579,6 @@ mod tests {
                 enabled: true,
                 pagetitle: false,
             },
-            links: LinkOptions {
-                output_extension: "qmd".to_string(),
-                ..Default::default()
-            },
             ..Default::default()
         };
 
@@ -587,10 +598,6 @@ mod tests {
             frontmatter: FrontmatterOptions {
                 enabled: true,
                 pagetitle: true,
-            },
-            links: LinkOptions {
-                output_extension: "qmd".to_string(),
-                ..Default::default()
             },
             ..Default::default()
         };
@@ -667,20 +674,29 @@ mod tests {
     }
 
     #[test]
-    fn test_rd_converter_output_extension() {
+    fn test_rd_converter_internal_link_url() {
         let content = r#"\name{foo}
 \title{Foo}
 \description{Links to \link{bar}.}
 "#;
-        // With md extension
+        let mut alias_map = HashMap::new();
+        alias_map.insert("bar".to_string(), "bar_file".to_string());
+
+        // Alias hit rendered with the internal link template
         let result = RdConverter::new(content)
-            .output_extension("md")
+            .alias_map(alias_map.clone())
+            .internal_link_url("{file}.md")
             .convert()
             .unwrap();
+        assert!(result.contains("[`bar`](bar_file.md)"));
 
-        // Link should use .md extension when alias is not resolved
-        // (unresolved links become inline code by default)
+        // Without a template, alias hits render as inline code
+        let result = RdConverter::new(content)
+            .alias_map(alias_map)
+            .convert()
+            .unwrap();
         assert!(result.contains("`bar`"));
+        assert!(!result.contains("bar_file"));
     }
 
     #[test]
@@ -782,74 +798,60 @@ Sys.sleep(10)
     }
 
     #[test]
-    fn test_rd_converter_unresolved_link_no_fallback() {
+    fn test_rd_converter_unqualified_link_no_fallback() {
         let content = r#"\name{caller}
 \title{Caller}
 \description{Uses \link{unknown_func}.}
 "#;
-        // Without fallback URL: unresolved link becomes inline code
+        // Without a fallback template: unqualified link becomes inline code
         let result = RdConverter::new(content).convert().unwrap();
         insta::assert_snapshot!(result);
     }
 
     #[test]
-    fn test_rd_converter_unresolved_link_with_fallback() {
+    fn test_rd_converter_unqualified_link_with_fallback() {
         let content = r#"\name{caller}
 \title{Caller}
 \description{Uses \link{unknown_func}.}
 "#;
-        // With fallback URL: unresolved link becomes hyperlink
+        // With unqualified_link_url: unqualified link becomes hyperlink
         let result = RdConverter::new(content)
-            .unresolved_link_url("https://example.com/{topic}.html")
+            .unqualified_link_url("https://example.com/{topic}.html")
             .convert()
             .unwrap();
         insta::assert_snapshot!(result);
     }
 
     #[test]
-    fn test_rd_converter_topic_link_url_internal() {
-        let content = r#"\name{caller}
-\title{Caller}
-\description{Uses \link{unknown_func}.}
-"#;
-        // Internal link: {package} is replaced with the empty string
-        let result = RdConverter::new(content)
-            .topic_link_url("x-r-help:{package}/{topic}")
-            .convert()
-            .unwrap();
-        insta::assert_snapshot!(result);
-    }
-
-    #[test]
-    fn test_rd_converter_topic_link_url_external() {
+    fn test_rd_converter_external_link_url() {
         let content = r#"\name{wrapper}
 \title{Wrapper}
 \description{Uses \link[dplyr]{mutate}.}
 "#;
-        // External link without external_package_urls: topic_link_url applies
+        // Qualified link without package_urls: external_link_url applies
         let result = RdConverter::new(content)
-            .topic_link_url("x-r-help:{package}/{topic}")
+            .external_link_url("x-r-help:{package}/{topic}")
             .convert()
             .unwrap();
         insta::assert_snapshot!(result);
     }
 
     #[test]
-    fn test_rd_converter_topic_link_url_external_package_urls_win() {
+    fn test_rd_converter_package_urls_win_over_external_link_url() {
         let content = r#"\name{wrapper}
 \title{Wrapper}
 \description{Uses \link[dplyr]{mutate}.}
 "#;
-        let mut external_urls = HashMap::new();
-        external_urls.insert(
+        let mut package_urls = HashMap::new();
+        package_urls.insert(
             "dplyr".to_string(),
-            "https://dplyr.tidyverse.org/reference".to_string(),
+            "https://dplyr.tidyverse.org/reference/{topic}.html".to_string(),
         );
 
-        // external_package_urls takes precedence over topic_link_url
+        // package_urls takes precedence over external_link_url
         let result = RdConverter::new(content)
-            .external_package_urls(external_urls)
-            .topic_link_url("x-r-help:{package}/{topic}")
+            .package_urls(package_urls)
+            .external_link_url("x-r-help:{package}/{topic}")
             .convert()
             .unwrap();
         assert!(result.contains("https://dplyr.tidyverse.org/reference/mutate.html"));
@@ -857,30 +859,36 @@ Sys.sleep(10)
     }
 
     #[test]
-    fn test_rd_converter_topic_link_url_unresolved_link_url_wins() {
-        let content = r#"\name{caller}
-\title{Caller}
-\description{Uses \link{unknown_func}.}
+    fn test_rd_converter_alias_map_wins_over_unqualified_link_url() {
+        let content = r#"\name{user}
+\title{User}
+\description{See \link{helper}.}
 "#;
-        // unresolved_link_url takes precedence over topic_link_url
+        let mut alias_map = HashMap::new();
+        alias_map.insert("helper".to_string(), "utils".to_string());
+
+        // Alias resolution takes precedence over unqualified_link_url
         let result = RdConverter::new(content)
-            .unresolved_link_url("https://example.com/{topic}.html")
-            .topic_link_url("x-r-help:{package}/{topic}")
+            .alias_map(alias_map)
+            .internal_link_url("{file}.qmd")
+            .unqualified_link_url("https://example.com/{topic}.html")
             .convert()
             .unwrap();
-        assert!(result.contains("https://example.com/unknown_func.html"));
-        assert!(!result.contains("x-r-help:"));
+        assert!(result.contains("[`helper`](utils.qmd)"));
+        assert!(!result.contains("example.com"));
     }
 
     #[test]
-    fn test_rd_converter_topic_link_url_s4_class() {
+    fn test_rd_converter_external_link_url_s4_class() {
         let content = r#"\name{caller}
 \title{Caller}
-\description{See \linkS4class{MyClass} and \linkS4class[methods]{envRefClass}.}
+\description{See \linkS4class[methods]{envRefClass} and \linkS4class{MyClass}.}
 "#;
-        // \linkS4class targets the {classname}-class topic
+        // \linkS4class targets the {classname}-class topic; the qualified link
+        // uses external_link_url, the unqualified one uses unqualified_link_url
         let result = RdConverter::new(content)
-            .topic_link_url("x-r-help:{package}/{topic}")
+            .external_link_url("x-r-help:{package}/{topic}")
+            .unqualified_link_url("https://example.com/{topic}.html")
             .convert()
             .unwrap();
         insta::assert_snapshot!(result);
@@ -896,7 +904,7 @@ Sys.sleep(10)
         alias_map.insert("helper".to_string(), "utils".to_string());
 
         let result = RdConverter::new(content)
-            .output_extension("qmd")
+            .internal_link_url("{file}.qmd")
             .alias_map(alias_map)
             .convert()
             .unwrap();
@@ -905,19 +913,19 @@ Sys.sleep(10)
     }
 
     #[test]
-    fn test_rd_converter_external_package_urls() {
+    fn test_rd_converter_package_urls() {
         let content = r#"\name{wrapper}
 \title{Wrapper}
 \description{Uses \link[dplyr]{filter}.}
 "#;
-        let mut external_urls = HashMap::new();
-        external_urls.insert(
+        let mut package_urls = HashMap::new();
+        package_urls.insert(
             "dplyr".to_string(),
-            "https://dplyr.tidyverse.org/reference".to_string(),
+            "https://dplyr.tidyverse.org/reference/{topic}.html".to_string(),
         );
 
         let result = RdConverter::new(content)
-            .external_package_urls(external_urls)
+            .package_urls(package_urls)
             .convert()
             .unwrap();
 
@@ -965,11 +973,11 @@ Sys.sleep(10)
                 exec_donttest: false,
             },
             links: LinkOptions {
-                output_extension: "md".to_string(),
-                unresolved_url: Some("https://fallback.com/{topic}".to_string()),
-                topic_link_url: None,
+                internal_link_url: Some("{file}.md".to_string()),
+                unqualified_link_url: Some("https://fallback.com/{topic}".to_string()),
+                external_link_url: None,
                 alias_map: None,
-                external_package_urls: None,
+                package_urls: None,
             },
             arguments_format: ArgumentsFormat::PipeTable,
             include_html_output: false,
@@ -991,7 +999,7 @@ Sys.sleep(10)
 "#;
         // All methods can be chained
         let result = RdConverter::new(content)
-            .output_extension("qmd")
+            .internal_link_url("{file}.qmd")
             .frontmatter(true)
             .pagetitle(true)
             .quarto_code_blocks(true)

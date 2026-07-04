@@ -2,9 +2,20 @@
 
 ## [Unreleased]
 
-### Added
+### Changed
 
-- Add `topic_link_url` option (`--topic-link-url` in CLI) to render help topic links with a URL pattern such as `x-r-help:{package}/{topic}` when other link resolution fails. This preserves link targets even when no alias map or external package URLs are configured.
+- **Breaking:** Redesign the link resolution options around the two Rd link classes (qualified `\link[pkg]{topic}` and unqualified `\link{topic}`), replacing the previous mechanism-based options:
+
+  | Old | New |
+  |-----|-----|
+  | `--unresolved-link-url` / `links.unresolved_url` | `--unqualified-link-url` / `links.unqualified_link_url` |
+  | `--external-package-fallback` / `external.fallback_url` | `--external-link-url` / `links.external_link_url` |
+  | `external_package_urls` (base URL map, library API only) | `links.package_urls` (full URL template map with `{topic}` placeholder, now also configurable in `_rd2qmd.toml`) |
+  | `LinkOptions::output_extension` (library API) | `links.internal_link_url` (full URL template with `{file}` placeholder; defaults to `{file}.<output extension>`) |
+
+  Qualified links resolve through `package_urls`, then `--external-link-url` (default: `https://rdrr.io/pkg/{package}/man/{topic}.html`, now applied even when external link resolution is disabled), then inline code. Unqualified links resolve through the alias index rendered with `internal_link_url`, then `--unqualified-link-url` (default: `https://rdrr.io/r/base/{topic}.html`), then inline code. Both fallbacks can be disabled with `--no-external-link-url` / `--no-unqualified-link-url`.
+
+  External link resolution no longer synthesizes fallback URLs itself; packages it cannot resolve now fall back to `--external-link-url`. Manually specified `links.package_urls` entries take precedence over automatically resolved ones. The unreleased `topic_link_url` option is superseded by this redesign.
 
 ## [0.3.0] - 2026-07-02
 

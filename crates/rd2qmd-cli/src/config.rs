@@ -5,6 +5,7 @@
 use anyhow::{Context, Result};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 /// Output format for the Arguments section
@@ -107,21 +108,35 @@ impl CodeConfig {
 #[derive(Debug, Default, Clone, Deserialize, Serialize, JsonSchema)]
 #[serde(default)]
 pub struct LinksConfig {
-    /// URL pattern for unresolved links. Use {topic} as placeholder for the topic name.
+    /// URL template for qualified links (`\link[pkg]{topic}`) whose package is
+    /// not found in `package_urls`. Use {package} and {topic} as placeholders.
+    /// (default: "https://rdrr.io/pkg/{package}/man/{topic}.html")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub external_link_url: Option<String>,
+    /// URL template for unqualified links (`\link{topic}`) when alias lookup fails.
+    /// Use {topic} as placeholder.
     /// (default: "https://rdrr.io/r/base/{topic}.html")
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub unresolved_url: Option<String>,
-    /// URL pattern for help topic links, applied when other link resolution fails.
-    /// Use {package} and {topic} as placeholders; {package} is replaced with the
-    /// empty string for links within the same package.
-    /// Example: "x-r-help:{package}/{topic}"
+    pub unqualified_link_url: Option<String>,
+    /// URL template for internal links resolved via the alias index.
+    /// Use {file} for the alias-resolved file basename and {topic} for the
+    /// link topic. (default: derived from the output format as "{file}.<ext>")
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub topic_link_url: Option<String>,
+    pub internal_link_url: Option<String>,
+    /// Package URL map: package name -> full URL template with a {topic}
+    /// placeholder. Entries take precedence over automatic external link
+    /// resolution and over `external_link_url`.
+    /// Example: `dplyr = "https://dplyr.tidyverse.org/reference/{topic}.html"`
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub package_urls: Option<HashMap<String, String>>,
 }
 
 impl LinksConfig {
     fn is_empty(&self) -> bool {
-        self.unresolved_url.is_none() && self.topic_link_url.is_none()
+        self.external_link_url.is_none()
+            && self.unqualified_link_url.is_none()
+            && self.internal_link_url.is_none()
+            && self.package_urls.is_none()
     }
 }
 
@@ -138,19 +153,11 @@ pub struct ExternalConfig {
     /// Cache directory for pkgdown.yml files (default: system temp directory)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cache_dir: Option<PathBuf>,
-    /// Fallback URL pattern for packages without pkgdown sites.
-    /// Use {package} and {topic} as placeholders.
-    /// (default: "https://rdrr.io/pkg/{package}/man/{topic}.html")
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub fallback_url: Option<String>,
 }
 
 impl ExternalConfig {
     fn is_empty(&self) -> bool {
-        self.enabled.is_none()
-            && self.lib_paths.is_none()
-            && self.cache_dir.is_none()
-            && self.fallback_url.is_none()
+        self.enabled.is_none() && self.lib_paths.is_none() && self.cache_dir.is_none()
     }
 }
 
@@ -211,14 +218,17 @@ impl Config {
                 exec_donttest: Some(true),
             },
             links: LinksConfig {
-                unresolved_url: Some("https://rdrr.io/r/base/{topic}.html".to_string()),
-                topic_link_url: None, // no default value
+                external_link_url: Some(
+                    "https://rdrr.io/pkg/{package}/man/{topic}.html".to_string(),
+                ),
+                unqualified_link_url: Some("https://rdrr.io/r/base/{topic}.html".to_string()),
+                internal_link_url: None, // derived from the output format
+                package_urls: None,      // user should specify
             },
             external: ExternalConfig {
                 enabled: Some(true),
                 lib_paths: None, // user should specify
                 cache_dir: None, // use system default
-                fallback_url: Some("https://rdrr.io/pkg/{package}/man/{topic}.html".to_string()),
             },
         }
     }
@@ -279,19 +289,48 @@ mod tests {
         let config: Config = toml::from_str(
             r#"
             [links]
-            unresolved_url = "https://example.com/{topic}.html"
-            topic_link_url = "x-r-help:{package}/{topic}"
+            unqualified_link_url = "https://example.com/{topic}.html"
+            external_link_url = "x-r-help:{package}/{topic}"
+            internal_link_url = "/reference/{file}.html"
             "#,
         )
         .unwrap();
 
         assert_eq!(
-            config.links.unresolved_url,
+            config.links.unqualified_link_url,
             Some("https://example.com/{topic}.html".to_string())
         );
         assert_eq!(
-            config.links.topic_link_url,
+            config.links.external_link_url,
             Some("x-r-help:{package}/{topic}".to_string())
+        );
+        assert_eq!(
+            config.links.internal_link_url,
+            Some("/reference/{file}.html".to_string())
+        );
+        assert!(config.links.package_urls.is_none());
+    }
+
+    #[test]
+    fn test_parse_links_package_urls() {
+        let config: Config = toml::from_str(
+            r#"
+            [links.package_urls]
+            dplyr = "https://dplyr.tidyverse.org/reference/{topic}.html"
+            rlang = "https://rlang.r-lib.org/reference/{topic}.html"
+            "#,
+        )
+        .unwrap();
+
+        let package_urls = config.links.package_urls.unwrap();
+        assert_eq!(package_urls.len(), 2);
+        assert_eq!(
+            package_urls.get("dplyr"),
+            Some(&"https://dplyr.tidyverse.org/reference/{topic}.html".to_string())
+        );
+        assert_eq!(
+            package_urls.get("rlang"),
+            Some(&"https://rlang.r-lib.org/reference/{topic}.html".to_string())
         );
     }
 
@@ -303,7 +342,6 @@ mod tests {
             enabled = true
             lib_paths = ["/usr/lib/R", "/home/user/R"]
             cache_dir = "/tmp/cache"
-            fallback_url = "https://rdrr.io/pkg/{package}/man/{topic}.html"
             "#,
         )
         .unwrap();
@@ -317,10 +355,6 @@ mod tests {
             ])
         );
         assert_eq!(config.external.cache_dir, Some(PathBuf::from("/tmp/cache")));
-        assert_eq!(
-            config.external.fallback_url,
-            Some("https://rdrr.io/pkg/{package}/man/{topic}.html".to_string())
-        );
     }
 
     #[test]
@@ -339,13 +373,13 @@ mod tests {
             exec_donttest = true
 
             [links]
-            unresolved_url = "https://rdrr.io/r/base/{topic}.html"
+            unqualified_link_url = "https://rdrr.io/r/base/{topic}.html"
+            external_link_url = "https://rdrr.io/pkg/{package}/man/{topic}.html"
 
             [external]
             enabled = true
             lib_paths = ["/usr/local/lib/R/site-library"]
             cache_dir = "/tmp/rd2qmd-cache"
-            fallback_url = "https://rdrr.io/pkg/{package}/man/{topic}.html"
             "#,
         )
         .unwrap();
@@ -368,7 +402,7 @@ mod tests {
         assert_eq!(config.output.format, Some("md".to_string()));
         // Other sections should be default
         assert!(config.code.quarto_code_blocks.is_none());
-        assert!(config.links.unresolved_url.is_none());
+        assert!(config.links.unqualified_link_url.is_none());
         assert!(config.external.enabled.is_none());
     }
 

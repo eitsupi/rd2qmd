@@ -92,13 +92,6 @@
             "null"
           ]
         },
-        "fallback_url": {
-          "description": "Fallback URL pattern for packages without pkgdown sites.\nUse {package} and {topic} as placeholders.\n(default: \"https://rdrr.io/pkg/{package}/man/{topic}.html\")",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
         "lib_paths": {
           "description": "R library paths to search for external packages",
           "type": [
@@ -115,15 +108,32 @@
       "description": "Link resolution configuration",
       "type": "object",
       "properties": {
-        "topic_link_url": {
-          "description": "URL pattern for help topic links, applied when other link resolution fails.\nUse {package} and {topic} as placeholders; {package} is replaced with the\nempty string for links within the same package.\nExample: \"x-r-help:{package}/{topic}\"",
+        "external_link_url": {
+          "description": "URL template for qualified links (`\\link[pkg]{topic}`) whose package is\nnot found in `package_urls`. Use {package} and {topic} as placeholders.\n(default: \"https://rdrr.io/pkg/{package}/man/{topic}.html\")",
           "type": [
             "string",
             "null"
           ]
         },
-        "unresolved_url": {
-          "description": "URL pattern for unresolved links. Use {topic} as placeholder for the topic name.\n(default: \"https://rdrr.io/r/base/{topic}.html\")",
+        "internal_link_url": {
+          "description": "URL template for internal links resolved via the alias index.\nUse {file} for the alias-resolved file basename and {topic} for the\nlink topic. (default: derived from the output format as \"{file}.<ext>\")",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "package_urls": {
+          "description": "Package URL map: package name -> full URL template with a {topic}\nplaceholder. Entries take precedence over automatic external link\nresolution and over `external_link_url`.\nExample: `dplyr = \"https://dplyr.tidyverse.org/reference/{topic}.html\"`",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "unqualified_link_url": {
+          "description": "URL template for unqualified links (`\\link{topic}`) when alias lookup fails.\nUse {topic} as placeholder.\n(default: \"https://rdrr.io/r/base/{topic}.html\")",
           "type": [
             "string",
             "null"

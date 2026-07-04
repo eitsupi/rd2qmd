@@ -40,32 +40,45 @@ pub enum ArgumentsFormat {
 }
 
 /// Options for Rd to mdast conversion
+///
+/// Link resolution distinguishes the two Rd link classes:
+///
+/// - Qualified links (`\link[pkg]{topic}`, `\linkS4class[pkg]{cls}`) name their
+///   target package. They resolve through [`package_urls`](Self::package_urls),
+///   then [`external_link_url`](Self::external_link_url), then inline code.
+/// - Unqualified links (`\link{topic}`, `\linkS4class{cls}`) do not name a
+///   package. They resolve through [`alias_map`](Self::alias_map) +
+///   [`internal_link_url`](Self::internal_link_url), then
+///   [`unqualified_link_url`](Self::unqualified_link_url), then inline code.
+///
+/// `\linkS4class{cls}` links target the `{cls}-class` topic.
 #[derive(Debug, Clone)]
 pub struct RdToMdastOptions {
-    /// File extension for internal links (e.g., "qmd", "md", "html")
-    /// If None, internal links become inline code instead of hyperlinks
-    pub link_extension: Option<String>,
+    /// URL template for internal links resolved via `alias_map`.
+    /// Use `{file}` as placeholder for the alias-resolved file basename and
+    /// `{topic}` for the link topic.
+    /// Example: `{file}.qmd`
+    /// If None, alias-resolved links become inline code instead of hyperlinks
+    pub internal_link_url: Option<String>,
     /// Alias map: maps alias names to Rd file basenames (without extension)
     /// Used to resolve \link{alias} to the correct target file
     pub alias_map: Option<HashMap<String, String>>,
-    /// URL pattern for unresolved links (fallback to base R documentation)
+    /// URL template for unqualified links (`\link{topic}`) when alias lookup
+    /// fails (or no alias map is configured).
     /// Use `{topic}` as placeholder for the topic name.
     /// Example: `https://rdrr.io/r/base/{topic}.html`
-    /// If None, unresolved links become inline code instead of hyperlinks
-    pub unresolved_link_url: Option<String>,
-    /// External package URL map: package name -> reference documentation base URL
-    /// Used to resolve `\link[pkg]{topic}` to external package documentation
-    /// Example: `"dplyr" -> "https://dplyr.tidyverse.org/reference"`
-    /// The full URL is constructed as `{base_url}/{topic}.html`
-    pub external_package_urls: Option<HashMap<String, String>>,
-    /// URL pattern for help topic links, applied as a fallback after
-    /// `alias_map` / `external_package_urls` / `unresolved_link_url` resolution fails.
-    /// Use `{package}` and `{topic}` as placeholders; `{package}` is replaced
-    /// with the empty string for links within the same package.
-    /// Works even when `link_extension` is None.
-    /// Example: `x-r-help:{package}/{topic}`
     /// If None, such links become inline code instead of hyperlinks
-    pub topic_link_url: Option<String>,
+    pub unqualified_link_url: Option<String>,
+    /// Package URL map: package name -> full URL template with a `{topic}`
+    /// placeholder. Used to resolve qualified links (`\link[pkg]{topic}`).
+    /// Example: `"dplyr" -> "https://dplyr.tidyverse.org/reference/{topic}.html"`
+    pub package_urls: Option<HashMap<String, String>>,
+    /// URL template for qualified links (`\link[pkg]{topic}`) whose package is
+    /// not found in `package_urls`.
+    /// Use `{package}` and `{topic}` as placeholders.
+    /// Example: `https://rdrr.io/pkg/{package}/man/{topic}.html`
+    /// If None, such links become inline code instead of hyperlinks
+    pub external_link_url: Option<String>,
     /// Make \dontrun{} example code executable (default: false, shown as non-executable)
     /// This matches pkgdown's semantics: \dontrun{} means "never run this code"
     pub exec_dontrun: bool,
@@ -92,11 +105,11 @@ pub struct RdToMdastOptions {
 impl Default for RdToMdastOptions {
     fn default() -> Self {
         Self {
-            link_extension: None,
+            internal_link_url: None,
             alias_map: None,
-            unresolved_link_url: None,
-            external_package_urls: None,
-            topic_link_url: None,
+            unqualified_link_url: None,
+            package_urls: None,
+            external_link_url: None,
             exec_dontrun: false,
             exec_donttest: true, // pkgdown-compatible: \donttest{} is executable by default
             quarto_code_blocks: true,
@@ -109,8 +122,8 @@ impl Default for RdToMdastOptions {
 /// Convert an Rd document to mdast with default options
 ///
 /// This is a convenience wrapper around [`rd_to_mdast_with_options`] using
-/// [`RdToMdastOptions::default()`]. Internal links will be rendered as
-/// inline code since no alias map or link extension is configured.
+/// [`RdToMdastOptions::default()`]. Help topic links will be rendered as
+/// inline code since no alias map or URL templates are configured.
 ///
 /// For link resolution and other customizations, use
 /// [`rd_to_mdast_with_options`] instead.
@@ -1073,14 +1086,52 @@ impl Converter {
             .collect()
     }
 
-    /// Final fallback for help topic links: a hyperlink built from the
-    /// `topic_link_url` pattern if configured, inline code otherwise.
-    /// `{package}` is replaced with the empty string for same-package links.
-    fn topic_link_fallback(&self, package: Option<&str>, topic: &str, display: String) -> Node {
-        if let Some(pattern) = &self.options.topic_link_url {
-            let url = pattern
-                .replace("{package}", package.unwrap_or(""))
+    /// Resolve a qualified link (`\link[pkg]{topic}`) to a node.
+    ///
+    /// Resolution chain: `package_urls[pkg]` template, then the
+    /// `external_link_url` template, then inline code.
+    fn resolve_qualified_link(&self, package: &str, topic: &str, display: String) -> Node {
+        if let Some(template) = self
+            .options
+            .package_urls
+            .as_ref()
+            .and_then(|map| map.get(package))
+        {
+            let url = template.replace("{topic}", topic);
+            Node::link(url, vec![Node::inline_code(display)])
+        } else if let Some(template) = &self.options.external_link_url {
+            let url = template
+                .replace("{package}", package)
                 .replace("{topic}", topic);
+            Node::link(url, vec![Node::inline_code(display)])
+        } else {
+            Node::inline_code(display)
+        }
+    }
+
+    /// Resolve an unqualified link (`\link{topic}`) to a node.
+    ///
+    /// Resolution chain: `alias_map` lookup rendered with the
+    /// `internal_link_url` template, then the `unqualified_link_url` template,
+    /// then inline code.
+    fn resolve_unqualified_link(&self, topic: &str, display: String) -> Node {
+        if let Some(target_file) = self
+            .options
+            .alias_map
+            .as_ref()
+            .and_then(|map| map.get(topic))
+        {
+            if let Some(template) = &self.options.internal_link_url {
+                let url = template
+                    .replace("{file}", target_file)
+                    .replace("{topic}", topic);
+                Node::link(url, vec![Node::inline_code(display)])
+            } else {
+                // Alias resolved but no internal link template configured
+                Node::inline_code(display)
+            }
+        } else if let Some(template) = &self.options.unqualified_link_url {
+            let url = template.replace("{topic}", topic);
             Node::link(url, vec![Node::inline_code(display)])
         } else {
             Node::inline_code(display)
@@ -1120,9 +1171,9 @@ impl Converter {
                     topic.clone()
                 };
 
-                match (package, &self.options.link_extension) {
-                    // External package link
-                    (Some(pkg), _) => {
+                match package {
+                    // Qualified link: package is known
+                    Some(pkg) => {
                         // Package name is already parsed by the parser (no colon)
                         // For \link[pkg]{topic}: text is None, use pkg::topic format
                         // For \link[pkg:bar]{foo}: text is Some, use the display_text
@@ -1131,44 +1182,10 @@ impl Converter {
                         } else {
                             format!("{}::{}", pkg, topic)
                         };
-
-                        // Check if we have a URL for this external package
-                        if let Some(base_url) = self
-                            .options
-                            .external_package_urls
-                            .as_ref()
-                            .and_then(|map| map.get(pkg.as_str()))
-                        {
-                            let url = format!("{}/{}.html", base_url.trim_end_matches('/'), topic);
-                            Some(Node::link(url, vec![Node::inline_code(display)]))
-                        } else {
-                            // No URL found - fall back to topic_link_url or inline code
-                            Some(self.topic_link_fallback(Some(pkg), topic, display))
-                        }
+                        Some(self.resolve_qualified_link(pkg, topic, display))
                     }
-                    // Internal link with extension configured - create hyperlink
-                    (None, Some(ext)) => {
-                        // Resolve alias to target file using alias_map
-                        if let Some(target_file) = self
-                            .options
-                            .alias_map
-                            .as_ref()
-                            .and_then(|map| map.get(topic))
-                        {
-                            // Found in local package - create relative link
-                            let url = format!("{}.{}", target_file, ext);
-                            Some(Node::link(url, vec![Node::inline_code(display_text)]))
-                        } else if let Some(pattern) = &self.options.unresolved_link_url {
-                            // Not found - use fallback URL pattern
-                            let url = pattern.replace("{topic}", topic);
-                            Some(Node::link(url, vec![Node::inline_code(display_text)]))
-                        } else {
-                            // No fallback configured - topic_link_url or inline code
-                            Some(self.topic_link_fallback(None, topic, display_text))
-                        }
-                    }
-                    // Internal link without extension - topic_link_url or inline code
-                    (None, None) => Some(self.topic_link_fallback(None, topic, display_text)),
+                    // Unqualified link: resolve via alias map or fallback
+                    None => Some(self.resolve_unqualified_link(topic, display_text)),
                 }
             }
             RdNode::Url(url) => Some(Node::link(url.clone(), vec![Node::text(url.clone())])),
@@ -1185,52 +1202,13 @@ impl Converter {
                     format!("{}-class", classname)
                 };
 
-                match (package, &self.options.link_extension) {
-                    // External package link
-                    (Some(pkg), _) => {
-                        if let Some(base_url) = self
-                            .options
-                            .external_package_urls
-                            .as_ref()
-                            .and_then(|map| map.get(pkg.as_str()))
-                        {
-                            // Link to classname-class topic
-                            let url = format!(
-                                "{}/{}-class.html",
-                                base_url.trim_end_matches('/'),
-                                classname
-                            );
-                            Some(Node::link(url, vec![Node::inline_code(display)]))
-                        } else {
-                            // No URL found - fall back to topic_link_url or inline code
-                            let topic = format!("{}-class", classname);
-                            Some(self.topic_link_fallback(Some(pkg), &topic, display))
-                        }
-                    }
-                    // Internal link with extension configured
-                    (None, Some(ext)) => {
-                        // The topic name is classname-class
-                        let topic = format!("{}-class", classname);
-                        if let Some(target_file) = self
-                            .options
-                            .alias_map
-                            .as_ref()
-                            .and_then(|map| map.get(&topic))
-                        {
-                            let url = format!("{}.{}", target_file, ext);
-                            Some(Node::link(url, vec![Node::inline_code(display)]))
-                        } else if let Some(pattern) = &self.options.unresolved_link_url {
-                            let url = pattern.replace("{topic}", &topic);
-                            Some(Node::link(url, vec![Node::inline_code(display)]))
-                        } else {
-                            Some(self.topic_link_fallback(None, &topic, display))
-                        }
-                    }
-                    // No extension - topic_link_url or inline code
-                    (None, None) => {
-                        let topic = format!("{}-class", classname);
-                        Some(self.topic_link_fallback(None, &topic, display))
-                    }
+                // The topic name is classname-class
+                let topic = format!("{}-class", classname);
+                match package {
+                    // Qualified link: package is known
+                    Some(pkg) => Some(self.resolve_qualified_link(pkg, &topic, display)),
+                    // Unqualified link: resolve via alias map or fallback
+                    None => Some(self.resolve_unqualified_link(&topic, display)),
                 }
             }
             // Use UTF-8 encoded text for Markdown/HTML output
