@@ -16,8 +16,8 @@ exec_dontrun = false
 exec_donttest = true
 
 [links]
-unresolved_url = "https://rdrr.io/r/base/{topic}.html"
+external_link_url = "https://rdrr.io/pkg/{package}/man/{topic}.html"
+unqualified_link_url = "https://rdrr.io/r/base/{topic}.html"
 
 [external]
 enabled = true
-fallback_url = "https://rdrr.io/pkg/{package}/man/{topic}.html"

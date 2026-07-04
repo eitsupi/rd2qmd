@@ -19,10 +19,11 @@ pub use external_links::{
     PackageResolveResult, PackageUrlResolver, PackageUrlResolverOptions, collect_external_packages,
 };
 
-/// Reason why a fallback URL was used for a package
+/// Reason why a package could not be resolved to its pkgdown documentation URL
 ///
 /// This is returned in [`FullConvertResult::fallbacks`] when external link resolution
-/// is enabled and a package could not be resolved to its pkgdown documentation URL.
+/// is enabled and a package could not be resolved. Links to such packages fall
+/// back to the `external_link_url` template.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FallbackReason {
     /// Package is not installed in any of the library paths
@@ -140,15 +141,27 @@ pub struct PackageConvertOptions {
     pub quarto_code_blocks: bool,
     /// Number of parallel jobs (None = use all CPUs)
     pub parallel_jobs: Option<usize>,
-    /// URL pattern for unresolved links (fallback to base R documentation)
+    /// URL template for internal links resolved via the alias index.
+    /// Use `{file}` as placeholder for the alias-resolved file basename and
+    /// `{topic}` for the link topic.
+    /// If None, the template is derived from `output_extension` as
+    /// `{file}.<output_extension>`.
+    pub internal_link_url: Option<String>,
+    /// URL template for unqualified links (`\link{topic}`) when alias lookup fails.
     /// Use `{topic}` as placeholder for the topic name.
     /// Example: `https://rdrr.io/r/base/{topic}.html`
-    /// If None, unresolved links become inline code instead of hyperlinks
-    pub unresolved_link_url: Option<String>,
-    /// External package URL map: package name -> reference documentation base URL
-    /// Used for resolving `\link[pkg]{topic}` patterns to actual URLs.
-    /// Example: `{"dplyr" -> "https://dplyr.tidyverse.org/reference"}`
-    pub external_package_urls: Option<HashMap<String, String>>,
+    /// If None, such links become inline code instead of hyperlinks
+    pub unqualified_link_url: Option<String>,
+    /// Package URL map: package name -> full URL template with a `{topic}`
+    /// placeholder. Used for resolving qualified links (`\link[pkg]{topic}`).
+    /// Example: `{"dplyr" -> "https://dplyr.tidyverse.org/reference/{topic}.html"}`
+    pub package_urls: Option<HashMap<String, String>>,
+    /// URL template for qualified links (`\link[pkg]{topic}`) whose package is
+    /// not found in `package_urls`.
+    /// Use `{package}` and `{topic}` as placeholders.
+    /// Example: `https://rdrr.io/pkg/{package}/man/{topic}.html`
+    /// If None, such links become inline code instead of hyperlinks
+    pub external_link_url: Option<String>,
     /// Make \dontrun{} example code executable (default: false)
     /// Matches pkgdown semantics: \dontrun{} means "never run this code"
     pub exec_dontrun: bool,
@@ -178,8 +191,10 @@ impl Default for PackageConvertOptions {
             pagetitle: true,
             quarto_code_blocks: true,
             parallel_jobs: None,
-            unresolved_link_url: None,
-            external_package_urls: None,
+            internal_link_url: None,
+            unqualified_link_url: None,
+            package_urls: None,
+            external_link_url: None,
             exec_dontrun: false,
             exec_donttest: true, // pkgdown-compatible: \donttest{} is executable by default
             include_internal: false, // pkgdown-compatible: skip internal topics by default
@@ -419,12 +434,18 @@ fn convert_single_file(
             return Err(ConvertError::SkipInternal);
         }
 
-        // Build converter options with alias map
+        // Build converter options with alias map. Unless overridden, the
+        // internal link template is derived from the output file extension.
+        let internal_link_url = options
+            .internal_link_url
+            .clone()
+            .unwrap_or_else(|| format!("{{file}}.{}", options.output_extension));
         let converter_options = RdToMdastOptions {
-            link_extension: Some(options.output_extension.clone()),
+            internal_link_url: Some(internal_link_url),
             alias_map: Some(package.alias_index.clone()),
-            unresolved_link_url: options.unresolved_link_url.clone(),
-            external_package_urls: options.external_package_urls.clone(),
+            unqualified_link_url: options.unqualified_link_url.clone(),
+            package_urls: options.package_urls.clone(),
+            external_link_url: options.external_link_url.clone(),
             exec_dontrun: options.exec_dontrun,
             exec_donttest: options.exec_donttest,
             quarto_code_blocks: options.quarto_code_blocks,
@@ -575,9 +596,6 @@ pub struct ExternalLinkOptions {
     pub lib_paths: Vec<PathBuf>,
     /// Cache directory for pkgdown.yml files
     pub cache_dir: Option<PathBuf>,
-    /// Fallback URL pattern for packages without pkgdown sites
-    /// Use {package} and {topic} as placeholders
-    pub fallback_url: Option<String>,
 }
 
 /// Result of a package conversion
@@ -588,7 +606,9 @@ pub struct ExternalLinkOptions {
 pub struct FullConvertResult {
     /// Basic conversion result
     pub conversion: ConvertResult,
-    /// External package URL resolution fallbacks (package name -> reason)
+    /// Packages that could not be resolved during external link resolution
+    /// (package name -> reason). Links to these packages fall back to the
+    /// `external_link_url` template.
     /// Empty when external link resolution is not enabled or not used.
     pub fallbacks: HashMap<String, FallbackReason>,
 }
@@ -628,7 +648,7 @@ pub struct FullConvertResult {
 ///     .convert()?;
 ///
 /// for (pkg, reason) in &result.fallbacks {
-///     println!("Warning: {} used fallback URL ({:?})", pkg, reason);
+///     println!("Warning: {} could not be resolved ({:?})", pkg, reason);
 /// }
 /// ```
 pub struct PackageConverter<'a> {
@@ -653,8 +673,12 @@ impl<'a> PackageConverter<'a> {
     ///
     /// When enabled, the converter will:
     /// 1. Collect external package references from `\link[pkg]{topic}` patterns
-    /// 2. Resolve package documentation URLs from installed packages or pkgdown sites
-    /// 3. Use fallback URLs for packages that cannot be resolved
+    /// 2. Resolve package documentation URL templates from installed packages
+    ///    or pkgdown sites and merge them into `package_urls` (user-provided
+    ///    entries take precedence)
+    /// 3. Report packages that could not be resolved in
+    ///    [`FullConvertResult::fallbacks`]; such links fall back to the
+    ///    `external_link_url` template
     #[cfg(feature = "external-links")]
     pub fn with_external_links(mut self, opts: ExternalLinkOptions) -> Self {
         self.external_opts = Some(opts);
@@ -690,15 +714,20 @@ impl<'a> PackageConverter<'a> {
         if let Some(ext_opts) = self.external_opts
             && !ext_opts.lib_paths.is_empty()
         {
-            // Collect external package references
-            let external_packages = collect_external_packages(self.package);
+            // Collect external package references. Packages already covered
+            // by user-provided package_urls need no automatic resolution:
+            // resolving them anyway would trigger needless HTTP requests and
+            // report false fallbacks for links that resolve just fine.
+            let mut external_packages = collect_external_packages(self.package);
+            if let Some(user_urls) = &self.options.package_urls {
+                external_packages.retain(|pkg| !user_urls.contains_key(pkg));
+            }
 
             if !external_packages.is_empty() {
                 // Resolve URLs
                 let mut resolver = PackageUrlResolver::new(PackageUrlResolverOptions {
                     lib_paths: ext_opts.lib_paths,
                     cache_dir: ext_opts.cache_dir,
-                    fallback_url: ext_opts.fallback_url,
                     enable_http: true,
                 });
                 let resolve_result = resolver.resolve_packages(&external_packages);
@@ -706,9 +735,14 @@ impl<'a> PackageConverter<'a> {
                 // Store fallbacks for reporting
                 fallbacks = resolve_result.fallbacks;
 
-                // Set external package URLs in options
-                if !resolve_result.urls.is_empty() {
-                    self.options.external_package_urls = Some(resolve_result.urls);
+                // Merge resolved URL templates into options; user-provided
+                // package_urls entries take precedence over auto-resolved ones
+                let mut urls = resolve_result.urls;
+                if let Some(user_urls) = self.options.package_urls.take() {
+                    urls.extend(user_urls);
+                }
+                if !urls.is_empty() {
+                    self.options.package_urls = Some(urls);
                 }
             }
         }
@@ -957,8 +991,10 @@ An old deprecated function.
             pagetitle: false,
             quarto_code_blocks: true,
             parallel_jobs: Some(1),
-            unresolved_link_url: None,
-            external_package_urls: None,
+            internal_link_url: None,
+            unqualified_link_url: None,
+            package_urls: None,
+            external_link_url: None,
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false,
@@ -1014,8 +1050,10 @@ An old deprecated function.
             pagetitle: false,
             quarto_code_blocks: true,
             parallel_jobs: Some(1),
-            unresolved_link_url: None,
-            external_package_urls: None,
+            internal_link_url: None,
+            unqualified_link_url: None,
+            package_urls: None,
+            external_link_url: None,
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false,
@@ -1058,8 +1096,10 @@ x <- 1
             pagetitle: true,
             quarto_code_blocks: false, // Plain markdown
             parallel_jobs: Some(1),
-            unresolved_link_url: None,
-            external_package_urls: None,
+            internal_link_url: None,
+            unqualified_link_url: None,
+            package_urls: None,
+            external_link_url: None,
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false,
@@ -1108,7 +1148,7 @@ x <- 1
     }
 
     #[test]
-    fn test_package_converter_with_unresolved_link_url() {
+    fn test_package_converter_with_unqualified_link_url() {
         let dir = tempdir().unwrap();
         let out_dir = tempdir().unwrap();
 
@@ -1127,8 +1167,10 @@ x <- 1
             pagetitle: false,
             quarto_code_blocks: true,
             parallel_jobs: Some(1),
-            unresolved_link_url: Some("https://rdrr.io/r/base/{topic}.html".to_string()),
-            external_package_urls: None,
+            internal_link_url: None,
+            unqualified_link_url: Some("https://rdrr.io/r/base/{topic}.html".to_string()),
+            package_urls: None,
+            external_link_url: None,
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false,
@@ -1147,7 +1189,51 @@ x <- 1
     }
 
     #[test]
-    fn test_package_converter_with_external_package_urls() {
+    fn test_package_converter_with_external_link_url() {
+        let dir = tempdir().unwrap();
+        let out_dir = tempdir().unwrap();
+
+        let rd = r#"\name{caller}
+\alias{caller}
+\title{Caller}
+\description{Uses \link{caller} and \link[somepkg]{something}.}
+"#;
+        fs::write(dir.path().join("caller.Rd"), rd).unwrap();
+
+        let package = RdPackage::from_directory(dir.path(), false).unwrap();
+        let options = PackageConvertOptions {
+            output_dir: out_dir.path().to_path_buf(),
+            output_extension: "qmd".to_string(),
+            frontmatter: false,
+            pagetitle: false,
+            quarto_code_blocks: true,
+            parallel_jobs: Some(1),
+            internal_link_url: None,
+            unqualified_link_url: None,
+            package_urls: None,
+            external_link_url: Some("https://rdrr.io/pkg/{package}/man/{topic}.html".to_string()),
+            exec_dontrun: false,
+            exec_donttest: true,
+            include_internal: false,
+            include_html_output: false,
+            arguments_format: ArgumentsFormat::default(),
+        };
+
+        let result = PackageConverter::new(&package, options).convert().unwrap();
+        assert_eq!(result.conversion.success_count, 1);
+
+        let content = fs::read_to_string(out_dir.path().join("caller.qmd")).unwrap();
+        // Alias-resolved internal link uses the derived {file}.qmd template
+        assert!(content.contains("[`caller`](caller.qmd)"));
+        // Qualified link whose package is not in package_urls falls back to the template
+        assert!(
+            content
+                .contains("[`somepkg::something`](https://rdrr.io/pkg/somepkg/man/something.html)")
+        );
+    }
+
+    #[test]
+    fn test_package_converter_with_package_urls() {
         let dir = tempdir().unwrap();
         let out_dir = tempdir().unwrap();
 
@@ -1158,14 +1244,14 @@ x <- 1
 "#;
         fs::write(dir.path().join("tidyverse_user.Rd"), rd).unwrap();
 
-        let mut external_urls = std::collections::HashMap::new();
-        external_urls.insert(
+        let mut package_urls_map = std::collections::HashMap::new();
+        package_urls_map.insert(
             "dplyr".to_string(),
-            "https://dplyr.tidyverse.org/reference".to_string(),
+            "https://dplyr.tidyverse.org/reference/{topic}.html".to_string(),
         );
-        external_urls.insert(
+        package_urls_map.insert(
             "ggplot2".to_string(),
-            "https://ggplot2.tidyverse.org/reference".to_string(),
+            "https://ggplot2.tidyverse.org/reference/{topic}.html".to_string(),
         );
 
         let package = RdPackage::from_directory(dir.path(), false).unwrap();
@@ -1176,8 +1262,10 @@ x <- 1
             pagetitle: false,
             quarto_code_blocks: true,
             parallel_jobs: Some(1),
-            unresolved_link_url: None,
-            external_package_urls: Some(external_urls),
+            internal_link_url: None,
+            unqualified_link_url: None,
+            package_urls: Some(package_urls_map),
+            external_link_url: None,
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false,
@@ -1202,6 +1290,146 @@ x <- 1
     }
 
     #[test]
+    fn test_package_converter_package_urls_win_over_external_link_url() {
+        let dir = tempdir().unwrap();
+        let out_dir = tempdir().unwrap();
+
+        let rd = r#"\name{wrapper}
+\alias{wrapper}
+\title{Wrapper}
+\description{Uses \link[dplyr]{mutate} and \link[somepkg]{something}.}
+"#;
+        fs::write(dir.path().join("wrapper.Rd"), rd).unwrap();
+
+        let mut package_urls_map = std::collections::HashMap::new();
+        package_urls_map.insert(
+            "dplyr".to_string(),
+            "https://dplyr.tidyverse.org/reference/{topic}.html".to_string(),
+        );
+
+        let package = RdPackage::from_directory(dir.path(), false).unwrap();
+        let options = PackageConvertOptions {
+            output_dir: out_dir.path().to_path_buf(),
+            frontmatter: false,
+            pagetitle: false,
+            parallel_jobs: Some(1),
+            package_urls: Some(package_urls_map),
+            external_link_url: Some("https://rdrr.io/pkg/{package}/man/{topic}.html".to_string()),
+            ..Default::default()
+        };
+
+        let result = PackageConverter::new(&package, options).convert().unwrap();
+        assert_eq!(result.conversion.success_count, 1);
+
+        let content = fs::read_to_string(out_dir.path().join("wrapper.qmd")).unwrap();
+        // package_urls entry takes precedence over external_link_url
+        assert!(
+            content
+                .contains("[`dplyr::mutate`](https://dplyr.tidyverse.org/reference/mutate.html)")
+        );
+        // Packages not in package_urls fall back to external_link_url
+        assert!(
+            content
+                .contains("[`somepkg::something`](https://rdrr.io/pkg/somepkg/man/something.html)")
+        );
+    }
+
+    #[cfg(feature = "external-links")]
+    #[test]
+    fn test_external_links_skip_user_covered_packages() {
+        let dir = tempdir().unwrap();
+        let out_dir = tempdir().unwrap();
+        let lib_dir = tempdir().unwrap(); // empty: nothing resolvable
+
+        let rd = r#"\name{wrapper}
+\alias{wrapper}
+\title{Wrapper}
+\description{Uses \link[dplyr]{mutate} and \link[somepkg]{something}.}
+"#;
+        fs::write(dir.path().join("wrapper.Rd"), rd).unwrap();
+
+        let mut package_urls_map = std::collections::HashMap::new();
+        package_urls_map.insert(
+            "dplyr".to_string(),
+            "https://dplyr.tidyverse.org/reference/{topic}.html".to_string(),
+        );
+
+        let package = RdPackage::from_directory(dir.path(), false).unwrap();
+        let options = PackageConvertOptions {
+            output_dir: out_dir.path().to_path_buf(),
+            frontmatter: false,
+            pagetitle: false,
+            parallel_jobs: Some(1),
+            package_urls: Some(package_urls_map),
+            external_link_url: Some("https://rdrr.io/pkg/{package}/man/{topic}.html".to_string()),
+            ..Default::default()
+        };
+
+        let result = PackageConverter::new(&package, options)
+            .with_external_links(ExternalLinkOptions {
+                lib_paths: vec![lib_dir.path().to_path_buf()],
+                cache_dir: None,
+            })
+            .convert()
+            .unwrap();
+        assert_eq!(result.conversion.success_count, 1);
+
+        // Packages covered by user-provided package_urls are not sent to the
+        // resolver, so they must not show up as fallbacks
+        assert!(!result.fallbacks.contains_key("dplyr"));
+        assert_eq!(
+            result.fallbacks.get("somepkg"),
+            Some(&FallbackReason::NotInstalled)
+        );
+
+        let content = fs::read_to_string(out_dir.path().join("wrapper.qmd")).unwrap();
+        assert!(
+            content
+                .contains("[`dplyr::mutate`](https://dplyr.tidyverse.org/reference/mutate.html)")
+        );
+        assert!(
+            content
+                .contains("[`somepkg::something`](https://rdrr.io/pkg/somepkg/man/something.html)")
+        );
+    }
+
+    #[test]
+    fn test_package_converter_internal_link_url_override() {
+        let dir = tempdir().unwrap();
+        let out_dir = tempdir().unwrap();
+
+        let rd_main = r#"\name{main_func}
+\alias{main_func}
+\title{Main Function}
+\description{See \link{helper_func} for details.}
+"#;
+        let rd_helper = r#"\name{helper_func}
+\alias{helper_func}
+\title{Helper Function}
+\description{A helper.}
+"#;
+        fs::write(dir.path().join("main_func.Rd"), rd_main).unwrap();
+        fs::write(dir.path().join("helper_func.Rd"), rd_helper).unwrap();
+
+        let package = RdPackage::from_directory(dir.path(), false).unwrap();
+        let options = PackageConvertOptions {
+            output_dir: out_dir.path().to_path_buf(),
+            frontmatter: false,
+            pagetitle: false,
+            parallel_jobs: Some(1),
+            // Override the derived {file}.qmd template
+            internal_link_url: Some("/reference/{file}.html".to_string()),
+            ..Default::default()
+        };
+
+        let result = PackageConverter::new(&package, options).convert().unwrap();
+        assert_eq!(result.conversion.success_count, 2);
+
+        let content = fs::read_to_string(out_dir.path().join("main_func.qmd")).unwrap();
+        assert!(content.contains("[`helper_func`](/reference/helper_func.html)"));
+    }
+
+    #[test]
     fn test_package_converter_empty_directory() {
         let dir = tempdir().unwrap();
         let out_dir = tempdir().unwrap();
@@ -1216,8 +1444,10 @@ x <- 1
             pagetitle: false,
             quarto_code_blocks: true,
             parallel_jobs: Some(1),
-            unresolved_link_url: None,
-            external_package_urls: None,
+            internal_link_url: None,
+            unqualified_link_url: None,
+            package_urls: None,
+            external_link_url: None,
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false,
@@ -1252,8 +1482,10 @@ x <- 1
             pagetitle: false,
             quarto_code_blocks: true,
             parallel_jobs: Some(1),
-            unresolved_link_url: None,
-            external_package_urls: None,
+            internal_link_url: None,
+            unqualified_link_url: None,
+            package_urls: None,
+            external_link_url: None,
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false,
@@ -1306,8 +1538,10 @@ x <- 1
             pagetitle: false,
             quarto_code_blocks: true,
             parallel_jobs: Some(1),
-            unresolved_link_url: None,
-            external_package_urls: None,
+            internal_link_url: None,
+            unqualified_link_url: None,
+            package_urls: None,
+            external_link_url: None,
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: false, // Default: skip internal
@@ -1363,8 +1597,10 @@ x <- 1
             pagetitle: false,
             quarto_code_blocks: true,
             parallel_jobs: Some(1),
-            unresolved_link_url: None,
-            external_package_urls: None,
+            internal_link_url: None,
+            unqualified_link_url: None,
+            package_urls: None,
+            external_link_url: None,
             exec_dontrun: false,
             exec_donttest: true,
             include_internal: true, // Include internal topics

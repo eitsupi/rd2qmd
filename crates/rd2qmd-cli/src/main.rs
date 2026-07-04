@@ -14,12 +14,19 @@ use rd2qmd_package::{
     PackageConvertOptions, PackageConverter, RdPackage, TopicIndexOptions, generate_topic_index,
 };
 
+/// Default URL template for qualified links (`\link[pkg]{topic}`) whose
+/// package has no known documentation URL
+const DEFAULT_EXTERNAL_LINK_URL: &str = "https://rdrr.io/pkg/{package}/man/{topic}.html";
+
+/// Default URL template for unqualified links (`\link{topic}`) that alias
+/// resolution cannot resolve
+const DEFAULT_UNQUALIFIED_LINK_URL: &str = "https://rdrr.io/r/base/{topic}.html";
+
 /// Options for external package link resolution
 #[derive(Debug, Clone)]
 struct ExternalLinkOptions {
     lib_paths: Vec<PathBuf>,
     cache_dir: Option<PathBuf>,
-    fallback_url: Option<String>,
 }
 
 /// Output format for markdown conversion
@@ -89,18 +96,44 @@ struct Cli {
     #[arg(long)]
     quarto_code_blocks: Option<bool>,
 
-    /// URL pattern for unresolved links (fallback for base R documentation)
-    /// Use {topic} as placeholder for the topic name.
-    #[arg(
-        long,
-        value_name = "URL_PATTERN",
-        default_value = "https://rdrr.io/r/base/{topic}.html"
-    )]
-    unresolved_link_url: String,
+    /// URL template for qualified links (\link[pkg]{topic}) whose target
+    /// package has no known documentation URL. Rd links are either qualified
+    /// (the package is named) or unqualified (topic only); qualified links
+    /// resolve through the package_urls map (config [links.package_urls],
+    /// merged with automatic pkgdown-site resolution in directory mode)
+    /// first, and this template is the last-resort fallback before the link
+    /// degrades to plain inline code. Use {package} and {topic} as
+    /// placeholders. Two typical uses: point links at an aggregator site
+    /// that hosts documentation for all packages (the default,
+    /// https://rdrr.io/pkg/{package}/man/{topic}.html), or emit a custom URI
+    /// scheme such as x-r-help:{package}/{topic} for viewers that resolve
+    /// help topics themselves (e.g. a terminal help browser).
+    /// [default: https://rdrr.io/pkg/{package}/man/{topic}.html]
+    #[arg(long, value_name = "TEMPLATE")]
+    external_link_url: Option<String>,
 
-    /// Disable fallback URL for unresolved links
-    #[arg(long, conflicts_with = "unresolved_link_url")]
-    no_unresolved_link_url: bool,
+    /// Disable the qualified-link fallback template; qualified links whose
+    /// package has no known documentation URL become plain inline code
+    #[arg(long, conflicts_with = "external_link_url")]
+    no_external_link_url: bool,
+
+    /// URL template for unqualified links (\link{topic}) that alias
+    /// resolution cannot resolve. In directory mode, unqualified links are
+    /// first resolved against the package's own alias index (producing
+    /// internal links); this template is the last-resort fallback for topics
+    /// not found there (typically base R topics) before the link degrades to
+    /// plain inline code. Use {topic} as placeholder. Point it at an
+    /// aggregator site (the default, https://rdrr.io/r/base/{topic}.html),
+    /// or emit a custom URI scheme such as x-r-help:{topic} for viewers that
+    /// resolve help topics themselves.
+    /// [default: https://rdrr.io/r/base/{topic}.html]
+    #[arg(long, value_name = "TEMPLATE")]
+    unqualified_link_url: Option<String>,
+
+    /// Disable the unqualified-link fallback template; unqualified links
+    /// that alias resolution cannot resolve become plain inline code
+    #[arg(long, conflicts_with = "unqualified_link_url")]
+    no_unqualified_link_url: bool,
 
     /// R library path to search for external packages (can be specified multiple times)
     #[arg(long = "r-lib-path", value_name = "PATH")]
@@ -113,15 +146,6 @@ struct Cli {
     /// Disable external package link resolution
     #[arg(long)]
     no_external_links: bool,
-
-    /// Fallback URL pattern for external packages without pkgdown sites
-    /// Use {package} and {topic} as placeholders
-    #[arg(
-        long,
-        value_name = "URL_PATTERN",
-        default_value = "https://rdrr.io/pkg/{package}/man/{topic}.html"
-    )]
-    external_package_fallback: String,
 
     /// Verbose output
     #[arg(short, long)]
@@ -243,7 +267,11 @@ fn main() -> Result<()> {
     let format = merge_format(&cli, &config);
     let use_frontmatter = merge_frontmatter(&cli, &config);
     let use_pagetitle = merge_pagetitle(&cli, &config);
-    let unresolved_link_url = merge_unresolved_link_url(&cli, &config);
+    let unqualified_link_url = merge_unqualified_link_url(&cli, &config);
+    let external_link_url = merge_external_link_url(&cli, &config);
+    // Config-only link options (no CLI flags)
+    let internal_link_url = config.links.internal_link_url.clone();
+    let package_urls = config.links.package_urls.clone();
 
     // Regular conversion mode - input is required
     let input = match &cli.input {
@@ -301,7 +329,9 @@ fn main() -> Result<()> {
             use_frontmatter,
             use_pagetitle,
             quarto_code_blocks,
-            unresolved_link_url.as_deref(),
+            unqualified_link_url.as_deref(),
+            external_link_url.as_deref(),
+            package_urls,
             exec_dontrun,
             exec_donttest,
             include_html_output,
@@ -322,7 +352,10 @@ fn main() -> Result<()> {
             use_frontmatter,
             use_pagetitle,
             quarto_code_blocks,
-            unresolved_link_url,
+            internal_link_url,
+            unqualified_link_url,
+            external_link_url,
+            package_urls,
             external_link_options,
             exec_dontrun,
             exec_donttest,
@@ -350,7 +383,9 @@ fn convert_single_file(
     use_frontmatter: bool,
     use_pagetitle: bool,
     quarto_code_blocks: bool,
-    unresolved_link_url: Option<&str>,
+    unqualified_link_url: Option<&str>,
+    external_link_url: Option<&str>,
+    package_urls: Option<std::collections::HashMap<String, String>>,
     exec_dontrun: bool,
     exec_donttest: bool,
     include_html_output: bool,
@@ -376,7 +411,6 @@ fn convert_single_file(
 
     // Build converter using RdConverter builder pattern
     let mut converter = RdConverter::new(&content)
-        .output_extension(output_extension)
         .frontmatter(use_frontmatter)
         .pagetitle(use_pagetitle)
         .quarto_code_blocks(quarto_code_blocks)
@@ -385,8 +419,16 @@ fn convert_single_file(
         .include_html_output(include_html_output)
         .arguments_format(arguments_format);
 
-    if let Some(url) = unresolved_link_url {
-        converter = converter.unresolved_link_url(url);
+    if let Some(template) = unqualified_link_url {
+        converter = converter.unqualified_link_url(template);
+    }
+
+    if let Some(template) = external_link_url {
+        converter = converter.external_link_url(template);
+    }
+
+    if let Some(urls) = package_urls {
+        converter = converter.package_urls(urls);
     }
 
     let qmd = converter
@@ -418,7 +460,10 @@ fn convert_directory(
     use_frontmatter: bool,
     use_pagetitle: bool,
     quarto_code_blocks: bool,
-    unresolved_link_url: Option<String>,
+    internal_link_url: Option<String>,
+    unqualified_link_url: Option<String>,
+    external_link_url: Option<String>,
+    package_urls: Option<std::collections::HashMap<String, String>>,
     external_link_options: Option<ExternalLinkOptions>,
     exec_dontrun: bool,
     exec_donttest: bool,
@@ -458,6 +503,7 @@ fn convert_directory(
     }
 
     // Configure conversion options
+    let has_external_link_url = external_link_url.is_some();
     let options = PackageConvertOptions {
         output_dir,
         output_extension: output_extension.to_string(),
@@ -465,8 +511,11 @@ fn convert_directory(
         pagetitle: use_pagetitle,
         quarto_code_blocks,
         parallel_jobs: jobs,
-        unresolved_link_url,
-        external_package_urls: None, // Will be set by convert_package_with_external_links
+        internal_link_url,
+        unqualified_link_url,
+        // User-provided entries take precedence over auto-resolved URLs
+        package_urls,
+        external_link_url,
         exec_dontrun,
         exec_donttest,
         include_internal,
@@ -491,7 +540,6 @@ fn convert_directory(
             converter = converter.with_external_links(PackageExternalLinkOptions {
                 lib_paths: opts.lib_paths,
                 cache_dir: opts.cache_dir,
-                fallback_url: opts.fallback_url,
             });
         }
     }
@@ -506,7 +554,7 @@ fn convert_directory(
 
     // Display fallback warnings
     if !quiet && !fallbacks.is_empty() {
-        display_fallback_warnings(&fallbacks, verbose);
+        display_fallback_warnings(&fallbacks, has_external_link_url, verbose);
     }
 
     // Print output files
@@ -578,8 +626,17 @@ fn convert_directory(
 /// Display fallback warnings for external package URL resolution
 fn display_fallback_warnings(
     fallbacks: &std::collections::HashMap<String, FallbackReason>,
+    has_external_link_url: bool,
     verbose: bool,
 ) {
+    // What actually happens to links of unresolved packages depends on
+    // whether the --external-link-url fallback is enabled
+    let outcome = if has_external_link_url {
+        "will use --external-link-url fallback"
+    } else {
+        "links will become plain inline code"
+    };
+
     // Group fallbacks by reason
     let not_installed: Vec<_> = fallbacks
         .iter()
@@ -595,30 +652,29 @@ fn display_fallback_warnings(
     if verbose {
         // Detailed warnings with package names
         for pkg in &not_installed {
-            eprintln!(
-                "Warning: package '{}' is not installed, using fallback URL",
-                pkg
-            );
+            eprintln!("Warning: package '{}' is not installed, {}", pkg, outcome);
         }
         for pkg in &no_pkgdown {
             eprintln!(
-                "Warning: package '{}' has no pkgdown site, using fallback URL",
-                pkg
+                "Warning: package '{}' has no pkgdown site, {}",
+                pkg, outcome
             );
         }
     } else {
         // Summary warnings
         if !not_installed.is_empty() {
             eprintln!(
-                "Warning: {} package(s) not installed, using fallback URLs: {}",
+                "Warning: {} package(s) not installed, {}: {}",
                 not_installed.len(),
+                outcome,
                 not_installed.join(", ")
             );
         }
         if !no_pkgdown.is_empty() {
             eprintln!(
-                "Warning: {} package(s) have no pkgdown site, using fallback URLs: {}",
+                "Warning: {} package(s) have no pkgdown site, {}: {}",
                 no_pkgdown.len(),
+                outcome,
                 no_pkgdown.join(", ")
             );
         }
@@ -752,20 +808,28 @@ fn merge_pagetitle(cli: &Cli, config: &Config) -> bool {
     config.output.pagetitle.unwrap_or(true)
 }
 
-/// Merge unresolved link URL
-fn merge_unresolved_link_url(cli: &Cli, config: &Config) -> Option<String> {
-    // CLI --no-unresolved-link-url explicitly disables
-    if cli.no_unresolved_link_url {
+/// Merge unqualified link URL: CLI > Config > Default
+fn merge_unqualified_link_url(cli: &Cli, config: &Config) -> Option<String> {
+    // CLI --no-unqualified-link-url explicitly disables
+    if cli.no_unqualified_link_url {
         return None;
     }
-    // Config value if specified, otherwise CLI default
-    Some(
-        config
-            .links
-            .unresolved_url
-            .clone()
-            .unwrap_or_else(|| cli.unresolved_link_url.clone()),
-    )
+    cli.unqualified_link_url
+        .clone()
+        .or_else(|| config.links.unqualified_link_url.clone())
+        .or_else(|| Some(DEFAULT_UNQUALIFIED_LINK_URL.to_string()))
+}
+
+/// Merge external link URL: CLI > Config > Default
+fn merge_external_link_url(cli: &Cli, config: &Config) -> Option<String> {
+    // CLI --no-external-link-url explicitly disables
+    if cli.no_external_link_url {
+        return None;
+    }
+    cli.external_link_url
+        .clone()
+        .or_else(|| config.links.external_link_url.clone())
+        .or_else(|| Some(DEFAULT_EXTERNAL_LINK_URL.to_string()))
 }
 
 /// Merge arguments format: explicit CLI > config > default (list-table)
@@ -804,19 +868,9 @@ fn merge_external_link_options(cli: &Cli, config: &Config) -> Option<ExternalLin
     // Merge cache_dir: CLI takes precedence
     let cache_dir = cli.cache_dir.clone().or(config.external.cache_dir.clone());
 
-    // Merge fallback_url: CLI takes precedence
-    let fallback_url = Some(
-        config
-            .external
-            .fallback_url
-            .clone()
-            .unwrap_or_else(|| cli.external_package_fallback.clone()),
-    );
-
     Some(ExternalLinkOptions {
         lib_paths,
         cache_dir,
-        fallback_url,
     })
 }
 
@@ -837,12 +891,13 @@ mod tests {
             no_frontmatter: false,
             no_pagetitle: false,
             quarto_code_blocks: None,
-            unresolved_link_url: "https://rdrr.io/r/base/{topic}.html".to_string(),
-            no_unresolved_link_url: false,
+            external_link_url: None,
+            no_external_link_url: false,
+            unqualified_link_url: None,
+            no_unqualified_link_url: false,
             r_lib_paths: vec![],
             cache_dir: None,
             no_external_links: false,
-            external_package_fallback: "https://rdrr.io/pkg/{package}/man/{topic}.html".to_string(),
             verbose: false,
             quiet: false,
             exec_dontrun: false,
@@ -962,38 +1017,114 @@ mod tests {
     }
 
     #[test]
-    fn test_merge_unresolved_link_url_no_config() {
+    fn test_merge_unqualified_link_url_default() {
         let cli = default_cli();
         let config = Config::default();
-        let url = merge_unresolved_link_url(&cli, &config);
+        let url = merge_unqualified_link_url(&cli, &config);
         assert_eq!(url, Some("https://rdrr.io/r/base/{topic}.html".to_string()));
     }
 
     #[test]
-    fn test_merge_unresolved_link_url_config_overrides() {
+    fn test_merge_unqualified_link_url_config_overrides_default() {
         let cli = default_cli();
         let config = Config {
             links: config::LinksConfig {
-                unresolved_url: Some("https://example.com/{topic}".to_string()),
+                unqualified_link_url: Some("https://example.com/{topic}".to_string()),
+                ..Default::default()
             },
             ..Default::default()
         };
-        let url = merge_unresolved_link_url(&cli, &config);
+        let url = merge_unqualified_link_url(&cli, &config);
         assert_eq!(url, Some("https://example.com/{topic}".to_string()));
     }
 
     #[test]
-    fn test_merge_unresolved_link_url_cli_disables() {
+    fn test_merge_unqualified_link_url_cli_overrides_config() {
         let mut cli = default_cli();
-        cli.no_unresolved_link_url = true;
+        cli.unqualified_link_url = Some("x-r-help:{topic}".to_string());
         let config = Config {
             links: config::LinksConfig {
-                unresolved_url: Some("https://example.com/{topic}".to_string()),
+                unqualified_link_url: Some("https://example.com/{topic}".to_string()),
+                ..Default::default()
             },
             ..Default::default()
         };
-        // --no-unresolved-link-url should disable
-        assert_eq!(merge_unresolved_link_url(&cli, &config), None);
+        let url = merge_unqualified_link_url(&cli, &config);
+        assert_eq!(url, Some("x-r-help:{topic}".to_string()));
+    }
+
+    #[test]
+    fn test_merge_unqualified_link_url_cli_disables() {
+        let mut cli = default_cli();
+        cli.no_unqualified_link_url = true;
+        let config = Config {
+            links: config::LinksConfig {
+                unqualified_link_url: Some("https://example.com/{topic}".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        // --no-unqualified-link-url should disable
+        assert_eq!(merge_unqualified_link_url(&cli, &config), None);
+    }
+
+    #[test]
+    fn test_merge_external_link_url_default() {
+        let cli = default_cli();
+        let config = Config::default();
+        assert_eq!(
+            merge_external_link_url(&cli, &config),
+            Some("https://rdrr.io/pkg/{package}/man/{topic}.html".to_string())
+        );
+    }
+
+    #[test]
+    fn test_merge_external_link_url_config_overrides_default() {
+        let cli = default_cli();
+        let config = Config {
+            links: config::LinksConfig {
+                external_link_url: Some("x-r-help:{package}/{topic}".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert_eq!(
+            merge_external_link_url(&cli, &config),
+            Some("x-r-help:{package}/{topic}".to_string())
+        );
+    }
+
+    #[test]
+    fn test_merge_external_link_url_cli_overrides_config() {
+        let mut cli = default_cli();
+        cli.external_link_url = Some("app-help:{package}/{topic}".to_string());
+        let config = Config {
+            links: config::LinksConfig {
+                external_link_url: Some("x-r-help:{package}/{topic}".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        // CLI is explicitly set, so CLI wins over config
+        assert_eq!(
+            merge_external_link_url(&cli, &config),
+            Some("app-help:{package}/{topic}".to_string())
+        );
+    }
+
+    #[test]
+    fn test_merge_external_link_url_cli_disables() {
+        let mut cli = default_cli();
+        cli.no_external_link_url = true;
+        let config = Config {
+            links: config::LinksConfig {
+                external_link_url: Some("x-r-help:{package}/{topic}".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        // --no-external-link-url should disable
+        assert_eq!(merge_external_link_url(&cli, &config), None);
     }
 
     #[test]

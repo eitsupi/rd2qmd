@@ -65,13 +65,12 @@ fn test_whitespace_around_inline_code() {
             // Check that we have Text with trailing space before inline code
             let mut found_space_before_code = false;
             for (i, child) in p.children.iter().enumerate() {
-                if let Node::Text(t) = child {
-                    if t.value.ends_with(' ')
-                        && i + 1 < p.children.len()
-                        && matches!(p.children[i + 1], Node::InlineCode(_))
-                    {
-                        found_space_before_code = true;
-                    }
+                if let Node::Text(t) = child
+                    && t.value.ends_with(' ')
+                    && i + 1 < p.children.len()
+                    && matches!(p.children[i + 1], Node::InlineCode(_))
+                {
+                    found_space_before_code = true;
                 }
             }
             assert!(
@@ -95,10 +94,10 @@ fn test_internal_link_unresolved_becomes_inline_code() {
     // When topic is not in alias_map and no fallback URL, it becomes inline code
     let doc = parse("\\title{T}\n\\description{See \\link{other_func}}").unwrap();
     let options = RdToMdastOptions {
-        link_extension: Some("qmd".to_string()),
+        internal_link_url: Some("{file}.qmd".to_string()),
         alias_map: None,
-        unresolved_link_url: None,
-        external_package_urls: None,
+        unqualified_link_url: None,
+        package_urls: None,
         exec_dontrun: false,
         exec_donttest: false,
         quarto_code_blocks: true,
@@ -131,10 +130,10 @@ fn test_internal_link_with_fallback_url() {
     // When topic is not in alias_map but fallback URL is set, use it
     let doc = parse("\\title{T}\n\\description{See \\link{vector}}").unwrap();
     let options = RdToMdastOptions {
-        link_extension: Some("qmd".to_string()),
+        internal_link_url: Some("{file}.qmd".to_string()),
         alias_map: None,
-        unresolved_link_url: Some("https://rdrr.io/r/base/{topic}.html".to_string()),
-        external_package_urls: None,
+        unqualified_link_url: Some("https://rdrr.io/r/base/{topic}.html".to_string()),
+        package_urls: None,
         exec_dontrun: false,
         exec_donttest: false,
         quarto_code_blocks: true,
@@ -163,9 +162,9 @@ fn test_internal_link_with_fallback_url() {
 }
 
 #[test]
-fn test_internal_link_without_extension() {
+fn test_unqualified_link_default_inline_code() {
     let doc = parse("\\title{T}\n\\description{See \\link{other_func}}").unwrap();
-    let options = RdToMdastOptions::default(); // No link_extension
+    let options = RdToMdastOptions::default(); // No templates configured
     let mdast = rd_to_mdast_with_options(&doc, &options);
 
     // Should be inline code, not a link
@@ -184,7 +183,157 @@ fn test_internal_link_without_extension() {
     });
     assert!(
         has_inline_code,
-        "Expected internal link without extension to be inline code"
+        "Expected unqualified link with default options to be inline code"
+    );
+}
+
+#[test]
+fn test_unqualified_link_url_without_internal_template() {
+    // unqualified_link_url applies even when no internal_link_url is set
+    let doc = parse("\\title{T}\n\\description{See \\link{other_func}}").unwrap();
+    let options = RdToMdastOptions {
+        unqualified_link_url: Some("x-r-help:{topic}".to_string()),
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+
+    let has_link = mdast.children.iter().any(|n| {
+        if let Node::Paragraph(p) = n {
+            p.children.iter().any(|c| {
+                if let Node::Link(l) = c {
+                    l.url == "x-r-help:other_func"
+                } else {
+                    false
+                }
+            })
+        } else {
+            false
+        }
+    });
+    assert!(
+        has_link,
+        "Expected unqualified_link_url to be used without internal_link_url"
+    );
+}
+
+#[test]
+fn test_alias_map_wins_over_unqualified_link_url() {
+    // Alias resolution takes precedence over unqualified_link_url
+    let doc = parse("\\title{T}\n\\description{See \\link{vector}}").unwrap();
+    let mut alias_map = HashMap::new();
+    alias_map.insert("vector".to_string(), "vector_file".to_string());
+    let options = RdToMdastOptions {
+        internal_link_url: Some("{file}.qmd".to_string()),
+        alias_map: Some(alias_map),
+        unqualified_link_url: Some("https://rdrr.io/r/base/{topic}.html".to_string()),
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+
+    let has_link = mdast.children.iter().any(|n| {
+        if let Node::Paragraph(p) = n {
+            p.children.iter().any(|c| {
+                if let Node::Link(l) = c {
+                    l.url == "vector_file.qmd"
+                } else {
+                    false
+                }
+            })
+        } else {
+            false
+        }
+    });
+    assert!(
+        has_link,
+        "Expected alias resolution to take precedence over unqualified_link_url"
+    );
+}
+
+#[test]
+fn test_external_link_url_fallback() {
+    // external_link_url applies to qualified links when package_urls misses
+    let doc = parse("\\title{T}\n\\description{See \\link[dplyr]{filter}}").unwrap();
+    let options = RdToMdastOptions {
+        external_link_url: Some("x-r-help:{package}/{topic}".to_string()),
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+
+    let has_link = mdast.children.iter().any(|n| {
+        if let Node::Paragraph(p) = n {
+            p.children.iter().any(|c| {
+                if let Node::Link(l) = c {
+                    l.url == "x-r-help:dplyr/filter"
+                } else {
+                    false
+                }
+            })
+        } else {
+            false
+        }
+    });
+    assert!(
+        has_link,
+        "Expected external_link_url to be used for qualified link without URL map"
+    );
+}
+
+#[test]
+fn test_link_s4class_unqualified_link_url_fallback() {
+    // \linkS4class{cls} targets the {classname}-class topic; without a package
+    // it resolves through the unqualified chain
+    let doc = parse("\\title{T}\n\\description{See \\linkS4class{MyClass}}").unwrap();
+    let options = RdToMdastOptions {
+        unqualified_link_url: Some("x-r-help:{topic}".to_string()),
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+
+    let has_link = mdast.children.iter().any(|n| {
+        if let Node::Paragraph(p) = n {
+            p.children.iter().any(|c| {
+                if let Node::Link(l) = c {
+                    l.url == "x-r-help:MyClass-class"
+                } else {
+                    false
+                }
+            })
+        } else {
+            false
+        }
+    });
+    assert!(
+        has_link,
+        "Expected unqualified_link_url to be used for \\linkS4class without a package"
+    );
+}
+
+#[test]
+fn test_link_s4class_qualified_external_link_url_fallback() {
+    // \linkS4class[pkg]{cls} is a qualified link and uses the qualified chain
+    let doc = parse("\\title{T}\n\\description{See \\linkS4class[methods]{envRefClass}}").unwrap();
+    let options = RdToMdastOptions {
+        external_link_url: Some("x-r-help:{package}/{topic}".to_string()),
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+
+    let has_link = mdast.children.iter().any(|n| {
+        if let Node::Paragraph(p) = n {
+            p.children.iter().any(|c| {
+                if let Node::Link(l) = c {
+                    l.url == "x-r-help:methods/envRefClass-class"
+                } else {
+                    false
+                }
+            })
+        } else {
+            false
+        }
+    });
+    assert!(
+        has_link,
+        "Expected external_link_url to be used for qualified \\linkS4class"
     );
 }
 
@@ -192,10 +341,10 @@ fn test_internal_link_without_extension() {
 fn test_external_link_without_url_becomes_inline_code() {
     let doc = parse("\\title{T}\n\\description{See \\link[dplyr]{filter}}").unwrap();
     let options = RdToMdastOptions {
-        link_extension: Some("qmd".to_string()),
+        internal_link_url: Some("{file}.qmd".to_string()),
         alias_map: None,
-        unresolved_link_url: None,
-        external_package_urls: None,
+        unqualified_link_url: None,
+        package_urls: None,
         exec_dontrun: false,
         exec_donttest: false,
         quarto_code_blocks: true,
@@ -229,17 +378,17 @@ fn test_external_link_with_url_becomes_hyperlink() {
 
     let doc = parse("\\title{T}\n\\description{See \\link[dplyr]{filter}}").unwrap();
 
-    let mut external_urls = HashMap::new();
-    external_urls.insert(
+    let mut package_urls_map = HashMap::new();
+    package_urls_map.insert(
         "dplyr".to_string(),
-        "https://dplyr.tidyverse.org/reference".to_string(),
+        "https://dplyr.tidyverse.org/reference/{topic}.html".to_string(),
     );
 
     let options = RdToMdastOptions {
-        link_extension: Some("qmd".to_string()),
+        internal_link_url: Some("{file}.qmd".to_string()),
         alias_map: None,
-        unresolved_link_url: None,
-        external_package_urls: Some(external_urls),
+        unqualified_link_url: None,
+        package_urls: Some(package_urls_map),
         exec_dontrun: false,
         exec_donttest: false,
         quarto_code_blocks: true,
@@ -274,17 +423,17 @@ fn test_external_link_with_topic_in_package() {
     // Test \link[rlang:dyn-dots]{text} pattern where pkg:topic is in the package field
     let doc = parse("\\title{T}\n\\description{See \\link[rlang:abort]{abort}}").unwrap();
 
-    let mut external_urls = HashMap::new();
-    external_urls.insert(
+    let mut package_urls_map = HashMap::new();
+    package_urls_map.insert(
         "rlang".to_string(),
-        "https://rlang.r-lib.org/reference".to_string(),
+        "https://rlang.r-lib.org/reference/{topic}.html".to_string(),
     );
 
     let options = RdToMdastOptions {
-        link_extension: Some("qmd".to_string()),
+        internal_link_url: Some("{file}.qmd".to_string()),
         alias_map: None,
-        unresolved_link_url: None,
-        external_package_urls: Some(external_urls),
+        unqualified_link_url: None,
+        package_urls: Some(package_urls_map),
         exec_dontrun: false,
         exec_donttest: false,
         quarto_code_blocks: true,
@@ -323,10 +472,10 @@ fn test_alias_resolution() {
     alias_map.insert("DataFrame".to_string(), "pl__DataFrame".to_string());
 
     let options = RdToMdastOptions {
-        link_extension: Some("qmd".to_string()),
+        internal_link_url: Some("{file}.qmd".to_string()),
         alias_map: Some(alias_map),
-        unresolved_link_url: None,
-        external_package_urls: None,
+        unqualified_link_url: None,
+        package_urls: None,
         exec_dontrun: false,
         exec_donttest: false,
         quarto_code_blocks: true,
@@ -416,10 +565,10 @@ fn test_code_wrapping_link_preserves_link() {
     );
 
     let options = RdToMdastOptions {
-        link_extension: Some("qmd".to_string()),
+        internal_link_url: Some("{file}.qmd".to_string()),
         alias_map: Some(alias_map),
-        unresolved_link_url: None,
-        external_package_urls: None,
+        unqualified_link_url: None,
+        package_urls: None,
         exec_dontrun: false,
         exec_donttest: false,
         quarto_code_blocks: true,

@@ -71,7 +71,7 @@ let result = PackageConverter::new(&package, options)
     .convert()?;
 
 for (pkg, reason) in &result.fallbacks {
-    println!("Warning: {} used fallback URL ({:?})", pkg, reason);
+    println!("Warning: {} could not be resolved ({:?})", pkg, reason);
 }
 ```
 

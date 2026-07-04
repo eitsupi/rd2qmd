@@ -192,8 +192,10 @@ fn run_single_benchmark(
         pagetitle: true,
         quarto_code_blocks: true,
         parallel_jobs: Some(jobs),
-        unresolved_link_url: Some("https://rdrr.io/r/base/{topic}.html".to_string()),
-        external_package_urls: external_urls.cloned(),
+        internal_link_url: None,
+        unqualified_link_url: Some("https://rdrr.io/r/base/{topic}.html".to_string()),
+        package_urls: external_urls.cloned(),
+        external_link_url: Some("https://rdrr.io/pkg/{package}/man/{topic}.html".to_string()),
         exec_dontrun: false,
         exec_donttest: true,     // pkgdown-compatible default
         include_internal: false, // skip internal topics by default
@@ -213,7 +215,6 @@ fn resolve_external_urls(
     let mut resolver = PackageUrlResolver::new(PackageUrlResolverOptions {
         lib_paths: lib_paths.to_vec(),
         cache_dir: cache_dir.map(|p| p.to_path_buf()),
-        fallback_url: Some("https://rdrr.io/pkg/{package}/man/{topic}.html".to_string()),
         enable_http: true,
     });
 

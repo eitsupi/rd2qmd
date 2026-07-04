@@ -1,0 +1,6 @@
+---
+source: crates/rd2qmd-cli/tests/integration.rs
+expression: stderr
+---
+Warning: 1 package(s) not installed, will use --external-link-url fallback: somepkg
+Converted 1 files, 0 failed
