@@ -265,7 +265,7 @@ impl Parser {
         Ok(Some(RdNode::Href { url, text }))
     }
 
-    /// Parse \enc{encoded}{fallback}
+    /// Parse \enc{encoded}{fallback} or \enc{encoded} (fallback defaults to encoded)
     /// Preserves both arguments in AST for format-specific output selection
     pub(super) fn parse_enc(&mut self) -> ParseResult<Option<RdNode>> {
         self.skip_whitespace();
@@ -331,7 +331,7 @@ impl Parser {
             .unwrap_or_default()
     }
 
-    /// Parse \eqn{latex}{ascii} or \deqn{latex}{ascii}
+    /// Parse \eqn{latex}{ascii} or \deqn{latex}{ascii}; the `{ascii}` argument is optional
     pub(super) fn parse_equation(&mut self, display: bool) -> ParseResult<Option<RdNode>> {
         self.skip_whitespace();
         self.expect(&TokenKind::OpenBrace)?;
