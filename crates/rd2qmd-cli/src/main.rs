@@ -503,6 +503,7 @@ fn convert_directory(
     }
 
     // Configure conversion options
+    let has_external_link_url = external_link_url.is_some();
     let options = PackageConvertOptions {
         output_dir,
         output_extension: output_extension.to_string(),
@@ -553,7 +554,7 @@ fn convert_directory(
 
     // Display fallback warnings
     if !quiet && !fallbacks.is_empty() {
-        display_fallback_warnings(&fallbacks, verbose);
+        display_fallback_warnings(&fallbacks, has_external_link_url, verbose);
     }
 
     // Print output files
@@ -625,8 +626,17 @@ fn convert_directory(
 /// Display fallback warnings for external package URL resolution
 fn display_fallback_warnings(
     fallbacks: &std::collections::HashMap<String, FallbackReason>,
+    has_external_link_url: bool,
     verbose: bool,
 ) {
+    // What actually happens to links of unresolved packages depends on
+    // whether the --external-link-url fallback is enabled
+    let outcome = if has_external_link_url {
+        "will use --external-link-url fallback"
+    } else {
+        "links will become plain inline code"
+    };
+
     // Group fallbacks by reason
     let not_installed: Vec<_> = fallbacks
         .iter()
@@ -642,30 +652,29 @@ fn display_fallback_warnings(
     if verbose {
         // Detailed warnings with package names
         for pkg in &not_installed {
-            eprintln!(
-                "Warning: package '{}' is not installed, will use --external-link-url fallback",
-                pkg
-            );
+            eprintln!("Warning: package '{}' is not installed, {}", pkg, outcome);
         }
         for pkg in &no_pkgdown {
             eprintln!(
-                "Warning: package '{}' has no pkgdown site, will use --external-link-url fallback",
-                pkg
+                "Warning: package '{}' has no pkgdown site, {}",
+                pkg, outcome
             );
         }
     } else {
         // Summary warnings
         if !not_installed.is_empty() {
             eprintln!(
-                "Warning: {} package(s) not installed, will use --external-link-url fallback: {}",
+                "Warning: {} package(s) not installed, {}: {}",
                 not_installed.len(),
+                outcome,
                 not_installed.join(", ")
             );
         }
         if !no_pkgdown.is_empty() {
             eprintln!(
-                "Warning: {} package(s) have no pkgdown site, will use --external-link-url fallback: {}",
+                "Warning: {} package(s) have no pkgdown site, {}: {}",
                 no_pkgdown.len(),
+                outcome,
                 no_pkgdown.join(", ")
             );
         }

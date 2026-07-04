@@ -714,8 +714,14 @@ impl<'a> PackageConverter<'a> {
         if let Some(ext_opts) = self.external_opts
             && !ext_opts.lib_paths.is_empty()
         {
-            // Collect external package references
-            let external_packages = collect_external_packages(self.package);
+            // Collect external package references. Packages already covered
+            // by user-provided package_urls need no automatic resolution:
+            // resolving them anyway would trigger needless HTTP requests and
+            // report false fallbacks for links that resolve just fine.
+            let mut external_packages = collect_external_packages(self.package);
+            if let Some(user_urls) = &self.options.package_urls {
+                external_packages.retain(|pkg| !user_urls.contains_key(pkg));
+            }
 
             if !external_packages.is_empty() {
                 // Resolve URLs
@@ -1322,6 +1328,65 @@ x <- 1
                 .contains("[`dplyr::mutate`](https://dplyr.tidyverse.org/reference/mutate.html)")
         );
         // Packages not in package_urls fall back to external_link_url
+        assert!(
+            content
+                .contains("[`somepkg::something`](https://rdrr.io/pkg/somepkg/man/something.html)")
+        );
+    }
+
+    #[cfg(feature = "external-links")]
+    #[test]
+    fn test_external_links_skip_user_covered_packages() {
+        let dir = tempdir().unwrap();
+        let out_dir = tempdir().unwrap();
+        let lib_dir = tempdir().unwrap(); // empty: nothing resolvable
+
+        let rd = r#"\name{wrapper}
+\alias{wrapper}
+\title{Wrapper}
+\description{Uses \link[dplyr]{mutate} and \link[somepkg]{something}.}
+"#;
+        fs::write(dir.path().join("wrapper.Rd"), rd).unwrap();
+
+        let mut package_urls_map = std::collections::HashMap::new();
+        package_urls_map.insert(
+            "dplyr".to_string(),
+            "https://dplyr.tidyverse.org/reference/{topic}.html".to_string(),
+        );
+
+        let package = RdPackage::from_directory(dir.path(), false).unwrap();
+        let options = PackageConvertOptions {
+            output_dir: out_dir.path().to_path_buf(),
+            frontmatter: false,
+            pagetitle: false,
+            parallel_jobs: Some(1),
+            package_urls: Some(package_urls_map),
+            external_link_url: Some("https://rdrr.io/pkg/{package}/man/{topic}.html".to_string()),
+            ..Default::default()
+        };
+
+        let result = PackageConverter::new(&package, options)
+            .with_external_links(ExternalLinkOptions {
+                lib_paths: vec![lib_dir.path().to_path_buf()],
+                cache_dir: None,
+            })
+            .convert()
+            .unwrap();
+        assert_eq!(result.conversion.success_count, 1);
+
+        // Packages covered by user-provided package_urls are not sent to the
+        // resolver, so they must not show up as fallbacks
+        assert!(!result.fallbacks.contains_key("dplyr"));
+        assert_eq!(
+            result.fallbacks.get("somepkg"),
+            Some(&FallbackReason::NotInstalled)
+        );
+
+        let content = fs::read_to_string(out_dir.path().join("wrapper.qmd")).unwrap();
+        assert!(
+            content
+                .contains("[`dplyr::mutate`](https://dplyr.tidyverse.org/reference/mutate.html)")
+        );
         assert!(
             content
                 .contains("[`somepkg::something`](https://rdrr.io/pkg/somepkg/man/something.html)")

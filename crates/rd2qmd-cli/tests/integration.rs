@@ -257,3 +257,77 @@ fn test_init_schema() {
     let schema = String::from_utf8(output.stdout).expect("Invalid UTF-8");
     insta::assert_snapshot!("init_schema_json", schema);
 }
+
+/// Run rd2qmd in directory mode with external link resolution against an
+/// empty R library and return the captured stderr. The fixture links to
+/// `dplyr` (covered by `[links.package_urls]` in the config, so it must not
+/// be reported as a fallback) and to `somepkg` (unresolvable).
+fn external_links_warnings(extra_args: &[&str]) -> String {
+    let unique_id = COUNTER.fetch_add(1, Ordering::SeqCst);
+    let root = std::env::temp_dir().join(format!(
+        "rd2qmd_extlinks_{}_{}_{}",
+        std::process::id(),
+        unique_id,
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos(),
+    ));
+    let man_dir = root.join("man");
+    let lib_dir = root.join("emptylib");
+    fs::create_dir_all(&man_dir).expect("Failed to create man dir");
+    fs::create_dir_all(&lib_dir).expect("Failed to create lib dir");
+
+    fs::write(
+        man_dir.join("alpha.Rd"),
+        "\\name{alpha}\n\\alias{alpha}\n\\title{Alpha}\n\\description{Uses \\link[dplyr]{mutate} and \\link[somepkg]{thing}.}\n",
+    )
+    .expect("Failed to write Rd fixture");
+
+    let config_path = root.join("_rd2qmd.toml");
+    fs::write(
+        &config_path,
+        "[links.package_urls]\ndplyr = \"https://dplyr.tidyverse.org/reference/{topic}.html\"\n",
+    )
+    .expect("Failed to write config");
+
+    let output = Command::new(rd2qmd_binary())
+        .arg(&man_dir)
+        .arg("-o")
+        .arg(root.join("out"))
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--r-lib-path")
+        .arg(&lib_dir)
+        .args(extra_args)
+        .output()
+        .expect("Failed to run rd2qmd");
+    assert!(
+        output.status.success(),
+        "rd2qmd failed with status: {}",
+        output.status
+    );
+
+    let stderr = String::from_utf8(output.stderr).expect("Invalid UTF-8");
+    let _ = fs::remove_dir_all(&root);
+    stderr
+}
+
+/// Unresolvable packages are warned about with the actual outcome; packages
+/// covered by user-provided package_urls are excluded from resolution
+#[test]
+fn test_external_links_fallback_warning() {
+    let stderr = external_links_warnings(&[]);
+    insta::assert_snapshot!("external_links_fallback_warning", stderr);
+}
+
+/// With --no-external-link-url the warning reports that links degrade to
+/// plain inline code instead of claiming the disabled fallback will be used
+#[test]
+fn test_external_links_fallback_warning_no_external_link_url() {
+    let stderr = external_links_warnings(&["--no-external-link-url"]);
+    insta::assert_snapshot!(
+        "external_links_fallback_warning_no_external_link_url",
+        stderr
+    );
+}
