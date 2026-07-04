@@ -134,6 +134,27 @@ The config file (`_rd2qmd.toml`) additionally supports
 `links.internal_link_url` to override how alias-resolved internal links are
 rendered (e.g. `/reference/{file}.html` for a site with its own URL layout).
 
+#### Known limitation: unqualified links cannot be attributed to a package
+
+The Rd source of an unqualified link (`\link{topic}`) does not say which
+package owns the topic. R itself resolves this dynamically at display time
+by searching the current package first and then the other installed
+packages — information a static converter does not have. rd2qmd replicates
+the first step exactly (the alias index covers the package's own topics),
+but every remaining unqualified link is rendered with the single
+`--unqualified-link-url` template, which assumes base R by default. An
+unqualified link to a topic from another package — say `\link{lm}`, which
+lives in stats — therefore produces a wrong URL
+(`https://rdrr.io/r/base/lm.html` instead of `.../r/stats/lm.html`).
+
+In practice this stays small: cross-package links are conventionally
+anchored (`\link[stats]{lm}`), and `R CMD check` flags unresolvable links.
+Where it matters you can point the template at a search page, or pass
+`--no-unqualified-link-url` to prefer plain inline code over a possibly
+wrong link. Custom URI scheme consumers are unaffected: a viewer with
+access to R's help system receives `x-r-help:{topic}` and performs the
+same dynamic search-path resolution R would.
+
 ### External link options
 
 External link resolution automatically fills the `package_urls` map:
