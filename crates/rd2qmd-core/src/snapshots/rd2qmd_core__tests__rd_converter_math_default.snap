@@ -12,4 +12,4 @@ $$
 p(x) = \frac{\lambda^x e^{-\lambda}}{x!}
 $$
 
- for $x = 0, 1, 2, \ldots$. The mean is $\lambda$and $E(X)$ equals it.
+ for $x = 0, 1, 2, \ldots$. The mean is $\lambda$ and $E(X)$ equals it.

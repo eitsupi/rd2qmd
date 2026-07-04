@@ -265,7 +265,7 @@ impl Parser {
         Ok(Some(RdNode::Href { url, text }))
     }
 
-    /// Parse \enc{encoded}{fallback}
+    /// Parse \enc{encoded}{fallback} or \enc{encoded} (fallback defaults to encoded)
     /// Preserves both arguments in AST for format-specific output selection
     pub(super) fn parse_enc(&mut self) -> ParseResult<Option<RdNode>> {
         self.skip_whitespace();
@@ -274,6 +274,7 @@ impl Parser {
         self.expect(&TokenKind::CloseBrace)?;
 
         // Parse the fallback argument
+        let pos_before_whitespace = self.pos;
         self.skip_whitespace();
         let fallback = if self.check(&TokenKind::OpenBrace) {
             self.expect(&TokenKind::OpenBrace)?;
@@ -281,7 +282,9 @@ impl Parser {
             self.expect(&TokenKind::CloseBrace)?;
             fb
         } else {
-            // If no fallback provided, use encoded as fallback
+            // No fallback provided; restore the whitespace we skipped so it's
+            // preserved in the surrounding text, and use encoded as fallback.
+            self.pos = pos_before_whitespace;
             encoded.clone()
         };
 
@@ -328,7 +331,7 @@ impl Parser {
             .unwrap_or_default()
     }
 
-    /// Parse \eqn{latex}{ascii} or \deqn{latex}{ascii}
+    /// Parse \eqn{latex}{ascii} or \deqn{latex}{ascii}; the `{ascii}` argument is optional
     pub(super) fn parse_equation(&mut self, display: bool) -> ParseResult<Option<RdNode>> {
         self.skip_whitespace();
         self.expect(&TokenKind::OpenBrace)?;
@@ -336,6 +339,7 @@ impl Parser {
         self.expect(&TokenKind::CloseBrace)?;
 
         // Optional ASCII alternative
+        let pos_before_whitespace = self.pos;
         self.skip_whitespace();
         let ascii = if self.check(&TokenKind::OpenBrace) {
             self.advance();
@@ -343,6 +347,9 @@ impl Parser {
             self.expect(&TokenKind::CloseBrace)?;
             Some(ascii)
         } else {
+            // No second argument; restore the whitespace we skipped so it's
+            // preserved in the surrounding text.
+            self.pos = pos_before_whitespace;
             None
         };
 
@@ -475,6 +482,7 @@ impl Parser {
         self.expect(&TokenKind::CloseBrace)?;
 
         // Check for optional second brace argument (options)
+        let pos_before_whitespace = self.pos;
         self.skip_whitespace();
         let raw_options = if self.check(&TokenKind::OpenBrace) {
             self.advance(); // consume {
@@ -482,6 +490,9 @@ impl Parser {
             self.expect(&TokenKind::CloseBrace)?;
             Some(opts)
         } else {
+            // No second argument; restore the whitespace we skipped so it's
+            // preserved in the surrounding text.
+            self.pos = pos_before_whitespace;
             opt_arg // Fallback to bracket arg if provided
         };
 
