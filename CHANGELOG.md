@@ -15,7 +15,7 @@
 
   Qualified links resolve through `package_urls`, then `--external-link-url` (default: `https://rdrr.io/pkg/{package}/man/{topic}.html`, now applied even when external link resolution is disabled), then inline code. Unqualified links resolve through the alias index rendered with `internal_link_url`, then `--unqualified-link-url` (default: `https://rdrr.io/r/base/{topic}.html`), then inline code. Both fallbacks can be disabled with `--no-external-link-url` / `--no-unqualified-link-url`.
 
-  External link resolution no longer synthesizes fallback URLs itself; packages it cannot resolve now fall back to `--external-link-url`. Manually specified `links.package_urls` entries take precedence over automatically resolved ones. The unreleased `topic_link_url` option is superseded by this redesign.
+  External link resolution no longer synthesizes fallback URLs itself; packages it cannot resolve now fall back to `--external-link-url`. Manually specified `links.package_urls` entries take precedence over automatically resolved ones.
 
 ## [0.3.0] - 2026-07-02
 
