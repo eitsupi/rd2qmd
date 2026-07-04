@@ -823,6 +823,17 @@ Sys.sleep(10)
     }
 
     #[test]
+    fn test_rd_converter_url_autolink() {
+        let content = r#"\name{refs}
+\title{Refs}
+\description{See \url{https://example.com} and \href{https://example.com}{the site}.}
+"#;
+        // \url is written as an autolink; \href with a distinct text is not
+        let result = RdConverter::new(content).convert().unwrap();
+        insta::assert_snapshot!(result);
+    }
+
+    #[test]
     fn test_rd_converter_external_link_url() {
         let content = r#"\name{wrapper}
 \title{Wrapper}

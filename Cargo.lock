@@ -883,6 +883,7 @@ dependencies = [
 name = "rd2qmd-mdast"
 version = "0.3.0"
 dependencies = [
+ "insta",
  "serde",
  "serde_json",
 ]

@@ -17,6 +17,8 @@
 
   External link resolution no longer synthesizes fallback URLs itself; packages it cannot resolve now fall back to `--external-link-url`. Manually specified `links.package_urls` entries take precedence over automatically resolved ones.
 
+- Links whose text equals their URL (e.g. from `\url{}`) are now written as CommonMark autolinks (`<https://example.com>` instead of `[https://example.com](https://example.com)`), so renderers that display link URLs alongside the text no longer show the URL twice.
+
 ## [0.3.0] - 2026-07-02
 
 ### Changed
