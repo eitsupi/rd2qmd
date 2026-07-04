@@ -323,6 +323,13 @@ fn collect_packages_from_nodes(nodes: &[RdNode], packages: &mut HashSet<String>)
             } => {
                 collect_packages_from_nodes(text, packages);
             }
+            RdNode::LinkS4Class {
+                package: Some(pkg), ..
+            } => {
+                // Same "pkg:topic" handling as \link[pkg:topic]{text} above
+                let pkg_name = pkg.split(':').next().unwrap_or(pkg);
+                packages.insert(pkg_name.to_string());
+            }
             // Recurse into container nodes with Vec<RdNode>
             RdNode::Code(children)
             | RdNode::Emph(children)
@@ -455,6 +462,32 @@ Also \link[base]{paste} and \link{local_func}.
         assert!(external.contains("base"));
         // local_func should not be included (no package specified)
         assert!(!external.contains("local_func"));
+    }
+
+    #[test]
+    fn test_collect_external_packages_link_s4_class() {
+        let dir = tempdir().unwrap();
+
+        let rd_content = r#"\name{test}
+\alias{test}
+\title{Test}
+\description{
+See \linkS4class[methods]{envRefClass} and \linkS4class{LocalClass}.
+}
+"#;
+        fs::write(dir.path().join("test.Rd"), rd_content).unwrap();
+
+        let package = RdPackage::from_directory(dir.path(), false).unwrap();
+        let external = collect_external_packages(&package);
+
+        // Qualified \linkS4class links contribute their package
+        assert!(
+            external.contains("methods"),
+            "Expected 'methods' in {:?}",
+            external
+        );
+        // Unqualified \linkS4class links do not
+        assert_eq!(external.len(), 1);
     }
 
     #[test]
