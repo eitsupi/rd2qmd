@@ -102,6 +102,12 @@ struct Cli {
     #[arg(long, conflicts_with = "unresolved_link_url")]
     no_unresolved_link_url: bool,
 
+    /// URL pattern for help topic links, applied when other link resolution fails
+    /// Use {package} and {topic} as placeholders; {package} is empty for
+    /// links within the same package. Example: x-r-help:{package}/{topic}
+    #[arg(long, value_name = "URL_PATTERN")]
+    topic_link_url: Option<String>,
+
     /// R library path to search for external packages (can be specified multiple times)
     #[arg(long = "r-lib-path", value_name = "PATH")]
     r_lib_paths: Vec<PathBuf>,
@@ -244,6 +250,7 @@ fn main() -> Result<()> {
     let use_frontmatter = merge_frontmatter(&cli, &config);
     let use_pagetitle = merge_pagetitle(&cli, &config);
     let unresolved_link_url = merge_unresolved_link_url(&cli, &config);
+    let topic_link_url = merge_topic_link_url(&cli, &config);
 
     // Regular conversion mode - input is required
     let input = match &cli.input {
@@ -302,6 +309,7 @@ fn main() -> Result<()> {
             use_pagetitle,
             quarto_code_blocks,
             unresolved_link_url.as_deref(),
+            topic_link_url.as_deref(),
             exec_dontrun,
             exec_donttest,
             include_html_output,
@@ -351,6 +359,7 @@ fn convert_single_file(
     use_pagetitle: bool,
     quarto_code_blocks: bool,
     unresolved_link_url: Option<&str>,
+    topic_link_url: Option<&str>,
     exec_dontrun: bool,
     exec_donttest: bool,
     include_html_output: bool,
@@ -387,6 +396,10 @@ fn convert_single_file(
 
     if let Some(url) = unresolved_link_url {
         converter = converter.unresolved_link_url(url);
+    }
+
+    if let Some(url) = topic_link_url {
+        converter = converter.topic_link_url(url);
     }
 
     let qmd = converter
@@ -768,6 +781,13 @@ fn merge_unresolved_link_url(cli: &Cli, config: &Config) -> Option<String> {
     )
 }
 
+/// Merge topic link URL: CLI > Config > None (no default value)
+fn merge_topic_link_url(cli: &Cli, config: &Config) -> Option<String> {
+    cli.topic_link_url
+        .clone()
+        .or_else(|| config.links.topic_link_url.clone())
+}
+
 /// Merge arguments format: explicit CLI > config > default (list-table)
 fn merge_arguments_format(cli: &Cli, config: &Config) -> ArgumentsFormat {
     let fmt = cli
@@ -839,6 +859,7 @@ mod tests {
             quarto_code_blocks: None,
             unresolved_link_url: "https://rdrr.io/r/base/{topic}.html".to_string(),
             no_unresolved_link_url: false,
+            topic_link_url: None,
             r_lib_paths: vec![],
             cache_dir: None,
             no_external_links: false,
@@ -975,6 +996,7 @@ mod tests {
         let config = Config {
             links: config::LinksConfig {
                 unresolved_url: Some("https://example.com/{topic}".to_string()),
+                ..Default::default()
             },
             ..Default::default()
         };
@@ -989,11 +1011,54 @@ mod tests {
         let config = Config {
             links: config::LinksConfig {
                 unresolved_url: Some("https://example.com/{topic}".to_string()),
+                ..Default::default()
             },
             ..Default::default()
         };
         // --no-unresolved-link-url should disable
         assert_eq!(merge_unresolved_link_url(&cli, &config), None);
+    }
+
+    #[test]
+    fn test_merge_topic_link_url_no_config() {
+        let cli = default_cli();
+        let config = Config::default();
+        // No default value: None unless explicitly set
+        assert_eq!(merge_topic_link_url(&cli, &config), None);
+    }
+
+    #[test]
+    fn test_merge_topic_link_url_from_config() {
+        let cli = default_cli();
+        let config = Config {
+            links: config::LinksConfig {
+                topic_link_url: Some("x-r-help:{package}/{topic}".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert_eq!(
+            merge_topic_link_url(&cli, &config),
+            Some("x-r-help:{package}/{topic}".to_string())
+        );
+    }
+
+    #[test]
+    fn test_merge_topic_link_url_cli_overrides() {
+        let mut cli = default_cli();
+        cli.topic_link_url = Some("app-help:{package}/{topic}".to_string());
+        let config = Config {
+            links: config::LinksConfig {
+                topic_link_url: Some("x-r-help:{package}/{topic}".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        // CLI is explicitly set, so CLI wins over config
+        assert_eq!(
+            merge_topic_link_url(&cli, &config),
+            Some("app-help:{package}/{topic}".to_string())
+        );
     }
 
     #[test]

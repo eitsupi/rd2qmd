@@ -58,6 +58,14 @@ pub struct RdToMdastOptions {
     /// Example: `"dplyr" -> "https://dplyr.tidyverse.org/reference"`
     /// The full URL is constructed as `{base_url}/{topic}.html`
     pub external_package_urls: Option<HashMap<String, String>>,
+    /// URL pattern for help topic links, applied as a fallback after
+    /// `alias_map` / `external_package_urls` / `unresolved_link_url` resolution fails.
+    /// Use `{package}` and `{topic}` as placeholders; `{package}` is replaced
+    /// with the empty string for links within the same package.
+    /// Works even when `link_extension` is None.
+    /// Example: `x-r-help:{package}/{topic}`
+    /// If None, such links become inline code instead of hyperlinks
+    pub topic_link_url: Option<String>,
     /// Make \dontrun{} example code executable (default: false, shown as non-executable)
     /// This matches pkgdown's semantics: \dontrun{} means "never run this code"
     pub exec_dontrun: bool,
@@ -88,6 +96,7 @@ impl Default for RdToMdastOptions {
             alias_map: None,
             unresolved_link_url: None,
             external_package_urls: None,
+            topic_link_url: None,
             exec_dontrun: false,
             exec_donttest: true, // pkgdown-compatible: \donttest{} is executable by default
             quarto_code_blocks: true,
@@ -1064,6 +1073,20 @@ impl Converter {
             .collect()
     }
 
+    /// Final fallback for help topic links: a hyperlink built from the
+    /// `topic_link_url` pattern if configured, inline code otherwise.
+    /// `{package}` is replaced with the empty string for same-package links.
+    fn topic_link_fallback(&self, package: Option<&str>, topic: &str, display: String) -> Node {
+        if let Some(pattern) = &self.options.topic_link_url {
+            let url = pattern
+                .replace("{package}", package.unwrap_or(""))
+                .replace("{topic}", topic);
+            Node::link(url, vec![Node::inline_code(display)])
+        } else {
+            Node::inline_code(display)
+        }
+    }
+
     fn convert_inline_node(&self, node: &RdNode) -> Option<Node> {
         match node {
             RdNode::Text(s) => Some(Node::text(normalize_whitespace(s))),
@@ -1119,8 +1142,8 @@ impl Converter {
                             let url = format!("{}/{}.html", base_url.trim_end_matches('/'), topic);
                             Some(Node::link(url, vec![Node::inline_code(display)]))
                         } else {
-                            // No URL found - just inline code
-                            Some(Node::inline_code(display))
+                            // No URL found - fall back to topic_link_url or inline code
+                            Some(self.topic_link_fallback(Some(pkg), topic, display))
                         }
                     }
                     // Internal link with extension configured - create hyperlink
@@ -1140,12 +1163,12 @@ impl Converter {
                             let url = pattern.replace("{topic}", topic);
                             Some(Node::link(url, vec![Node::inline_code(display_text)]))
                         } else {
-                            // No fallback configured - just inline code
-                            Some(Node::inline_code(display_text))
+                            // No fallback configured - topic_link_url or inline code
+                            Some(self.topic_link_fallback(None, topic, display_text))
                         }
                     }
-                    // Internal link without extension - just inline code
-                    (None, None) => Some(Node::inline_code(display_text)),
+                    // Internal link without extension - topic_link_url or inline code
+                    (None, None) => Some(self.topic_link_fallback(None, topic, display_text)),
                 }
             }
             RdNode::Url(url) => Some(Node::link(url.clone(), vec![Node::text(url.clone())])),
@@ -1179,7 +1202,9 @@ impl Converter {
                             );
                             Some(Node::link(url, vec![Node::inline_code(display)]))
                         } else {
-                            Some(Node::inline_code(display))
+                            // No URL found - fall back to topic_link_url or inline code
+                            let topic = format!("{}-class", classname);
+                            Some(self.topic_link_fallback(Some(pkg), &topic, display))
                         }
                     }
                     // Internal link with extension configured
@@ -1198,11 +1223,14 @@ impl Converter {
                             let url = pattern.replace("{topic}", &topic);
                             Some(Node::link(url, vec![Node::inline_code(display)]))
                         } else {
-                            Some(Node::inline_code(display))
+                            Some(self.topic_link_fallback(None, &topic, display))
                         }
                     }
-                    // No extension - just inline code
-                    (None, None) => Some(Node::inline_code(display)),
+                    // No extension - topic_link_url or inline code
+                    (None, None) => {
+                        let topic = format!("{}-class", classname);
+                        Some(self.topic_link_fallback(None, &topic, display))
+                    }
                 }
             }
             // Use UTF-8 encoded text for Markdown/HTML output

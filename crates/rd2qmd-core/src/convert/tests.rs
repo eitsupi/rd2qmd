@@ -189,6 +189,124 @@ fn test_internal_link_without_extension() {
 }
 
 #[test]
+fn test_internal_link_topic_link_url_without_extension() {
+    // topic_link_url applies even without link_extension; {package} becomes empty
+    let doc = parse("\\title{T}\n\\description{See \\link{other_func}}").unwrap();
+    let options = RdToMdastOptions {
+        topic_link_url: Some("x-r-help:{package}/{topic}".to_string()),
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+
+    let has_link = mdast.children.iter().any(|n| {
+        if let Node::Paragraph(p) = n {
+            p.children.iter().any(|c| {
+                if let Node::Link(l) = c {
+                    l.url == "x-r-help:/other_func"
+                } else {
+                    false
+                }
+            })
+        } else {
+            false
+        }
+    });
+    assert!(
+        has_link,
+        "Expected topic_link_url to be used for internal link without extension"
+    );
+}
+
+#[test]
+fn test_internal_link_unresolved_url_wins_over_topic_link_url() {
+    // unresolved_link_url takes precedence over topic_link_url
+    let doc = parse("\\title{T}\n\\description{See \\link{vector}}").unwrap();
+    let options = RdToMdastOptions {
+        link_extension: Some("qmd".to_string()),
+        unresolved_link_url: Some("https://rdrr.io/r/base/{topic}.html".to_string()),
+        topic_link_url: Some("x-r-help:{package}/{topic}".to_string()),
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+
+    let has_link = mdast.children.iter().any(|n| {
+        if let Node::Paragraph(p) = n {
+            p.children.iter().any(|c| {
+                if let Node::Link(l) = c {
+                    l.url == "https://rdrr.io/r/base/vector.html"
+                } else {
+                    false
+                }
+            })
+        } else {
+            false
+        }
+    });
+    assert!(
+        has_link,
+        "Expected unresolved_link_url to take precedence over topic_link_url"
+    );
+}
+
+#[test]
+fn test_external_link_topic_link_url_fallback() {
+    // topic_link_url applies to external links when external_package_urls misses
+    let doc = parse("\\title{T}\n\\description{See \\link[dplyr]{filter}}").unwrap();
+    let options = RdToMdastOptions {
+        topic_link_url: Some("x-r-help:{package}/{topic}".to_string()),
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+
+    let has_link = mdast.children.iter().any(|n| {
+        if let Node::Paragraph(p) = n {
+            p.children.iter().any(|c| {
+                if let Node::Link(l) = c {
+                    l.url == "x-r-help:dplyr/filter"
+                } else {
+                    false
+                }
+            })
+        } else {
+            false
+        }
+    });
+    assert!(
+        has_link,
+        "Expected topic_link_url to be used for external link without URL map"
+    );
+}
+
+#[test]
+fn test_link_s4class_topic_link_url_fallback() {
+    // \linkS4class{cls} targets the {classname}-class topic
+    let doc = parse("\\title{T}\n\\description{See \\linkS4class{MyClass}}").unwrap();
+    let options = RdToMdastOptions {
+        topic_link_url: Some("x-r-help:{package}/{topic}".to_string()),
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+
+    let has_link = mdast.children.iter().any(|n| {
+        if let Node::Paragraph(p) = n {
+            p.children.iter().any(|c| {
+                if let Node::Link(l) = c {
+                    l.url == "x-r-help:/MyClass-class"
+                } else {
+                    false
+                }
+            })
+        } else {
+            false
+        }
+    });
+    assert!(
+        has_link,
+        "Expected topic_link_url to be used for \\linkS4class without extension"
+    );
+}
+
+#[test]
 fn test_external_link_without_url_becomes_inline_code() {
     let doc = parse("\\title{T}\n\\description{See \\link[dplyr]{filter}}").unwrap();
     let options = RdToMdastOptions {

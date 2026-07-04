@@ -1,0 +1,44 @@
+---
+source: crates/rd2qmd-cli/tests/integration.rs
+expression: output
+---
+---
+title: "Function with Links"
+pagetitle: "Function with Links — with_links"
+aliases:
+  - "with_links"
+---
+
+# Function with Links
+
+## Description
+
+ This function demonstrates various link types. See [`simple`](x-r-help:/simple) for a simpler example. Also see [`stats::lm`](x-r-help:stats/lm) for linear models. 
+
+## Usage
+
+```r
+with_links(data)
+```
+
+## Arguments
+
+::: {.list-table header-rows=1}
+
+- - Argument
+  - Description
+
+- - `data`
+  - A data frame. See [`base::data.frame`](x-r-help:base/data.frame).
+
+:::
+
+## See Also
+
+[`simple`](x-r-help:/simple), [`ggplot2::ggplot`](x-r-help:ggplot2/ggplot)
+
+## Examples
+
+```{r}
+with_links(mtcars)
+```

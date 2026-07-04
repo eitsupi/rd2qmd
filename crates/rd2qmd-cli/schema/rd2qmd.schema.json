@@ -115,6 +115,13 @@
       "description": "Link resolution configuration",
       "type": "object",
       "properties": {
+        "topic_link_url": {
+          "description": "URL pattern for help topic links, applied when other link resolution fails.\nUse {package} and {topic} as placeholders; {package} is replaced with the\nempty string for links within the same package.\nExample: \"x-r-help:{package}/{topic}\"",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "unresolved_url": {
           "description": "URL pattern for unresolved links. Use {topic} as placeholder for the topic name.\n(default: \"https://rdrr.io/r/base/{topic}.html\")",
           "type": [

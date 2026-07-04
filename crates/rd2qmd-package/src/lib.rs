@@ -425,6 +425,7 @@ fn convert_single_file(
             alias_map: Some(package.alias_index.clone()),
             unresolved_link_url: options.unresolved_link_url.clone(),
             external_package_urls: options.external_package_urls.clone(),
+            topic_link_url: None,
             exec_dontrun: options.exec_dontrun,
             exec_donttest: options.exec_donttest,
             quarto_code_blocks: options.quarto_code_blocks,

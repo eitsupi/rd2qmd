@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Add `topic_link_url` option (`--topic-link-url` in CLI) to render help topic links with a URL pattern such as `x-r-help:{package}/{topic}` when other link resolution fails. This preserves link targets even when no alias map or external package URLs are configured.
+
 ## [0.3.0] - 2026-07-02
 
 ### Changed

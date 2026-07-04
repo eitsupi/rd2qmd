@@ -132,6 +132,11 @@ pub struct LinkOptions {
     pub output_extension: String,
     /// Fallback URL pattern for unresolved links. Use {topic} as placeholder.
     pub unresolved_url: Option<String>,
+    /// URL pattern for help topic links. Use {package} and {topic} as placeholders;
+    /// {package} is replaced with the empty string for links within the same package.
+    /// Applied as a fallback after `alias_map` / `external_package_urls` /
+    /// `unresolved_url` resolution fails; works even when `output_extension` is not set.
+    pub topic_link_url: Option<String>,
     /// Alias to filename map for internal link resolution
     pub alias_map: Option<HashMap<String, String>>,
     /// External package URL map: package name -> reference documentation base URL
@@ -382,6 +387,12 @@ impl RdConverter {
         self
     }
 
+    /// Set the URL pattern for help topic links (e.g., `x-r-help:{package}/{topic}`)
+    pub fn topic_link_url(mut self, url: impl Into<String>) -> Self {
+        self.options.links.topic_link_url = Some(url.into());
+        self
+    }
+
     /// Set the alias map for internal link resolution
     pub fn alias_map(mut self, map: HashMap<String, String>) -> Self {
         self.options.links.alias_map = Some(map);
@@ -459,6 +470,7 @@ pub fn convert_rd_content(
         alias_map: options.links.alias_map.clone(),
         unresolved_link_url: options.links.unresolved_url.clone(),
         external_package_urls: options.links.external_package_urls.clone(),
+        topic_link_url: options.links.topic_link_url.clone(),
         exec_dontrun: options.code.exec_dontrun,
         exec_donttest: options.code.exec_donttest,
         quarto_code_blocks: options.code.quarto_code_blocks,
@@ -795,6 +807,86 @@ Sys.sleep(10)
     }
 
     #[test]
+    fn test_rd_converter_topic_link_url_internal() {
+        let content = r#"\name{caller}
+\title{Caller}
+\description{Uses \link{unknown_func}.}
+"#;
+        // Internal link: {package} is replaced with the empty string
+        let result = RdConverter::new(content)
+            .topic_link_url("x-r-help:{package}/{topic}")
+            .convert()
+            .unwrap();
+        insta::assert_snapshot!(result);
+    }
+
+    #[test]
+    fn test_rd_converter_topic_link_url_external() {
+        let content = r#"\name{wrapper}
+\title{Wrapper}
+\description{Uses \link[dplyr]{mutate}.}
+"#;
+        // External link without external_package_urls: topic_link_url applies
+        let result = RdConverter::new(content)
+            .topic_link_url("x-r-help:{package}/{topic}")
+            .convert()
+            .unwrap();
+        insta::assert_snapshot!(result);
+    }
+
+    #[test]
+    fn test_rd_converter_topic_link_url_external_package_urls_win() {
+        let content = r#"\name{wrapper}
+\title{Wrapper}
+\description{Uses \link[dplyr]{mutate}.}
+"#;
+        let mut external_urls = HashMap::new();
+        external_urls.insert(
+            "dplyr".to_string(),
+            "https://dplyr.tidyverse.org/reference".to_string(),
+        );
+
+        // external_package_urls takes precedence over topic_link_url
+        let result = RdConverter::new(content)
+            .external_package_urls(external_urls)
+            .topic_link_url("x-r-help:{package}/{topic}")
+            .convert()
+            .unwrap();
+        assert!(result.contains("https://dplyr.tidyverse.org/reference/mutate.html"));
+        assert!(!result.contains("x-r-help:"));
+    }
+
+    #[test]
+    fn test_rd_converter_topic_link_url_unresolved_link_url_wins() {
+        let content = r#"\name{caller}
+\title{Caller}
+\description{Uses \link{unknown_func}.}
+"#;
+        // unresolved_link_url takes precedence over topic_link_url
+        let result = RdConverter::new(content)
+            .unresolved_link_url("https://example.com/{topic}.html")
+            .topic_link_url("x-r-help:{package}/{topic}")
+            .convert()
+            .unwrap();
+        assert!(result.contains("https://example.com/unknown_func.html"));
+        assert!(!result.contains("x-r-help:"));
+    }
+
+    #[test]
+    fn test_rd_converter_topic_link_url_s4_class() {
+        let content = r#"\name{caller}
+\title{Caller}
+\description{See \linkS4class{MyClass} and \linkS4class[methods]{envRefClass}.}
+"#;
+        // \linkS4class targets the {classname}-class topic
+        let result = RdConverter::new(content)
+            .topic_link_url("x-r-help:{package}/{topic}")
+            .convert()
+            .unwrap();
+        insta::assert_snapshot!(result);
+    }
+
+    #[test]
     fn test_rd_converter_alias_map() {
         let content = r#"\name{user}
 \title{User}
@@ -875,6 +967,7 @@ Sys.sleep(10)
             links: LinkOptions {
                 output_extension: "md".to_string(),
                 unresolved_url: Some("https://fallback.com/{topic}".to_string()),
+                topic_link_url: None,
                 alias_map: None,
                 external_package_urls: None,
             },

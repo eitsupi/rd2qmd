@@ -79,6 +79,21 @@ fn test_with_links() {
     insta::assert_snapshot!("with_links_qmd", output);
 }
 
+/// --topic-link-url applies to both internal and external links when other
+/// resolution fails (--no-unresolved-link-url disables the default fallback)
+#[test]
+fn test_with_links_topic_link_url() {
+    let output = convert_fixture(
+        "with_links",
+        &[
+            "--no-unresolved-link-url",
+            "--topic-link-url",
+            "x-r-help:{package}/{topic}",
+        ],
+    );
+    insta::assert_snapshot!("with_links_topic_link_url", output);
+}
+
 #[test]
 fn test_formatting() {
     let output = convert_fixture("formatting", &[]);

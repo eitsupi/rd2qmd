@@ -111,11 +111,17 @@ pub struct LinksConfig {
     /// (default: "https://rdrr.io/r/base/{topic}.html")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unresolved_url: Option<String>,
+    /// URL pattern for help topic links, applied when other link resolution fails.
+    /// Use {package} and {topic} as placeholders; {package} is replaced with the
+    /// empty string for links within the same package.
+    /// Example: "x-r-help:{package}/{topic}"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub topic_link_url: Option<String>,
 }
 
 impl LinksConfig {
     fn is_empty(&self) -> bool {
-        self.unresolved_url.is_none()
+        self.unresolved_url.is_none() && self.topic_link_url.is_none()
     }
 }
 
@@ -206,6 +212,7 @@ impl Config {
             },
             links: LinksConfig {
                 unresolved_url: Some("https://rdrr.io/r/base/{topic}.html".to_string()),
+                topic_link_url: None, // no default value
             },
             external: ExternalConfig {
                 enabled: Some(true),
@@ -273,6 +280,7 @@ mod tests {
             r#"
             [links]
             unresolved_url = "https://example.com/{topic}.html"
+            topic_link_url = "x-r-help:{package}/{topic}"
             "#,
         )
         .unwrap();
@@ -280,6 +288,10 @@ mod tests {
         assert_eq!(
             config.links.unresolved_url,
             Some("https://example.com/{topic}.html".to_string())
+        );
+        assert_eq!(
+            config.links.topic_link_url,
+            Some("x-r-help:{package}/{topic}".to_string())
         );
     }
 

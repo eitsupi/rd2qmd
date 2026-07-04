@@ -88,6 +88,7 @@ rd2qmd man/ -o docs/ -j4
 |--------|-------------|
 | `--unresolved-link-url <URL>` | URL pattern for unresolved links. Default: `https://rdrr.io/r/base/{topic}.html` |
 | `--no-unresolved-link-url` | Disable fallback URL for unresolved links |
+| `--topic-link-url <URL>` | URL pattern for help topic links, applied when other link resolution fails. Use `{package}` and `{topic}` as placeholders; `{package}` is empty for links within the same package |
 
 ### External link options
 
