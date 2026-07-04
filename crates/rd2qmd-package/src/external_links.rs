@@ -309,8 +309,8 @@ fn collect_packages_from_nodes(nodes: &[RdNode], packages: &mut HashSet<String>)
                 text,
                 ..
             } => {
-                // The parser stores "pkg:topic" as the package name for \link[pkg:topic]{text}
-                // Extract just the package part (before the colon)
+                // The parser splits \link[pkg:topic]{text} at parse time, so
+                // `pkg` normally has no colon; the split is kept as a guard
                 let pkg_name = pkg.split(':').next().unwrap_or(pkg);
                 packages.insert(pkg_name.to_string());
                 // Also check text content
@@ -326,7 +326,9 @@ fn collect_packages_from_nodes(nodes: &[RdNode], packages: &mut HashSet<String>)
             RdNode::LinkS4Class {
                 package: Some(pkg), ..
             } => {
-                // Same "pkg:topic" handling as \link[pkg:topic]{text} above
+                // Unlike \link, the parser stores the bracket arg of
+                // \linkS4class verbatim, so a "pkg:topic" form may reach us
+                // here; keep only the package part before the colon
                 let pkg_name = pkg.split(':').next().unwrap_or(pkg);
                 packages.insert(pkg_name.to_string());
             }
