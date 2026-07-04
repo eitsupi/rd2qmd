@@ -176,6 +176,13 @@ struct Cli {
     #[arg(long)]
     include_html_output: bool,
 
+    /// Prefer the ASCII representation of \eqn{}/\deqn{} equations over LaTeX
+    /// math when one is present. Intended for renderers without math support,
+    /// such as terminal pagers: \eqn becomes inline code and \deqn becomes a
+    /// plain code block.
+    #[arg(long)]
+    prefer_ascii_math: bool,
+
     /// Output format for the Arguments section: list-table (Quarto list-table, default), grid-table
     /// (Pandoc grid table), pipe-table (GFM pipe table, inline only), or list (Markdown loose list).
     #[arg(long, value_enum)]
@@ -320,6 +327,13 @@ fn main() -> Result<()> {
 
     let include_html_output = cli.include_html_output;
 
+    // prefer_ascii_math: CLI > Config > false (LaTeX math by default)
+    let prefer_ascii_math = if cli.prefer_ascii_math {
+        true
+    } else {
+        config.output.prefer_ascii_math.unwrap_or(false)
+    };
+
     if input.is_file() {
         // Single file conversion (no alias resolution)
         convert_single_file(
@@ -335,6 +349,7 @@ fn main() -> Result<()> {
             exec_dontrun,
             exec_donttest,
             include_html_output,
+            prefer_ascii_math,
             arguments_format,
             cli.verbose,
             cli.quiet,
@@ -361,6 +376,7 @@ fn main() -> Result<()> {
             exec_donttest,
             include_internal,
             include_html_output,
+            prefer_ascii_math,
             arguments_format,
             cli.topic_index.as_deref(),
             cli.verbose,
@@ -389,6 +405,7 @@ fn convert_single_file(
     exec_dontrun: bool,
     exec_donttest: bool,
     include_html_output: bool,
+    prefer_ascii_math: bool,
     arguments_format: ArgumentsFormat,
     verbose: bool,
     quiet: bool,
@@ -417,6 +434,7 @@ fn convert_single_file(
         .exec_dontrun(exec_dontrun)
         .exec_donttest(exec_donttest)
         .include_html_output(include_html_output)
+        .prefer_ascii_math(prefer_ascii_math)
         .arguments_format(arguments_format);
 
     if let Some(template) = unqualified_link_url {
@@ -469,6 +487,7 @@ fn convert_directory(
     exec_donttest: bool,
     include_internal: bool,
     include_html_output: bool,
+    prefer_ascii_math: bool,
     arguments_format: ArgumentsFormat,
     topic_index_path: Option<&Path>,
     verbose: bool,
@@ -520,6 +539,7 @@ fn convert_directory(
         exec_donttest,
         include_internal,
         include_html_output,
+        prefer_ascii_math,
         arguments_format,
     };
 
@@ -904,6 +924,7 @@ mod tests {
             no_exec_donttest: false,
             include_internal: false,
             include_html_output: false,
+            prefer_ascii_math: false,
             arguments_format: None,
             topic_index: None,
             config: None,

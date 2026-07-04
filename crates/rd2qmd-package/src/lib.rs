@@ -178,6 +178,9 @@ pub struct PackageConvertOptions {
     /// HTML renderers and often contain raw HTML markup that produces noise in
     /// plain Markdown. Set to true when targeting an HTML-capable renderer.
     pub include_html_output: bool,
+    /// Prefer the ASCII representation of `\eqn`/`\deqn` equations over
+    /// LaTeX math when one is present (default: false)
+    pub prefer_ascii_math: bool,
     /// Table format for the Arguments section
     pub arguments_format: ArgumentsFormat,
 }
@@ -199,6 +202,7 @@ impl Default for PackageConvertOptions {
             exec_donttest: true, // pkgdown-compatible: \donttest{} is executable by default
             include_internal: false, // pkgdown-compatible: skip internal topics by default
             include_html_output: false,
+            prefer_ascii_math: false,
             arguments_format: ArgumentsFormat::default(),
         }
     }
@@ -451,6 +455,7 @@ fn convert_single_file(
             quarto_code_blocks: options.quarto_code_blocks,
             arguments_format: options.arguments_format.clone(),
             include_html_output: options.include_html_output,
+            prefer_ascii_math: options.prefer_ascii_math,
         };
 
         // Convert to mdast
@@ -999,6 +1004,7 @@ An old deprecated function.
             exec_donttest: true,
             include_internal: false,
             include_html_output: false,
+            prefer_ascii_math: false,
             arguments_format: ArgumentsFormat::default(),
         };
 
@@ -1058,6 +1064,7 @@ An old deprecated function.
             exec_donttest: true,
             include_internal: false,
             include_html_output: false,
+            prefer_ascii_math: false,
             arguments_format: ArgumentsFormat::default(),
         };
 
@@ -1104,6 +1111,7 @@ x <- 1
             exec_donttest: true,
             include_internal: false,
             include_html_output: false,
+            prefer_ascii_math: false,
             arguments_format: ArgumentsFormat::default(),
         };
 
@@ -1175,6 +1183,7 @@ x <- 1
             exec_donttest: true,
             include_internal: false,
             include_html_output: false,
+            prefer_ascii_math: false,
             arguments_format: ArgumentsFormat::default(),
         };
 
@@ -1216,6 +1225,7 @@ x <- 1
             exec_donttest: true,
             include_internal: false,
             include_html_output: false,
+            prefer_ascii_math: false,
             arguments_format: ArgumentsFormat::default(),
         };
 
@@ -1270,6 +1280,7 @@ x <- 1
             exec_donttest: true,
             include_internal: false,
             include_html_output: false,
+            prefer_ascii_math: false,
             arguments_format: ArgumentsFormat::default(),
         };
 
@@ -1452,6 +1463,7 @@ x <- 1
             exec_donttest: true,
             include_internal: false,
             include_html_output: false,
+            prefer_ascii_math: false,
             arguments_format: ArgumentsFormat::default(),
         };
 
@@ -1490,6 +1502,7 @@ x <- 1
             exec_donttest: true,
             include_internal: false,
             include_html_output: false,
+            prefer_ascii_math: false,
             arguments_format: ArgumentsFormat::default(),
         };
 
@@ -1546,6 +1559,7 @@ x <- 1
             exec_donttest: true,
             include_internal: false, // Default: skip internal
             include_html_output: false,
+            prefer_ascii_math: false,
             arguments_format: ArgumentsFormat::default(),
         };
 
@@ -1605,6 +1619,7 @@ x <- 1
             exec_donttest: true,
             include_internal: true, // Include internal topics
             include_html_output: false,
+            prefer_ascii_math: false,
             arguments_format: ArgumentsFormat::default(),
         };
 

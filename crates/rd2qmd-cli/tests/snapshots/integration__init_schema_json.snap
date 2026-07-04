@@ -187,6 +187,13 @@ expression: schema
             "boolean",
             "null"
           ]
+        },
+        "prefer_ascii_math": {
+          "description": "Prefer the ASCII representation of \\eqn{}/\\deqn{} equations over LaTeX\nmath when one is present (default: false). Intended for renderers\nwithout math support, such as terminal pagers.",
+          "type": [
+            "boolean",
+            "null"
+          ]
         }
       }
     }
