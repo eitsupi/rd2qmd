@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Add `--prefer-ascii-math` option (config: `output.prefer_ascii_math`) to prefer the plain-text representation of `\eqn{latex}{ascii}` / `\deqn{latex}{ascii}` equations over LaTeX math, for renderers without math support such as terminal pagers. `\eqn` is output as inline code and `\deqn` as a plain code block.
+
 ### Changed
 
 - **Breaking:** Redesign the link resolution options around the two Rd link classes (qualified `\link[pkg]{topic}` and unqualified `\link{topic}`), replacing the previous mechanism-based options:

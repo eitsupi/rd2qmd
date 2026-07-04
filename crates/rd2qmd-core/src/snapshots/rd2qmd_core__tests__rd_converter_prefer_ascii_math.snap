@@ -1,0 +1,16 @@
+---
+source: crates/rd2qmd-core/src/lib.rs
+expression: result
+---
+# Poisson
+
+## Description
+
+ The density is 
+
+```
+p(x) = lambda^x
+exp(-lambda) / x!
+```
+
+ for `x = 0, 1, 2, ...`. The mean is $\lambda$and $E(X)$ equals it.

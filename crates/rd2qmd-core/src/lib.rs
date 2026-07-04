@@ -167,6 +167,9 @@ pub struct RdConvertOptions {
     pub arguments_format: ArgumentsFormat,
     /// Include \if{html}{...} content in the output (default: false)
     pub include_html_output: bool,
+    /// Prefer the ASCII representation of `\eqn`/`\deqn` equations over
+    /// LaTeX math when one is present (default: false)
+    pub prefer_ascii_math: bool,
 }
 
 // ============================================================================
@@ -432,6 +435,13 @@ impl RdConverter {
         self
     }
 
+    /// Prefer the ASCII representation of `\eqn`/`\deqn` equations over
+    /// LaTeX math when one is present (default: false)
+    pub fn prefer_ascii_math(mut self, enabled: bool) -> Self {
+        self.options.prefer_ascii_math = enabled;
+        self
+    }
+
     /// Set all options at once
     pub fn with_options(mut self, options: RdConvertOptions) -> Self {
         self.options = options;
@@ -491,6 +501,7 @@ pub fn convert_rd_content(
         quarto_code_blocks: options.code.quarto_code_blocks,
         arguments_format: options.arguments_format.clone(),
         include_html_output: options.include_html_output,
+        prefer_ascii_math: options.prefer_ascii_math,
     };
 
     // Convert to mdast
@@ -822,6 +833,36 @@ Sys.sleep(10)
         insta::assert_snapshot!(result);
     }
 
+    const MATH_RD: &str = r#"\name{poisson}
+\title{Poisson}
+\description{
+The density is
+\deqn{p(x) = \frac{\lambda^x e^{-\lambda}}{x!}}{p(x) = lambda^x
+exp(-lambda) / x!}
+for \eqn{x = 0, 1, 2, \ldots}{x = 0, 1, 2, ...}. The mean is
+\eqn{\lambda} and \eqn{E(X)}{} equals it.
+}
+"#;
+
+    #[test]
+    fn test_rd_converter_math_default() {
+        // Default: LaTeX math output, ASCII representations are ignored
+        let result = RdConverter::new(MATH_RD).convert().unwrap();
+        insta::assert_snapshot!(result);
+    }
+
+    #[test]
+    fn test_rd_converter_prefer_ascii_math() {
+        // \deqn becomes a plain code block, \eqn becomes inline code with
+        // whitespace normalized; equations without a non-blank ASCII
+        // representation (one-arg form, empty second arg) stay LaTeX math
+        let result = RdConverter::new(MATH_RD)
+            .prefer_ascii_math(true)
+            .convert()
+            .unwrap();
+        insta::assert_snapshot!(result);
+    }
+
     #[test]
     fn test_rd_converter_url_autolink() {
         let content = r#"\name{refs}
@@ -992,6 +1033,7 @@ Sys.sleep(10)
             },
             arguments_format: ArgumentsFormat::PipeTable,
             include_html_output: false,
+            prefer_ascii_math: false,
         };
 
         let result = RdConverter::new(content)

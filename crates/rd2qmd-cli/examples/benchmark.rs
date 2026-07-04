@@ -200,6 +200,7 @@ fn run_single_benchmark(
         exec_donttest: true,     // pkgdown-compatible default
         include_internal: false, // skip internal topics by default
         include_html_output: false,
+        prefer_ascii_math: false,
         arguments_format: rd2qmd_core::ArgumentsFormat::default(),
     };
 

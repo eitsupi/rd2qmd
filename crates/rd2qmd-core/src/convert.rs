@@ -100,6 +100,14 @@ pub struct RdToMdastOptions {
     /// HTML markup that produces noise in plain Markdown. Set to true when
     /// targeting an HTML-capable renderer such as Quarto HTML output.
     pub include_html_output: bool,
+    /// Prefer the ASCII representation of equations (default: false)
+    /// `\eqn{latex}{ascii}` and `\deqn{latex}{ascii}` carry an optional
+    /// second argument meant for text terminals (R's own text help uses it).
+    /// When true, equations with a non-blank ASCII representation are output
+    /// as inline code (`\eqn`) or a plain code block (`\deqn`) instead of
+    /// `$...$` / `$$...$$` math. Intended for renderers without math support,
+    /// such as terminal pagers.
+    pub prefer_ascii_math: bool,
 }
 
 impl Default for RdToMdastOptions {
@@ -115,6 +123,7 @@ impl Default for RdToMdastOptions {
             quarto_code_blocks: true,
             arguments_format: ArgumentsFormat::default(),
             include_html_output: false,
+            prefer_ascii_math: false,
         }
     }
 }
@@ -1042,9 +1051,14 @@ impl Converter {
                     self.flush_paragraph(&mut current_para, &mut result);
                     result.push(Node::code(None, code.clone()));
                 }
-                RdNode::Deqn { latex, ascii: _ } => {
+                RdNode::Deqn { latex, ascii } => {
                     self.flush_paragraph(&mut current_para, &mut result);
-                    result.push(Node::math(latex.clone()));
+                    // A plain code block preserves the layout of multi-line
+                    // ASCII representations (matrices etc.)
+                    result.push(match self.ascii_math(ascii) {
+                        Some(ascii) => Node::code(None, ascii.to_string()),
+                        None => Node::math(latex.clone()),
+                    });
                 }
 
                 // Inline nodes accumulate in current paragraph
@@ -1077,6 +1091,16 @@ impl Converter {
         if !para.is_empty() {
             result.push(Node::paragraph(std::mem::take(para)));
         }
+    }
+
+    /// The ASCII representation of an equation, if `prefer_ascii_math` is
+    /// enabled and one is present. A blank second argument (`\eqn{x}{}`) is
+    /// treated as absent.
+    fn ascii_math<'b>(&self, ascii: &'b Option<String>) -> Option<&'b str> {
+        if !self.options.prefer_ascii_math {
+            return None;
+        }
+        ascii.as_deref().filter(|ascii| !ascii.trim().is_empty())
     }
 
     fn convert_inline_nodes(&self, nodes: &[RdNode]) -> Vec<Node> {
@@ -1226,7 +1250,14 @@ impl Converter {
                 Some(Node::inline_code(text))
             }
             RdNode::Var(name) => Some(Node::emphasis(vec![Node::text(name.clone())])),
-            RdNode::Eqn { latex, ascii: _ } => Some(Node::inline_math(latex.clone())),
+            // Inline code protects Markdown metacharacters (*, _, ^) in the
+            // ASCII representation
+            RdNode::Eqn { latex, ascii } => Some(match self.ascii_math(ascii) {
+                Some(ascii) => {
+                    Node::inline_code(ascii.split_whitespace().collect::<Vec<_>>().join(" "))
+                }
+                None => Node::inline_math(latex.clone()),
+            }),
             RdNode::Special(ch) => Some(Node::text(special_char_to_string(*ch))),
             RdNode::LineBreak => Some(Node::Break),
             RdNode::Samp(children) => {

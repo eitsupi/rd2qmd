@@ -69,6 +69,11 @@ pub struct OutputConfig {
     /// By default, internal topics are skipped (matching pkgdown behavior).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub include_internal: Option<bool>,
+    /// Prefer the ASCII representation of \eqn{}/\deqn{} equations over LaTeX
+    /// math when one is present (default: false). Intended for renderers
+    /// without math support, such as terminal pagers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prefer_ascii_math: Option<bool>,
 }
 
 impl OutputConfig {
@@ -78,6 +83,7 @@ impl OutputConfig {
             && self.pagetitle.is_none()
             && self.arguments_format.is_none()
             && self.include_internal.is_none()
+            && self.prefer_ascii_math.is_none()
     }
 }
 
@@ -211,6 +217,7 @@ impl Config {
                 pagetitle: Some(true),
                 arguments_format: Some(ArgumentsFormat::ListTable),
                 include_internal: Some(false),
+                prefer_ascii_math: None, // enable for renderers without math support
             },
             code: CodeConfig {
                 quarto_code_blocks: None, // auto-detect

@@ -232,6 +232,12 @@ Use `--include-html-output` to include `\if{html}{...}` blocks when targeting an
 
 `\ifelse{html}{then}{else}` is not affected by this flag — the `then` branch is always used, which preserves lifecycle badges (rendered as Markdown image links) and similar structured content that has a meaningful non-HTML representation.
 
+### Equations
+
+Rd equations carry an optional second argument with a plain-text representation intended for text terminals — `\eqn{\lambda^x}{lambda^x}` — which R's own text help uses. By default, rd2qmd ignores it and outputs LaTeX math (`$...$` for `\eqn`, `$$...$$` for `\deqn`), which suits math-capable renderers such as Quarto.
+
+Use `--prefer-ascii-math` (config: `output.prefer_ascii_math`) when targeting a renderer without math support, such as a terminal pager. Equations with a non-blank ASCII representation are then output as inline code (`\eqn`) or a plain code block (`\deqn`, preserving the layout of multi-line representations such as matrices). Equations without one (e.g. the one-argument form `\eqn{\lambda}`) fall back to LaTeX math as usual.
+
 ## Output formats
 
 ### Quarto Markdown (`.qmd`)
