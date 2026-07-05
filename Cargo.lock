@@ -843,7 +843,7 @@ dependencies = [
 
 [[package]]
 name = "rd-parser"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "insta",
  "serde",
@@ -853,7 +853,7 @@ dependencies = [
 
 [[package]]
 name = "rd2qmd"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -868,7 +868,7 @@ dependencies = [
 
 [[package]]
 name = "rd2qmd-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "insta",
  "rd-parser",
@@ -881,7 +881,7 @@ dependencies = [
 
 [[package]]
 name = "rd2qmd-mdast"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "insta",
  "serde",
@@ -890,7 +890,7 @@ dependencies = [
 
 [[package]]
 name = "rd2qmd-package"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "r-description",
  "rayon",

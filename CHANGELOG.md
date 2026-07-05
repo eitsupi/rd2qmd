@@ -2,11 +2,13 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-05
+
 ### Added
 
-- Add a `parse` subcommand that parses Rd files (single file or directory) to AST JSON instead of converting them directly, so external tooling can inspect or rewrite the parsed document before running `convert`. The output is a versioned envelope (`{"version": 1, "source": ..., "sourceFiles": ..., "document": ...}`) around an output-format-independent AST — links keep their raw Rd semantics, with URL resolution and `.qmd`/`.md` extensions applied only at conversion time.
-- Add `--input-format <rd|ast>` to `convert` and `index` to read AST JSON produced by `parse` instead of `.Rd` files (a `.json` input is auto-detected in single-file mode without the flag). Directory-mode features such as alias/internal-link resolution work identically with AST input.
-- Add `--prefer-ascii-math` option (config: `output.prefer_ascii_math`) to prefer the plain-text representation of `\eqn{latex}{ascii}` / `\deqn{latex}{ascii}` equations over LaTeX math, for renderers without math support such as terminal pagers. `\eqn` is output as inline code and `\deqn` as a plain code block.
+- Add a `parse` subcommand that parses Rd files (single file or directory) to AST JSON instead of converting them directly, so external tooling can inspect or rewrite the parsed document before running `convert`. The output is a versioned envelope (`{"version": 1, "source": ..., "sourceFiles": ..., "document": ...}`) around an output-format-independent AST — links keep their raw Rd semantics, with URL resolution and `.qmd`/`.md` extensions applied only at conversion time. (#43)
+- Add `--input-format <rd|ast>` to `convert` and `index` to read AST JSON produced by `parse` instead of `.Rd` files (a `.json` input is auto-detected in single-file mode without the flag). Directory-mode features such as alias/internal-link resolution work identically with AST input. (#43)
+- Add `--prefer-ascii-math` option (config: `output.prefer_ascii_math`) to prefer the plain-text representation of `\eqn{latex}{ascii}` / `\deqn{latex}{ascii}` equations over LaTeX math, for renderers without math support such as terminal pagers. `\eqn` is output as inline code and `\deqn` as a plain code block. (#39)
 
 ### Changed
 
@@ -21,11 +23,15 @@
 
   Qualified links resolve through `package_urls`, then `--external-link-url` (default: `https://rdrr.io/pkg/{package}/man/{topic}.html`, now applied even when external link resolution is disabled), then inline code. Unqualified links resolve through the alias index rendered with `internal_link_url`, then `--unqualified-link-url` (default: `https://rdrr.io/r/base/{topic}.html`), then inline code. Both fallbacks can be disabled with `--no-external-link-url` / `--no-unqualified-link-url`.
 
-  External link resolution no longer synthesizes fallback URLs itself; packages it cannot resolve now fall back to `--external-link-url`. Manually specified `links.package_urls` entries take precedence over automatically resolved ones.
+  External link resolution no longer synthesizes fallback URLs itself; packages it cannot resolve now fall back to `--external-link-url`. Manually specified `links.package_urls` entries take precedence over automatically resolved ones. (#37)
 
-- Links whose text equals their URL (e.g. from `\url{}`) are now written as CommonMark autolinks (`<https://example.com>` instead of `[https://example.com](https://example.com)`), so renderers that display link URLs alongside the text no longer show the URL twice.
+- Links whose text equals their URL (e.g. from `\url{}`) are now written as CommonMark autolinks (`<https://example.com>` instead of `[https://example.com](https://example.com)`), so renderers that display link URLs alongside the text no longer show the URL twice. (#38)
 
-- **Breaking:** Conversion is now a `convert` subcommand instead of the top-level command, e.g. `rd2qmd man/ -o docs/` becomes `rd2qmd convert man/ -o docs/`. Running `rd2qmd` with no arguments now shows the help text instead of erroring. `-v`/`--verbose` and `-q`/`--quiet` are now global flags accepted by every subcommand (e.g. `rd2qmd index -v`).
+- **Breaking:** Conversion is now a `convert` subcommand instead of the top-level command, e.g. `rd2qmd man/ -o docs/` becomes `rd2qmd convert man/ -o docs/`. Running `rd2qmd` with no arguments now shows the help text instead of erroring. `-v`/`--verbose` and `-q`/`--quiet` are now global flags accepted by every subcommand (e.g. `rd2qmd index -v`). (#42)
+
+### Fixed
+
+- Preserve whitespace following `\eqn` and `\deqn` macros when their optional second argument is absent. (#40)
 
 ## [0.3.0] - 2026-07-02
 
