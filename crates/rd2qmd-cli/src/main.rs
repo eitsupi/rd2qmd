@@ -210,7 +210,7 @@ struct ConvertArgs {
 #[derive(Subcommand, Debug)]
 enum Commands {
     /// Convert Rd files to Quarto Markdown (or standard Markdown / R Markdown)
-    Convert(ConvertArgs),
+    Convert(Box<ConvertArgs>),
 
     /// Generate topic index JSON to stdout
     ///
