@@ -23,7 +23,7 @@ pub enum AstIoError {
     Json(#[from] serde_json::Error),
     /// The envelope's `version` field does not match [`AST_FORMAT_VERSION`]
     #[error("unsupported AST format version: expected {expected}, found {found}")]
-    VersionMismatch { expected: u32, found: u32 },
+    VersionMismatch { expected: u32, found: u64 },
 }
 
 /// A parsed Rd document paired with the metadata needed to convert it later
@@ -63,14 +63,13 @@ impl RdAstEnvelope {
     pub fn from_json(json: &str) -> Result<Self, AstIoError> {
         let value: serde_json::Value = serde_json::from_str(json)?;
 
-        if let Some(found) = value.get("version").and_then(|v| v.as_u64()) {
-            let found = found as u32;
-            if found != AST_FORMAT_VERSION {
-                return Err(AstIoError::VersionMismatch {
-                    expected: AST_FORMAT_VERSION,
-                    found,
-                });
-            }
+        if let Some(found) = value.get("version").and_then(|v| v.as_u64())
+            && found != u64::from(AST_FORMAT_VERSION)
+        {
+            return Err(AstIoError::VersionMismatch {
+                expected: AST_FORMAT_VERSION,
+                found,
+            });
         }
 
         Ok(serde_json::from_value(value)?)
@@ -127,6 +126,20 @@ mod tests {
             AstIoError::VersionMismatch {
                 expected: AST_FORMAT_VERSION,
                 found: 99
+            }
+        ));
+    }
+
+    #[test]
+    fn test_envelope_version_mismatch_beyond_u32() {
+        let json =
+            r#"{"version":4294967297,"source":null,"sourceFiles":[],"document":{"sections":[]}}"#;
+        let err = RdAstEnvelope::from_json(json).unwrap_err();
+        assert!(matches!(
+            err,
+            AstIoError::VersionMismatch {
+                expected: AST_FORMAT_VERSION,
+                found: 4294967297
             }
         ));
     }

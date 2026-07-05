@@ -258,7 +258,7 @@ Each output file is an envelope around the parsed document:
 ```
 
 - `version` — schema version. Reading a mismatched version is an error.
-- `source` — the original Rd file name, so JSON-processing tools can filter by file.
+- `source` — the original Rd file name, so JSON-processing tools can filter by file. This is informational metadata only: output file names and link targets are derived from the `.json` file names (which `parse` mirrors from the `.Rd` names), so keep the file names unchanged when feeding AST JSON back to `convert`.
 - `sourceFiles` — R source files recorded in roxygen2 header comments; metadata about the document, not part of the AST itself.
 - `document` — the parsed Rd document AST.
 
@@ -276,7 +276,7 @@ rd2qmd parse man/ -o tmp_ast/
 rd2qmd convert tmp_ast/ --input-format ast -o docs/man/ --topic-index index.json
 ```
 
-Directory-mode features such as alias/internal-link resolution work identically with AST input.
+Directory-mode features such as alias/internal-link resolution work identically with AST input, as long as the file names produced by `parse` are kept.
 
 ### Example control options
 
