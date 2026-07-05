@@ -4,6 +4,8 @@
 
 ### Added
 
+- Add a `parse` subcommand that parses Rd files (single file or directory) to AST JSON instead of converting them directly, so external tooling can inspect or rewrite the parsed document before running `convert`. The output is a versioned envelope (`{"version": 1, "source": ..., "sourceFiles": ..., "document": ...}`) around an output-format-independent AST — links keep their raw Rd semantics, with URL resolution and `.qmd`/`.md` extensions applied only at conversion time.
+- Add `--input-format <rd|ast>` to `convert` and `index` to read AST JSON produced by `parse` instead of `.Rd` files (a `.json` input is auto-detected in single-file mode without the flag). Directory-mode features such as alias/internal-link resolution work identically with AST input.
 - Add `--prefer-ascii-math` option (config: `output.prefer_ascii_math`) to prefer the plain-text representation of `\eqn{latex}{ascii}` / `\deqn{latex}{ascii}` equations over LaTeX math, for renderers without math support such as terminal pagers. `\eqn` is output as inline code and `\deqn` as a plain code block.
 
 ### Changed

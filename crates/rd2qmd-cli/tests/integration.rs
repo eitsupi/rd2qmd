@@ -15,6 +15,21 @@ fn rd2qmd_binary() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/debug/rd2qmd")
 }
 
+/// Build a unique temporary directory path for a test (not created)
+fn unique_temp_dir(prefix: &str) -> PathBuf {
+    let unique_id = COUNTER.fetch_add(1, Ordering::SeqCst);
+    std::env::temp_dir().join(format!(
+        "rd2qmd_test_{}_{}_{}_{}",
+        prefix,
+        std::process::id(),
+        unique_id,
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos(),
+    ))
+}
+
 /// Run rd2qmd on a fixture file and return the output
 fn convert_fixture(name: &str, args: &[&str]) -> String {
     let input = fixtures_dir().join(format!("{}.Rd", name));
@@ -359,4 +374,382 @@ fn test_external_links_fallback_warning_no_external_link_url() {
         "external_links_fallback_warning_no_external_link_url",
         stderr
     );
+}
+
+/// `parse` then `convert --input-format ast` produces byte-identical output
+/// to a direct `convert` for a single file
+#[test]
+fn test_parse_convert_roundtrip_single_file() {
+    let direct = convert_fixture("with_links", &[]);
+
+    let root = unique_temp_dir("roundtrip_single");
+    fs::create_dir_all(&root).expect("Failed to create temp dir");
+
+    let json_path = root.join("with_links.json");
+    let status = Command::new(rd2qmd_binary())
+        .arg("parse")
+        .arg(fixtures_dir().join("with_links.Rd"))
+        .arg("-o")
+        .arg(&json_path)
+        .status()
+        .expect("Failed to run rd2qmd parse");
+    assert!(
+        status.success(),
+        "rd2qmd parse failed with status: {}",
+        status
+    );
+
+    let qmd_path = root.join("with_links.qmd");
+    let status = Command::new(rd2qmd_binary())
+        .arg("convert")
+        .arg(&json_path)
+        .arg("--input-format")
+        .arg("ast")
+        .arg("-o")
+        .arg(&qmd_path)
+        .status()
+        .expect("Failed to run rd2qmd convert");
+    assert!(
+        status.success(),
+        "rd2qmd convert --input-format ast failed with status: {}",
+        status
+    );
+
+    let via_ast = fs::read_to_string(&qmd_path).expect("Failed to read output file");
+    let _ = fs::remove_dir_all(&root);
+
+    assert_eq!(direct, via_ast);
+}
+
+/// `parse` then `convert --input-format ast` produces byte-identical output
+/// to a direct `convert` for a whole directory
+#[test]
+fn test_parse_convert_roundtrip_directory() {
+    let fixtures = fixtures_dir();
+    let root = unique_temp_dir("roundtrip_dir");
+    let ast_dir = root.join("ast");
+    let out_dir = root.join("out");
+    let direct_dir = root.join("direct");
+    fs::create_dir_all(&root).expect("Failed to create temp dir");
+
+    let status = Command::new(rd2qmd_binary())
+        .arg("parse")
+        .arg(&fixtures)
+        .arg("-o")
+        .arg(&ast_dir)
+        .status()
+        .expect("Failed to run rd2qmd parse");
+    assert!(
+        status.success(),
+        "rd2qmd parse failed with status: {}",
+        status
+    );
+
+    let status = Command::new(rd2qmd_binary())
+        .arg("convert")
+        .arg(&ast_dir)
+        .arg("--input-format")
+        .arg("ast")
+        .arg("-o")
+        .arg(&out_dir)
+        .arg("-q")
+        .status()
+        .expect("Failed to run rd2qmd convert");
+    assert!(
+        status.success(),
+        "rd2qmd convert --input-format ast failed with status: {}",
+        status
+    );
+
+    let status = Command::new(rd2qmd_binary())
+        .arg("convert")
+        .arg(&fixtures)
+        .arg("-o")
+        .arg(&direct_dir)
+        .arg("-q")
+        .status()
+        .expect("Failed to run rd2qmd convert");
+    assert!(
+        status.success(),
+        "rd2qmd convert failed with status: {}",
+        status
+    );
+
+    let mut direct_files: Vec<_> = fs::read_dir(&direct_dir)
+        .expect("Failed to read direct output dir")
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .collect();
+    direct_files.sort();
+    assert!(!direct_files.is_empty());
+
+    for file in &direct_files {
+        let direct_content =
+            fs::read_to_string(direct_dir.join(file)).expect("Failed to read direct output file");
+        let via_ast_content = fs::read_to_string(out_dir.join(file))
+            .unwrap_or_else(|_| panic!("Missing AST-converted output file: {}", file));
+        assert_eq!(direct_content, via_ast_content, "Mismatch for {}", file);
+    }
+
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// `sourceFiles` recorded from a roxygen2 header comment survive a
+/// `parse` -> edit -> `convert --input-format ast` round trip and show up in
+/// the output frontmatter, same as a direct convert would produce
+#[test]
+fn test_parse_convert_roundtrip_preserves_source_files() {
+    let root = unique_temp_dir("source_files");
+    fs::create_dir_all(&root).expect("Failed to create temp dir");
+
+    fs::write(
+        root.join("roundtrip.Rd"),
+        "% Generated by roxygen2: do not edit by hand\n\
+         % Please edit documentation in R/roundtrip.R\n\
+         \\name{roundtrip}\n\
+         \\alias{roundtrip}\n\
+         \\title{Roundtrip}\n\
+         \\description{\nA function for round-trip testing.\n}\n",
+    )
+    .expect("Failed to write Rd fixture");
+
+    let json_path = root.join("roundtrip.json");
+    let status = Command::new(rd2qmd_binary())
+        .arg("parse")
+        .arg(root.join("roundtrip.Rd"))
+        .arg("-o")
+        .arg(&json_path)
+        .status()
+        .expect("Failed to run rd2qmd parse");
+    assert!(
+        status.success(),
+        "rd2qmd parse failed with status: {}",
+        status
+    );
+
+    let json = fs::read_to_string(&json_path).expect("Failed to read AST JSON");
+    assert!(json.contains("\"sourceFiles\""));
+    assert!(json.contains("R/roundtrip.R"));
+
+    let qmd_path = root.join("roundtrip.qmd");
+    let status = Command::new(rd2qmd_binary())
+        .arg("convert")
+        .arg(&json_path)
+        .arg("--input-format")
+        .arg("ast")
+        .arg("-o")
+        .arg(&qmd_path)
+        .status()
+        .expect("Failed to run rd2qmd convert");
+    assert!(
+        status.success(),
+        "rd2qmd convert --input-format ast failed with status: {}",
+        status
+    );
+
+    let qmd = fs::read_to_string(&qmd_path).expect("Failed to read output file");
+    let _ = fs::remove_dir_all(&root);
+
+    assert!(qmd.contains("source-files:"));
+    assert!(qmd.contains("R/roundtrip.R"));
+}
+
+/// A hand-written envelope with a mismatched `version` field fails
+/// `convert --input-format ast` with a non-zero exit and a message
+/// mentioning the version
+#[test]
+fn test_convert_ast_version_mismatch() {
+    let root = unique_temp_dir("version_mismatch");
+    fs::create_dir_all(&root).expect("Failed to create temp dir");
+
+    let json_path = root.join("bad.json");
+    fs::write(
+        &json_path,
+        r#"{"version":99,"source":"bad.Rd","sourceFiles":[],"document":{"sections":[]}}"#,
+    )
+    .expect("Failed to write bad envelope");
+
+    let output = Command::new(rd2qmd_binary())
+        .arg("convert")
+        .arg(&json_path)
+        .arg("--input-format")
+        .arg("ast")
+        .output()
+        .expect("Failed to run rd2qmd convert");
+
+    let _ = fs::remove_dir_all(&root);
+
+    assert!(
+        !output.status.success(),
+        "rd2qmd convert should fail on a version mismatch"
+    );
+    let stderr = String::from_utf8(output.stderr).expect("Invalid UTF-8");
+    assert!(
+        stderr.contains("version"),
+        "Expected a version-mismatch message, got: {}",
+        stderr
+    );
+}
+
+/// Parsing, then rewriting a text node inside the AST JSON, then converting
+/// back should surface the rewritten text in the Markdown output -- the
+/// motivating use case for AST JSON I/O
+#[test]
+fn test_parse_edit_convert_pipeline() {
+    let root = unique_temp_dir("pipeline");
+    fs::create_dir_all(&root).expect("Failed to create temp dir");
+
+    let json_path = root.join("with_links.json");
+    let status = Command::new(rd2qmd_binary())
+        .arg("parse")
+        .arg(fixtures_dir().join("with_links.Rd"))
+        .arg("-o")
+        .arg(&json_path)
+        .status()
+        .expect("Failed to run rd2qmd parse");
+    assert!(
+        status.success(),
+        "rd2qmd parse failed with status: {}",
+        status
+    );
+
+    let json = fs::read_to_string(&json_path).expect("Failed to read AST JSON");
+    assert!(json.contains("with_links(data)"));
+    let rewritten = json.replace("with_links(data)", "with_links(data, verbose = TRUE)");
+    fs::write(&json_path, rewritten).expect("Failed to rewrite AST JSON");
+
+    let qmd_path = root.join("with_links.qmd");
+    let status = Command::new(rd2qmd_binary())
+        .arg("convert")
+        .arg(&json_path)
+        .arg("--input-format")
+        .arg("ast")
+        .arg("-o")
+        .arg(&qmd_path)
+        .status()
+        .expect("Failed to run rd2qmd convert");
+    assert!(
+        status.success(),
+        "rd2qmd convert --input-format ast failed with status: {}",
+        status
+    );
+
+    let qmd = fs::read_to_string(&qmd_path).expect("Failed to read output file");
+    let _ = fs::remove_dir_all(&root);
+
+    assert!(qmd.contains("with_links(data, verbose = TRUE)"));
+}
+
+/// Single-file `parse` with no `-o` writes `<stem>.json` next to the input
+#[test]
+fn test_parse_defaults_single_file() {
+    let root = unique_temp_dir("parse_defaults_single");
+    fs::create_dir_all(&root).expect("Failed to create temp dir");
+
+    let input = root.join("simple.Rd");
+    fs::copy(fixtures_dir().join("simple.Rd"), &input).expect("Failed to copy fixture");
+
+    let status = Command::new(rd2qmd_binary())
+        .arg("parse")
+        .arg(&input)
+        .status()
+        .expect("Failed to run rd2qmd parse");
+    assert!(
+        status.success(),
+        "rd2qmd parse failed with status: {}",
+        status
+    );
+
+    let expected_output = root.join("simple.json");
+    assert!(
+        expected_output.exists(),
+        "Expected {} to exist",
+        expected_output.display()
+    );
+    let json = fs::read_to_string(&expected_output).expect("Failed to read AST JSON");
+    let _ = fs::remove_dir_all(&root);
+
+    assert!(json.contains("\"version\": 1"));
+}
+
+/// Directory `parse` mirrors input file names with a `.json` extension
+#[test]
+fn test_parse_defaults_directory() {
+    let fixtures = fixtures_dir();
+    let root = unique_temp_dir("parse_defaults_dir");
+    fs::create_dir_all(&root).expect("Failed to create temp dir");
+
+    let status = Command::new(rd2qmd_binary())
+        .arg("parse")
+        .arg(&fixtures)
+        .arg("-o")
+        .arg(&root)
+        .status()
+        .expect("Failed to run rd2qmd parse");
+    assert!(
+        status.success(),
+        "rd2qmd parse failed with status: {}",
+        status
+    );
+
+    let mut files: Vec<_> = fs::read_dir(&root)
+        .expect("Failed to read output dir")
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .collect();
+    files.sort();
+
+    let mut expected: Vec<_> = fs::read_dir(&fixtures)
+        .expect("Failed to read fixtures dir")
+        .filter_map(|e| e.ok())
+        .map(|e| {
+            PathBuf::from(e.file_name())
+                .with_extension("json")
+                .to_string_lossy()
+                .to_string()
+        })
+        .collect();
+    expected.sort();
+
+    let _ = fs::remove_dir_all(&root);
+
+    assert_eq!(files, expected);
+}
+
+#[test]
+fn test_convert_empty_ast_directory_mentions_json_files() {
+    let root = unique_temp_dir("convert_empty_ast");
+    fs::create_dir_all(&root).expect("Failed to create temp dir");
+
+    let output = Command::new(rd2qmd_binary())
+        .arg("convert")
+        .arg(&root)
+        .arg("--input-format")
+        .arg("ast")
+        .output()
+        .expect("Failed to run rd2qmd convert");
+
+    let _ = fs::remove_dir_all(&root);
+
+    assert!(output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("No .json files found"));
+}
+
+#[test]
+fn test_index_empty_ast_directory_mentions_json_files() {
+    let root = unique_temp_dir("index_empty_ast");
+    fs::create_dir_all(&root).expect("Failed to create temp dir");
+
+    let output = Command::new(rd2qmd_binary())
+        .arg("index")
+        .arg(&root)
+        .arg("--input-format")
+        .arg("ast")
+        .output()
+        .expect("Failed to run rd2qmd index");
+
+    let _ = fs::remove_dir_all(&root);
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("No .json files found"));
 }

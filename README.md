@@ -39,9 +39,10 @@ powershell -ExecutionPolicy Bypass -c "irm https://github.com/eitsupi/rd2qmd/rel
 
 ## Usage
 
-rd2qmd provides three subcommands:
+rd2qmd provides four subcommands:
 
 - `convert` — convert Rd files to Quarto Markdown, R Markdown, or standard Markdown
+- `parse` — parse Rd files to AST JSON (see [AST JSON I/O](#ast-json-io))
 - `index` — generate a JSON topic index (see [Topic index generation](#topic-index-generation))
 - `init` — create a starter `_rd2qmd.toml` configuration file
 
@@ -87,6 +88,7 @@ rd2qmd convert man/ -o docs/ -j4
 | `--no-pagetitle` | Skip pkgdown-style `pagetitle` metadata (`"<title> — <name>"`) |
 | `--quarto-code-blocks <BOOL>` | Use `{r}` code blocks (auto-set based on format) |
 | `--arguments-format <FORMAT>` | Arguments format: `list-table` (default), `grid-table`, `pipe-table`, or `list` |
+| `--input-format <FORMAT>` | Input format: `rd` (default) or `ast` (see [AST JSON I/O](#ast-json-io)) |
 | `-v, --verbose` | Verbose output |
 | `-q, --quiet` | Only show errors |
 
@@ -197,7 +199,12 @@ rd2qmd index man/ | jq '.topics[] | select(.lifecycle)'
 
 # Generate index while converting
 rd2qmd convert man/ -o docs/ --topic-index index.json
+
+# Generate an index from AST JSON produced by `parse`
+rd2qmd index tmp_ast/ --input-format ast
 ```
+
+`index` also accepts `--input-format <rd|ast>` (see [AST JSON I/O](#ast-json-io)) to scan `.json` files instead of `.Rd` files.
 
 The index includes topic name, output file, title, aliases, and lifecycle stage:
 
@@ -216,6 +223,60 @@ The index includes topic name, output file, title, aliases, and lifecycle stage:
 ```
 
 The `lifecycle` field is omitted for topics without a lifecycle badge. Supported stages: `experimental`, `stable`, `superseded`, `deprecated`, and legacy stages (`maturing`, `questioning`, `soft_deprecated`, `defunct`, `retired`).
+
+### AST JSON I/O
+
+The `parse` subcommand parses Rd files into AST JSON instead of converting them directly, letting external tooling inspect or rewrite the parsed document before a later `convert` run turns it into Markdown:
+
+```bash
+# Parse a single file (default output: input stem + .json)
+rd2qmd parse man/foo.Rd -o foo.json
+
+# Parse a directory, one .json per .Rd file
+rd2qmd parse man/ -o ast_dir/ -j4
+```
+
+| Option | Description |
+|--------|-------------|
+| `-o, --output <PATH>` | Output file or directory |
+| `-r, --recursive` | Process directories recursively |
+| `-j, --jobs <N>` | Number of parallel jobs (defaults to CPU count) |
+| `-v, --verbose` | Verbose output |
+| `-q, --quiet` | Only show errors |
+
+`parse` has no conversion options (frontmatter, link resolution, etc.) since those apply only when producing Markdown, and it does not read `_rd2qmd.toml`. It also performs no internal-topic filtering — every file is exported, since filtering `\keyword{internal}` topics is the responsibility of the final `convert`/`index` step.
+
+Each output file is an envelope around the parsed document:
+
+```json
+{
+  "version": 1,
+  "source": "foo.Rd",
+  "sourceFiles": ["R/foo.R"],
+  "document": { ... }
+}
+```
+
+- `version` — schema version. Reading a mismatched version is an error.
+- `source` — the original Rd file name, so JSON-processing tools can filter by file. This is informational metadata only: output file names and link targets are derived from the `.json` file names (which `parse` mirrors from the `.Rd` names), so keep the file names unchanged when feeding AST JSON back to `convert`.
+- `sourceFiles` — R source files recorded in roxygen2 header comments; metadata about the document, not part of the AST itself.
+- `document` — the parsed Rd document AST.
+
+The AST is output-format-independent: links are stored with their raw Rd semantics (package and topic name), and URL resolution plus the `.qmd`/`.md` extension are only applied when converting. This means a single `parse` run can feed both `qmd` and `md` output later.
+
+The AST JSON structure mirrors rd2qmd's internal types, so producing and consuming it with the same rd2qmd version is recommended; the `version` field guards against mismatches across versions.
+
+One thing to keep in mind when rewriting text nodes: text inside a section (for example `\usage`) can be split across multiple AST text nodes when Rd macros such as `\method{}{}` are present, so simple string replacement across a section's raw text should account for that.
+
+Feed AST JSON back into `convert` (or `index`) with `--input-format ast`; a `.json` input is also auto-detected in single-file mode without the flag:
+
+```bash
+rd2qmd parse man/ -o tmp_ast/
+# rewrite text nodes inside tmp_ast/*.json with any tool/language you like
+rd2qmd convert tmp_ast/ --input-format ast -o docs/man/ --topic-index index.json
+```
+
+Directory-mode features such as alias/internal-link resolution work identically with AST input, as long as the file names produced by `parse` are kept.
 
 ### Example control options
 
