@@ -229,6 +229,32 @@ fn test_init_config() {
 }
 
 #[test]
+fn test_init_config_quiet() {
+    let output_file = std::env::temp_dir().join("rd2qmd_test_init_config_quiet.toml");
+    let _ = fs::remove_file(&output_file);
+
+    let output = Command::new(rd2qmd_binary())
+        .arg("init")
+        .arg("-q")
+        .arg("-o")
+        .arg(&output_file)
+        .output()
+        .expect("Failed to run rd2qmd init -q");
+
+    assert!(output.status.success(), "rd2qmd init -q failed");
+    assert!(
+        output.stderr.is_empty(),
+        "rd2qmd init -q should not print to stderr, got: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        output_file.exists(),
+        "rd2qmd init -q should create the config file"
+    );
+    let _ = fs::remove_file(&output_file);
+}
+
+#[test]
 fn test_simple_pipe_table() {
     let output = convert_fixture("simple", &["--arguments-format", "pipe-table"]);
     insta::assert_snapshot!("simple_pipe_table", output);
