@@ -45,24 +45,36 @@ enum OutputFormat {
 #[command(name = "rd2qmd")]
 #[command(about = "Convert Rd files to Quarto Markdown")]
 #[command(version)]
-#[command(subcommand_negates_reqs = true)]
+#[command(arg_required_else_help = true)]
 #[command(after_help = "Examples:
-  rd2qmd file.Rd                    # Convert single file to file.qmd
-  rd2qmd file.Rd -o output.qmd      # Convert to specific output file
-  rd2qmd file.Rd -f md              # Convert to standard Markdown (.md)
-  rd2qmd file.Rd -f rmd             # Convert to R Markdown (.Rmd)
-  rd2qmd man/ -o docs/              # Convert directory (with alias resolution)
-  rd2qmd man/ -o docs/ -j4          # Use 4 parallel jobs
-  rd2qmd man/ --topic-index i.json  # Convert and generate topic index
+  rd2qmd convert file.Rd                    # Convert single file to file.qmd
+  rd2qmd convert file.Rd -o output.qmd      # Convert to specific output file
+  rd2qmd convert file.Rd -f md              # Convert to standard Markdown (.md)
+  rd2qmd convert file.Rd -f rmd             # Convert to R Markdown (.Rmd)
+  rd2qmd convert man/ -o docs/              # Convert directory (with alias resolution)
+  rd2qmd convert man/ -o docs/ -j4          # Use 4 parallel jobs
+  rd2qmd convert man/ --topic-index i.json  # Convert and generate topic index
   rd2qmd index man/                 # Generate topic index JSON to stdout
   rd2qmd index man/ | jq '.topics[] | select(.lifecycle)'")]
 struct Cli {
-    /// Subcommand (optional)
+    /// Subcommand
     #[command(subcommand)]
-    subcommand: Option<Commands>,
+    subcommand: Commands,
 
+    /// Verbose output
+    #[arg(short, long, global = true)]
+    verbose: bool,
+
+    /// Quiet mode - only show errors
+    #[arg(short, long, global = true)]
+    quiet: bool,
+}
+
+/// Arguments for the convert subcommand
+#[derive(Args, Debug)]
+struct ConvertArgs {
     /// Input Rd file or directory
-    input: Option<PathBuf>,
+    input: PathBuf,
 
     /// Output file or directory
     #[arg(short, long)]
@@ -147,14 +159,6 @@ struct Cli {
     #[arg(long)]
     no_external_links: bool,
 
-    /// Verbose output
-    #[arg(short, long)]
-    verbose: bool,
-
-    /// Quiet mode - only show errors
-    #[arg(short, long)]
-    quiet: bool,
-
     /// Make \dontrun{} example code executable ({r} blocks)
     #[arg(long)]
     exec_dontrun: bool,
@@ -205,6 +209,9 @@ struct Cli {
 /// Subcommands
 #[derive(Subcommand, Debug)]
 enum Commands {
+    /// Convert Rd files to Quarto Markdown (or standard Markdown / R Markdown)
+    Convert(ConvertArgs),
+
     /// Generate topic index JSON to stdout
     ///
     /// Parses all Rd files in the directory and outputs a JSON index
@@ -258,35 +265,30 @@ struct InitArgs {
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Handle subcommands first
-    if let Some(subcommand) = cli.subcommand {
-        return match subcommand {
-            Commands::Index(args) => run_index_command(&args),
-            Commands::Init(args) => run_init_command(&args),
-        };
+    match cli.subcommand {
+        Commands::Convert(args) => run_convert_command(&args, cli.verbose, cli.quiet),
+        Commands::Index(args) => run_index_command(&args),
+        Commands::Init(args) => run_init_command(&args),
     }
+}
 
+/// Run the convert subcommand: convert Rd files to Markdown
+fn run_convert_command(args: &ConvertArgs, verbose: bool, quiet: bool) -> Result<()> {
     // Load configuration file
-    let config = load_config(&cli)?;
+    let config = load_config(args)?;
 
-    // Merge: CLI > Config > Default (before moving cli.input)
+    // Merge: CLI > Config > Default
     // Format: CLI has default, so check if it was explicitly set or use config
-    let format = merge_format(&cli, &config);
-    let use_frontmatter = merge_frontmatter(&cli, &config);
-    let use_pagetitle = merge_pagetitle(&cli, &config);
-    let unqualified_link_url = merge_unqualified_link_url(&cli, &config);
-    let external_link_url = merge_external_link_url(&cli, &config);
+    let format = merge_format(args, &config);
+    let use_frontmatter = merge_frontmatter(args, &config);
+    let use_pagetitle = merge_pagetitle(args, &config);
+    let unqualified_link_url = merge_unqualified_link_url(args, &config);
+    let external_link_url = merge_external_link_url(args, &config);
     // Config-only link options (no CLI flags)
     let internal_link_url = config.links.internal_link_url.clone();
     let package_urls = config.links.package_urls.clone();
 
-    // Regular conversion mode - input is required
-    let input = match &cli.input {
-        Some(path) => path.clone(),
-        None => {
-            anyhow::bail!("Input path is required. Run 'rd2qmd --help' for usage.");
-        }
-    };
+    let input = args.input.clone();
 
     // Determine output extension and quarto_code_blocks based on format
     let output_extension = match format {
@@ -296,39 +298,39 @@ fn main() -> Result<()> {
     };
 
     // quarto_code_blocks: CLI > Config > auto (based on format)
-    let quarto_code_blocks = cli
+    let quarto_code_blocks = args
         .quarto_code_blocks
         .or(config.code.quarto_code_blocks)
         .unwrap_or(matches!(format, OutputFormat::Qmd | OutputFormat::Rmd));
 
     // exec_dontrun: CLI > Config > false
-    let exec_dontrun = if cli.exec_dontrun {
+    let exec_dontrun = if args.exec_dontrun {
         true
     } else {
         config.code.exec_dontrun.unwrap_or(false)
     };
 
     // exec_donttest: CLI > Config > true (default is to execute donttest)
-    let exec_donttest = if cli.no_exec_donttest {
+    let exec_donttest = if args.no_exec_donttest {
         false
     } else {
         config.code.exec_donttest.unwrap_or(true)
     };
 
     // Convert arguments table format: CLI > Config > Grid
-    let arguments_format = merge_arguments_format(&cli, &config);
+    let arguments_format = merge_arguments_format(args, &config);
 
     // include_internal: CLI > Config > false (skip internal by default)
-    let include_internal = if cli.include_internal {
+    let include_internal = if args.include_internal {
         true
     } else {
         config.output.include_internal.unwrap_or(false)
     };
 
-    let include_html_output = cli.include_html_output;
+    let include_html_output = args.include_html_output;
 
     // prefer_ascii_math: CLI > Config > false (LaTeX math by default)
-    let prefer_ascii_math = if cli.prefer_ascii_math {
+    let prefer_ascii_math = if args.prefer_ascii_math {
         true
     } else {
         config.output.prefer_ascii_math.unwrap_or(false)
@@ -338,7 +340,7 @@ fn main() -> Result<()> {
         // Single file conversion (no alias resolution)
         convert_single_file(
             &input,
-            cli.output.as_deref(),
+            args.output.as_deref(),
             output_extension,
             use_frontmatter,
             use_pagetitle,
@@ -351,19 +353,19 @@ fn main() -> Result<()> {
             include_html_output,
             prefer_ascii_math,
             arguments_format,
-            cli.verbose,
-            cli.quiet,
+            verbose,
+            quiet,
         )?;
     } else if input.is_dir() {
         // Build external package URL options
-        let external_link_options = merge_external_link_options(&cli, &config);
+        let external_link_options = merge_external_link_options(args, &config);
 
         // Directory conversion (with alias resolution via rd2qmd-package)
         convert_directory(
             &input,
-            cli.output.as_deref(),
+            args.output.as_deref(),
             output_extension,
-            cli.recursive,
+            args.recursive,
             use_frontmatter,
             use_pagetitle,
             quarto_code_blocks,
@@ -378,10 +380,10 @@ fn main() -> Result<()> {
             include_html_output,
             prefer_ascii_math,
             arguments_format,
-            cli.topic_index.as_deref(),
-            cli.verbose,
-            cli.quiet,
-            cli.jobs,
+            args.topic_index.as_deref(),
+            verbose,
+            quiet,
+            args.jobs,
         )?;
     } else {
         anyhow::bail!("Input path does not exist: {}", input.display());
@@ -773,12 +775,12 @@ fn run_init_command(args: &InitArgs) -> Result<()> {
 // ============================================================================
 
 /// Load configuration file based on CLI options
-fn load_config(cli: &Cli) -> Result<Config> {
-    if cli.no_config {
+fn load_config(args: &ConvertArgs) -> Result<Config> {
+    if args.no_config {
         return Ok(Config::default());
     }
 
-    if let Some(path) = &cli.config {
+    if let Some(path) = &args.config {
         return Config::load(path);
     }
 
@@ -792,12 +794,12 @@ fn load_config(cli: &Cli) -> Result<Config> {
 /// Since clap has a default value, we can't tell if the user explicitly set it.
 /// We use a heuristic: if config specifies a format, use it unless CLI is non-default.
 /// This means config wins when CLI uses default (qmd).
-fn merge_format(cli: &Cli, config: &Config) -> OutputFormat {
+fn merge_format(args: &ConvertArgs, config: &Config) -> OutputFormat {
     // If config specifies a format, check if CLI is using the default
     if let Some(ref fmt) = config.output.format {
         // Only use config if CLI appears to be using default
         // This is a heuristic - we assume if CLI is Qmd (default), config should win
-        if cli.format == OutputFormat::Qmd {
+        if args.format == OutputFormat::Qmd {
             return match fmt.to_lowercase().as_str() {
                 "md" => OutputFormat::Md,
                 "rmd" => OutputFormat::Rmd,
@@ -805,23 +807,23 @@ fn merge_format(cli: &Cli, config: &Config) -> OutputFormat {
             };
         }
     }
-    cli.format
+    args.format
 }
 
 /// Merge frontmatter setting
-fn merge_frontmatter(cli: &Cli, config: &Config) -> bool {
+fn merge_frontmatter(args: &ConvertArgs, config: &Config) -> bool {
     // CLI --no-frontmatter explicitly disables
-    if cli.no_frontmatter {
+    if args.no_frontmatter {
         return false;
     }
     // Config value if specified, otherwise CLI default (true)
-    config.output.frontmatter.unwrap_or(cli.frontmatter)
+    config.output.frontmatter.unwrap_or(args.frontmatter)
 }
 
 /// Merge pagetitle setting
-fn merge_pagetitle(cli: &Cli, config: &Config) -> bool {
+fn merge_pagetitle(args: &ConvertArgs, config: &Config) -> bool {
     // CLI --no-pagetitle explicitly disables
-    if cli.no_pagetitle {
+    if args.no_pagetitle {
         return false;
     }
     // Config value if specified, otherwise default (true)
@@ -829,32 +831,32 @@ fn merge_pagetitle(cli: &Cli, config: &Config) -> bool {
 }
 
 /// Merge unqualified link URL: CLI > Config > Default
-fn merge_unqualified_link_url(cli: &Cli, config: &Config) -> Option<String> {
+fn merge_unqualified_link_url(args: &ConvertArgs, config: &Config) -> Option<String> {
     // CLI --no-unqualified-link-url explicitly disables
-    if cli.no_unqualified_link_url {
+    if args.no_unqualified_link_url {
         return None;
     }
-    cli.unqualified_link_url
+    args.unqualified_link_url
         .clone()
         .or_else(|| config.links.unqualified_link_url.clone())
         .or_else(|| Some(DEFAULT_UNQUALIFIED_LINK_URL.to_string()))
 }
 
 /// Merge external link URL: CLI > Config > Default
-fn merge_external_link_url(cli: &Cli, config: &Config) -> Option<String> {
+fn merge_external_link_url(args: &ConvertArgs, config: &Config) -> Option<String> {
     // CLI --no-external-link-url explicitly disables
-    if cli.no_external_link_url {
+    if args.no_external_link_url {
         return None;
     }
-    cli.external_link_url
+    args.external_link_url
         .clone()
         .or_else(|| config.links.external_link_url.clone())
         .or_else(|| Some(DEFAULT_EXTERNAL_LINK_URL.to_string()))
 }
 
 /// Merge arguments format: explicit CLI > config > default (list-table)
-fn merge_arguments_format(cli: &Cli, config: &Config) -> ArgumentsFormat {
-    let fmt = cli
+fn merge_arguments_format(args: &ConvertArgs, config: &Config) -> ArgumentsFormat {
+    let fmt = args
         .arguments_format
         .or(config.output.arguments_format)
         .unwrap_or_default();
@@ -867,9 +869,9 @@ fn merge_arguments_format(cli: &Cli, config: &Config) -> ArgumentsFormat {
 }
 
 /// Merge external link options
-fn merge_external_link_options(cli: &Cli, config: &Config) -> Option<ExternalLinkOptions> {
+fn merge_external_link_options(args: &ConvertArgs, config: &Config) -> Option<ExternalLinkOptions> {
     // CLI --no-external-links explicitly disables
-    if cli.no_external_links {
+    if args.no_external_links {
         return None;
     }
 
@@ -879,14 +881,14 @@ fn merge_external_link_options(cli: &Cli, config: &Config) -> Option<ExternalLin
     }
 
     // Merge lib_paths: CLI takes precedence if specified
-    let lib_paths = if !cli.r_lib_paths.is_empty() {
-        cli.r_lib_paths.clone()
+    let lib_paths = if !args.r_lib_paths.is_empty() {
+        args.r_lib_paths.clone()
     } else {
         config.external.lib_paths.clone().unwrap_or_default()
     };
 
     // Merge cache_dir: CLI takes precedence
-    let cache_dir = cli.cache_dir.clone().or(config.external.cache_dir.clone());
+    let cache_dir = args.cache_dir.clone().or(config.external.cache_dir.clone());
 
     Some(ExternalLinkOptions {
         lib_paths,
@@ -898,11 +900,10 @@ fn merge_external_link_options(cli: &Cli, config: &Config) -> Option<ExternalLin
 mod tests {
     use super::*;
 
-    /// Create a default CLI for testing
-    fn default_cli() -> Cli {
-        Cli {
-            subcommand: None,
-            input: None,
+    /// Create a default ConvertArgs for testing
+    fn default_convert_args() -> ConvertArgs {
+        ConvertArgs {
+            input: PathBuf::new(),
             output: None,
             format: OutputFormat::Qmd,
             jobs: None,
@@ -918,8 +919,6 @@ mod tests {
             r_lib_paths: vec![],
             cache_dir: None,
             no_external_links: false,
-            verbose: false,
-            quiet: false,
             exec_dontrun: false,
             no_exec_donttest: false,
             include_internal: false,
@@ -934,14 +933,14 @@ mod tests {
 
     #[test]
     fn test_merge_format_no_config() {
-        let cli = default_cli();
+        let cli = default_convert_args();
         let config = Config::default();
         assert_eq!(merge_format(&cli, &config), OutputFormat::Qmd);
     }
 
     #[test]
     fn test_merge_format_config_overrides_default() {
-        let cli = default_cli();
+        let cli = default_convert_args();
         let config = Config {
             output: config::OutputConfig {
                 format: Some("md".to_string()),
@@ -954,7 +953,7 @@ mod tests {
 
     #[test]
     fn test_merge_format_cli_overrides_config() {
-        let mut cli = default_cli();
+        let mut cli = default_convert_args();
         cli.format = OutputFormat::Rmd;
         let config = Config {
             output: config::OutputConfig {
@@ -969,14 +968,14 @@ mod tests {
 
     #[test]
     fn test_merge_frontmatter_no_config() {
-        let cli = default_cli();
+        let cli = default_convert_args();
         let config = Config::default();
         assert!(merge_frontmatter(&cli, &config));
     }
 
     #[test]
     fn test_merge_frontmatter_config_disables() {
-        let cli = default_cli();
+        let cli = default_convert_args();
         let config = Config {
             output: config::OutputConfig {
                 frontmatter: Some(false),
@@ -989,7 +988,7 @@ mod tests {
 
     #[test]
     fn test_merge_frontmatter_cli_no_frontmatter() {
-        let mut cli = default_cli();
+        let mut cli = default_convert_args();
         cli.no_frontmatter = true;
         let config = Config {
             output: config::OutputConfig {
@@ -1004,14 +1003,14 @@ mod tests {
 
     #[test]
     fn test_merge_pagetitle_no_config() {
-        let cli = default_cli();
+        let cli = default_convert_args();
         let config = Config::default();
         assert!(merge_pagetitle(&cli, &config));
     }
 
     #[test]
     fn test_merge_pagetitle_config_disables() {
-        let cli = default_cli();
+        let cli = default_convert_args();
         let config = Config {
             output: config::OutputConfig {
                 pagetitle: Some(false),
@@ -1024,7 +1023,7 @@ mod tests {
 
     #[test]
     fn test_merge_pagetitle_cli_no_pagetitle() {
-        let mut cli = default_cli();
+        let mut cli = default_convert_args();
         cli.no_pagetitle = true;
         let config = Config {
             output: config::OutputConfig {
@@ -1039,7 +1038,7 @@ mod tests {
 
     #[test]
     fn test_merge_unqualified_link_url_default() {
-        let cli = default_cli();
+        let cli = default_convert_args();
         let config = Config::default();
         let url = merge_unqualified_link_url(&cli, &config);
         assert_eq!(url, Some("https://rdrr.io/r/base/{topic}.html".to_string()));
@@ -1047,7 +1046,7 @@ mod tests {
 
     #[test]
     fn test_merge_unqualified_link_url_config_overrides_default() {
-        let cli = default_cli();
+        let cli = default_convert_args();
         let config = Config {
             links: config::LinksConfig {
                 unqualified_link_url: Some("https://example.com/{topic}".to_string()),
@@ -1061,7 +1060,7 @@ mod tests {
 
     #[test]
     fn test_merge_unqualified_link_url_cli_overrides_config() {
-        let mut cli = default_cli();
+        let mut cli = default_convert_args();
         cli.unqualified_link_url = Some("x-r-help:{topic}".to_string());
         let config = Config {
             links: config::LinksConfig {
@@ -1076,7 +1075,7 @@ mod tests {
 
     #[test]
     fn test_merge_unqualified_link_url_cli_disables() {
-        let mut cli = default_cli();
+        let mut cli = default_convert_args();
         cli.no_unqualified_link_url = true;
         let config = Config {
             links: config::LinksConfig {
@@ -1091,7 +1090,7 @@ mod tests {
 
     #[test]
     fn test_merge_external_link_url_default() {
-        let cli = default_cli();
+        let cli = default_convert_args();
         let config = Config::default();
         assert_eq!(
             merge_external_link_url(&cli, &config),
@@ -1101,7 +1100,7 @@ mod tests {
 
     #[test]
     fn test_merge_external_link_url_config_overrides_default() {
-        let cli = default_cli();
+        let cli = default_convert_args();
         let config = Config {
             links: config::LinksConfig {
                 external_link_url: Some("x-r-help:{package}/{topic}".to_string()),
@@ -1117,7 +1116,7 @@ mod tests {
 
     #[test]
     fn test_merge_external_link_url_cli_overrides_config() {
-        let mut cli = default_cli();
+        let mut cli = default_convert_args();
         cli.external_link_url = Some("app-help:{package}/{topic}".to_string());
         let config = Config {
             links: config::LinksConfig {
@@ -1135,7 +1134,7 @@ mod tests {
 
     #[test]
     fn test_merge_external_link_url_cli_disables() {
-        let mut cli = default_cli();
+        let mut cli = default_convert_args();
         cli.no_external_link_url = true;
         let config = Config {
             links: config::LinksConfig {
@@ -1150,7 +1149,7 @@ mod tests {
 
     #[test]
     fn test_merge_arguments_format_no_config() {
-        let cli = default_cli();
+        let cli = default_convert_args();
         let config = Config::default();
         assert_eq!(
             merge_arguments_format(&cli, &config),
@@ -1160,7 +1159,7 @@ mod tests {
 
     #[test]
     fn test_merge_arguments_format_config_overrides() {
-        let cli = default_cli();
+        let cli = default_convert_args();
         let config = Config {
             output: config::OutputConfig {
                 arguments_format: Some(CliArgumentsFormat::PipeTable),
@@ -1176,7 +1175,7 @@ mod tests {
 
     #[test]
     fn test_merge_arguments_format_cli_overrides() {
-        let mut cli = default_cli();
+        let mut cli = default_convert_args();
         cli.arguments_format = Some(CliArgumentsFormat::PipeTable);
         let config = Config {
             output: config::OutputConfig {
@@ -1194,7 +1193,7 @@ mod tests {
 
     #[test]
     fn test_merge_arguments_format_list_table_cli_overrides_config() {
-        let mut cli = default_cli();
+        let mut cli = default_convert_args();
         cli.arguments_format = Some(CliArgumentsFormat::ListTable);
         let config = Config {
             output: config::OutputConfig {
@@ -1212,7 +1211,7 @@ mod tests {
 
     #[test]
     fn test_merge_external_link_options_disabled_by_cli() {
-        let mut cli = default_cli();
+        let mut cli = default_convert_args();
         cli.no_external_links = true;
         let config = Config {
             external: config::ExternalConfig {
@@ -1227,7 +1226,7 @@ mod tests {
 
     #[test]
     fn test_merge_external_link_options_disabled_by_config() {
-        let cli = default_cli();
+        let cli = default_convert_args();
         let config = Config {
             external: config::ExternalConfig {
                 enabled: Some(false),
@@ -1241,7 +1240,7 @@ mod tests {
 
     #[test]
     fn test_merge_external_link_options_lib_paths_from_config() {
-        let cli = default_cli();
+        let cli = default_convert_args();
         let config = Config {
             external: config::ExternalConfig {
                 enabled: Some(true),
@@ -1256,7 +1255,7 @@ mod tests {
 
     #[test]
     fn test_merge_external_link_options_cli_overrides_lib_paths() {
-        let mut cli = default_cli();
+        let mut cli = default_convert_args();
         cli.r_lib_paths = vec![std::path::PathBuf::from("/home/user/R")];
         let config = Config {
             external: config::ExternalConfig {

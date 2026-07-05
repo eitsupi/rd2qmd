@@ -35,7 +35,7 @@ fn convert_fixture(name: &str, args: &[&str]) -> String {
     ));
 
     let mut cmd = Command::new(rd2qmd_binary());
-    cmd.arg(&input).arg("-o").arg(&output);
+    cmd.arg("convert").arg(&input).arg("-o").arg(&output);
     for arg in args {
         cmd.arg(arg);
     }
@@ -159,6 +159,7 @@ fn test_directory_conversion() {
     fs::create_dir_all(&output_dir).expect("Failed to create output dir");
 
     let status = Command::new(rd2qmd_binary())
+        .arg("convert")
         .arg(&fixtures)
         .arg("-o")
         .arg(&output_dir)
@@ -188,6 +189,7 @@ fn test_directory_conversion_pipe_table() {
     fs::create_dir_all(&output_dir).expect("Failed to create output dir");
 
     let status = Command::new(rd2qmd_binary())
+        .arg("convert")
         .arg(&fixtures)
         .arg("-o")
         .arg(&output_dir)
@@ -292,6 +294,7 @@ fn external_links_warnings(extra_args: &[&str]) -> String {
     .expect("Failed to write config");
 
     let output = Command::new(rd2qmd_binary())
+        .arg("convert")
         .arg(&man_dir)
         .arg("-o")
         .arg(root.join("out"))
