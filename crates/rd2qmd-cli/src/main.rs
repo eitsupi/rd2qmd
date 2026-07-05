@@ -8,10 +8,14 @@ use config::{ArgumentsFormat as CliArgumentsFormat, Config};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use rd2qmd_core::{ArgumentsFormat, RdConverter};
+use rd2qmd_core::{
+    ArgumentsFormat, CodeExecutionOptions, FrontmatterOptions, LinkOptions, RdAstEnvelope,
+    RdConvertOptions, RdConverter, convert_rd_document, parse, parse_roxygen_comments,
+};
 use rd2qmd_package::{
     ExternalLinkOptions as PackageExternalLinkOptions, FallbackReason, FullConvertResult,
-    PackageConvertOptions, PackageConverter, RdPackage, TopicIndexOptions, generate_topic_index,
+    InputFormat as PackageInputFormat, PackageConvertOptions, PackageConverter, RdPackage,
+    TopicIndexOptions, export_package_ast, generate_topic_index,
 };
 
 /// Default URL template for qualified links (`\link[pkg]{topic}`) whose
@@ -41,6 +45,25 @@ enum OutputFormat {
     Rmd,
 }
 
+/// Input format for Rd documentation
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, clap::ValueEnum)]
+enum InputFormat {
+    /// Rd source files (.Rd)
+    #[default]
+    Rd,
+    /// Pre-parsed AST JSON envelopes produced by `rd2qmd parse` (.json)
+    Ast,
+}
+
+impl From<InputFormat> for PackageInputFormat {
+    fn from(format: InputFormat) -> Self {
+        match format {
+            InputFormat::Rd => PackageInputFormat::Rd,
+            InputFormat::Ast => PackageInputFormat::AstJson,
+        }
+    }
+}
+
 #[derive(Parser, Debug)]
 #[command(name = "rd2qmd")]
 #[command(about = "Convert Rd files to Quarto Markdown")]
@@ -54,6 +77,8 @@ enum OutputFormat {
   rd2qmd convert man/ -o docs/              # Convert directory (with alias resolution)
   rd2qmd convert man/ -o docs/ -j4          # Use 4 parallel jobs
   rd2qmd convert man/ --topic-index i.json  # Convert and generate topic index
+  rd2qmd parse man/ -o ast_dir/             # Parse to AST JSON for later convert
+  rd2qmd convert ast_dir/ --input-format ast -o docs/  # Convert AST JSON back
   rd2qmd index man/                 # Generate topic index JSON to stdout
   rd2qmd index man/ | jq '.topics[] | select(.lifecycle)'")]
 struct Cli {
@@ -204,6 +229,11 @@ struct ConvertArgs {
     /// Ignore configuration file
     #[arg(long)]
     no_config: bool,
+
+    /// Input format: rd (default) or ast (pre-parsed AST JSON from `rd2qmd parse`)
+    /// A single-file `.json` input is auto-detected as ast without this flag.
+    #[arg(long, value_enum, default_value_t = InputFormat::Rd)]
+    input_format: InputFormat,
 }
 
 /// Subcommands
@@ -211,6 +241,14 @@ struct ConvertArgs {
 enum Commands {
     /// Convert Rd files to Quarto Markdown (or standard Markdown / R Markdown)
     Convert(Box<ConvertArgs>),
+
+    /// Parse Rd files to AST JSON
+    ///
+    /// Parses Rd files (single file or directory) into a versioned JSON
+    /// envelope around the parsed document, letting external tooling inspect
+    /// or rewrite it before a later `convert` run turns it into Markdown.
+    /// Has no conversion options and does not read `_rd2qmd.toml`.
+    Parse(ParseArgs),
 
     /// Generate topic index JSON to stdout
     ///
@@ -244,6 +282,30 @@ struct IndexArgs {
     /// By default, internal topics are excluded (matching pkgdown behavior).
     #[arg(long)]
     include_internal: bool,
+
+    /// Input format: rd (default) or ast (pre-parsed AST JSON from `rd2qmd parse`)
+    #[arg(long, value_enum, default_value_t = InputFormat::Rd)]
+    input_format: InputFormat,
+}
+
+/// Arguments for the parse subcommand
+#[derive(Args, Debug)]
+struct ParseArgs {
+    /// Input Rd file or directory
+    input: PathBuf,
+
+    /// Output file or directory (default: input stem + .json, or the input
+    /// directory itself in directory mode)
+    #[arg(short, long)]
+    output: Option<PathBuf>,
+
+    /// Process directories recursively
+    #[arg(short, long)]
+    recursive: bool,
+
+    /// Number of parallel jobs (defaults to number of CPUs)
+    #[arg(short, long)]
+    jobs: Option<usize>,
 }
 
 /// Arguments for the init subcommand
@@ -267,6 +329,7 @@ fn main() -> Result<()> {
 
     match cli.subcommand {
         Commands::Convert(args) => run_convert_command(&args, cli.verbose, cli.quiet),
+        Commands::Parse(args) => run_parse_command(&args, cli.verbose, cli.quiet),
         Commands::Index(args) => run_index_command(&args),
         Commands::Init(args) => run_init_command(&args, cli.quiet),
     }
@@ -342,6 +405,7 @@ fn run_convert_command(args: &ConvertArgs, verbose: bool, quiet: bool) -> Result
             &input,
             args.output.as_deref(),
             output_extension,
+            args.input_format,
             use_frontmatter,
             use_pagetitle,
             quarto_code_blocks,
@@ -366,6 +430,7 @@ fn run_convert_command(args: &ConvertArgs, verbose: bool, quiet: bool) -> Result
             args.output.as_deref(),
             output_extension,
             args.recursive,
+            args.input_format,
             use_frontmatter,
             use_pagetitle,
             quarto_code_blocks,
@@ -398,6 +463,7 @@ fn convert_single_file(
     input: &Path,
     output: Option<&Path>,
     output_extension: &str,
+    input_format: InputFormat,
     use_frontmatter: bool,
     use_pagetitle: bool,
     quarto_code_blocks: bool,
@@ -425,35 +491,72 @@ fn convert_single_file(
         );
     }
 
-    let content = fs::read_to_string(input)
-        .with_context(|| format!("Failed to read: {}", input.display()))?;
+    let is_ast = input_format == InputFormat::Ast
+        || input
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("json"));
 
-    // Build converter using RdConverter builder pattern
-    let mut converter = RdConverter::new(&content)
-        .frontmatter(use_frontmatter)
-        .pagetitle(use_pagetitle)
-        .quarto_code_blocks(quarto_code_blocks)
-        .exec_dontrun(exec_dontrun)
-        .exec_donttest(exec_donttest)
-        .include_html_output(include_html_output)
-        .prefer_ascii_math(prefer_ascii_math)
-        .arguments_format(arguments_format);
+    let qmd = if is_ast {
+        let content = fs::read_to_string(input)
+            .with_context(|| format!("Failed to read: {}", input.display()))?;
 
-    if let Some(template) = unqualified_link_url {
-        converter = converter.unqualified_link_url(template);
-    }
+        let envelope = RdAstEnvelope::from_json(&content)
+            .with_context(|| format!("Failed to read AST JSON envelope: {}", input.display()))?;
 
-    if let Some(template) = external_link_url {
-        converter = converter.external_link_url(template);
-    }
+        let options = RdConvertOptions {
+            frontmatter: FrontmatterOptions {
+                enabled: use_frontmatter,
+                pagetitle: use_pagetitle,
+            },
+            code: CodeExecutionOptions {
+                quarto_code_blocks,
+                exec_dontrun,
+                exec_donttest,
+            },
+            links: LinkOptions {
+                internal_link_url: None,
+                unqualified_link_url: unqualified_link_url.map(|s| s.to_string()),
+                external_link_url: external_link_url.map(|s| s.to_string()),
+                alias_map: None,
+                package_urls,
+            },
+            arguments_format,
+            include_html_output,
+            prefer_ascii_math,
+        };
 
-    if let Some(urls) = package_urls {
-        converter = converter.package_urls(urls);
-    }
+        convert_rd_document(&envelope.document, envelope.source_files, &options)
+    } else {
+        let content = fs::read_to_string(input)
+            .with_context(|| format!("Failed to read: {}", input.display()))?;
 
-    let qmd = converter
-        .convert()
-        .map_err(|e| anyhow::anyhow!("Parse error: {}", e))?;
+        // Build converter using RdConverter builder pattern
+        let mut converter = RdConverter::new(&content)
+            .frontmatter(use_frontmatter)
+            .pagetitle(use_pagetitle)
+            .quarto_code_blocks(quarto_code_blocks)
+            .exec_dontrun(exec_dontrun)
+            .exec_donttest(exec_donttest)
+            .include_html_output(include_html_output)
+            .prefer_ascii_math(prefer_ascii_math)
+            .arguments_format(arguments_format);
+
+        if let Some(template) = unqualified_link_url {
+            converter = converter.unqualified_link_url(template);
+        }
+
+        if let Some(template) = external_link_url {
+            converter = converter.external_link_url(template);
+        }
+
+        if let Some(urls) = package_urls {
+            converter = converter.package_urls(urls);
+        }
+
+        converter
+            .convert()
+            .map_err(|e| anyhow::anyhow!("Parse error: {}", e))?
+    };
 
     if let Some(parent) = output_path.parent() {
         fs::create_dir_all(parent)
@@ -477,6 +580,7 @@ fn convert_directory(
     output: Option<&Path>,
     output_extension: &str,
     recursive: bool,
+    input_format: InputFormat,
     use_frontmatter: bool,
     use_pagetitle: bool,
     quarto_code_blocks: bool,
@@ -505,7 +609,7 @@ fn convert_directory(
         eprintln!("Scanning {} for Rd files...", input.display());
     }
 
-    let package = RdPackage::from_directory(input, recursive)
+    let package = RdPackage::from_directory_with_format(input, recursive, input_format.into())
         .with_context(|| format!("Failed to scan directory: {}", input.display()))?;
 
     if package.files().is_empty() {
@@ -703,6 +807,96 @@ fn display_fallback_warnings(
     }
 }
 
+/// Run the parse subcommand: parse Rd files to AST JSON
+fn run_parse_command(args: &ParseArgs, verbose: bool, quiet: bool) -> Result<()> {
+    let input = args.input.clone();
+
+    if input.is_file() {
+        parse_single_file(&input, args.output.as_deref(), verbose, quiet)?;
+    } else if input.is_dir() {
+        let output_dir = args.output.clone().unwrap_or_else(|| input.to_path_buf());
+
+        if verbose {
+            eprintln!("Scanning {} for Rd files...", input.display());
+        }
+
+        let result = export_package_ast(&input, args.recursive, &output_dir, args.jobs)
+            .with_context(|| format!("Failed to scan directory: {}", input.display()))?;
+
+        if !quiet {
+            for path in &result.output_files {
+                println!("{}", path.display());
+            }
+        }
+
+        for (file, error) in &result.failed_files {
+            eprintln!("Error parsing {}: {}", file.display(), error);
+        }
+
+        if !quiet {
+            eprintln!(
+                "Parsed {} files, {} failed",
+                result.success_count,
+                result.failed_files.len()
+            );
+        }
+
+        if !result.failed_files.is_empty() {
+            anyhow::bail!("{} files failed to parse", result.failed_files.len());
+        }
+    } else {
+        anyhow::bail!("Input path does not exist: {}", input.display());
+    }
+
+    Ok(())
+}
+
+/// Parse a single Rd file to an AST JSON envelope
+fn parse_single_file(
+    input: &Path,
+    output: Option<&Path>,
+    verbose: bool,
+    quiet: bool,
+) -> Result<()> {
+    let output_path = match output {
+        Some(p) => p.to_path_buf(),
+        None => input.with_extension("json"),
+    };
+
+    if verbose {
+        eprintln!("Parsing: {} -> {}", input.display(), output_path.display());
+    }
+
+    let content = fs::read_to_string(input)
+        .with_context(|| format!("Failed to read: {}", input.display()))?;
+
+    let source_files = parse_roxygen_comments(&content).source_files;
+    let doc = parse(&content).map_err(|e| anyhow::anyhow!("Parse error: {}", e))?;
+
+    let source = input
+        .file_name()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_string());
+    let envelope = RdAstEnvelope::new(doc, source, source_files);
+    let json = envelope
+        .to_json_pretty()
+        .with_context(|| "Failed to serialize AST JSON")?;
+
+    if let Some(parent) = output_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
+    }
+
+    fs::write(&output_path, &json)
+        .with_context(|| format!("Failed to write: {}", output_path.display()))?;
+
+    if !quiet {
+        println!("{}", output_path.display());
+    }
+
+    Ok(())
+}
+
 /// Run the index subcommand: generate topic index JSON to stdout
 fn run_index_command(args: &IndexArgs) -> Result<()> {
     if !args.input.is_dir() {
@@ -715,8 +909,12 @@ fn run_index_command(args: &IndexArgs) -> Result<()> {
         OutputFormat::Rmd => "Rmd",
     };
 
-    let package = RdPackage::from_directory(&args.input, args.recursive)
-        .with_context(|| format!("Failed to scan directory: {}", args.input.display()))?;
+    let package = RdPackage::from_directory_with_format(
+        &args.input,
+        args.recursive,
+        args.input_format.into(),
+    )
+    .with_context(|| format!("Failed to scan directory: {}", args.input.display()))?;
 
     if package.files().is_empty() {
         anyhow::bail!("No .Rd files found in {}", args.input.display());
@@ -930,6 +1128,7 @@ mod tests {
             topic_index: None,
             config: None,
             no_config: false,
+            input_format: InputFormat::Rd,
         }
     }
 

@@ -282,15 +282,15 @@ impl PackageUrlResolver {
 
 /// Collect all external package references from an RdPackage
 ///
-/// Scans all Rd files for `\link[pkg]{topic}` patterns and returns
-/// the set of unique external package names.
+/// Scans all documentation files for `\link[pkg]{topic}` patterns and
+/// returns the set of unique external package names. Respects the
+/// package's [`InputFormat`](crate::InputFormat): `.Rd` files are parsed,
+/// AST JSON envelopes are decoded directly.
 pub fn collect_external_packages(package: &RdPackage) -> HashSet<String> {
     let mut packages = HashSet::new();
 
     for file in &package.files {
-        if let Ok(content) = fs::read_to_string(file)
-            && let Ok(doc) = rd2qmd_core::parse(&content)
-        {
+        if let Ok((doc, _)) = crate::load_document(file, package.format) {
             for section in &doc.sections {
                 collect_packages_from_nodes(&section.content, &mut packages);
             }
@@ -464,6 +464,41 @@ Also \link[base]{paste} and \link{local_func}.
         assert!(external.contains("base"));
         // local_func should not be included (no package specified)
         assert!(!external.contains("local_func"));
+    }
+
+    #[test]
+    fn test_collect_external_packages_ast_json() {
+        let dir = tempdir().unwrap();
+        let man_dir = dir.path().join("man");
+        fs::create_dir_all(&man_dir).unwrap();
+
+        let rd_content = r#"\name{test}
+\alias{test}
+\title{Test}
+\description{
+See \link[dplyr]{mutate} and \link[base]{paste}.
+}
+"#;
+        fs::write(man_dir.join("test.Rd"), rd_content).unwrap();
+
+        let json_dir = dir.path().join("json");
+        crate::export_package_ast(&man_dir, false, &json_dir, Some(1)).unwrap();
+
+        let package =
+            RdPackage::from_directory_with_format(&json_dir, false, crate::InputFormat::AstJson)
+                .unwrap();
+        let external = collect_external_packages(&package);
+
+        assert!(
+            external.contains("dplyr"),
+            "Expected 'dplyr' in {:?}",
+            external
+        );
+        assert!(
+            external.contains("base"),
+            "Expected 'base' in {:?}",
+            external
+        );
     }
 
     #[test]
