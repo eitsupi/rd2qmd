@@ -34,9 +34,9 @@ pub enum FallbackReason {
 
 use rayon::prelude::*;
 use rd2qmd_core::{
-    ArgumentsFormat, Frontmatter, RdMetadata, RdToMdastOptions, SectionTag, WriterOptions,
-    extract_rd_metadata, extract_text, mdast_to_qmd, parse, parse_roxygen_comments,
-    rd_to_mdast_with_options,
+    ArgumentsFormat, Frontmatter, RdAstEnvelope, RdDocument, RdMetadata, RdToMdastOptions,
+    SectionTag, WriterOptions, extract_rd_metadata, extract_text, mdast_to_qmd, parse,
+    parse_roxygen_comments, rd_to_mdast_with_options,
 };
 use serde::Serialize;
 use std::collections::HashMap;
@@ -71,6 +71,16 @@ enum ConvertError {
     Failed(String),
 }
 
+/// Input format for a package's documentation files
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum InputFormat {
+    /// Parse `.Rd` files (default)
+    #[default]
+    Rd,
+    /// Decode pre-parsed AST JSON envelopes (`.json` files, see [`RdAstEnvelope`])
+    AstJson,
+}
+
 /// Information about an R package's documentation
 #[derive(Debug, Clone)]
 pub struct RdPackage {
@@ -80,6 +90,8 @@ pub struct RdPackage {
     files: Vec<PathBuf>,
     /// Alias index: maps alias names to Rd file basenames (without extension)
     alias_index: HashMap<String, String>,
+    /// Format of the files in this package
+    format: InputFormat,
 }
 
 impl RdPackage {
@@ -88,17 +100,31 @@ impl RdPackage {
     /// This scans the directory for .Rd files and builds an alias index
     /// by parsing each file and extracting \alias{} tags.
     pub fn from_directory(path: &Path, recursive: bool) -> Result<Self> {
+        Self::from_directory_with_format(path, recursive, InputFormat::Rd)
+    }
+
+    /// Load a package from a directory containing Rd files or AST JSON files
+    ///
+    /// With [`InputFormat::AstJson`], the directory is scanned for `.json`
+    /// files instead of `.Rd`/`.rd` files, and each file is decoded as an
+    /// [`RdAstEnvelope`] instead of being parsed as Rd.
+    pub fn from_directory_with_format(
+        path: &Path,
+        recursive: bool,
+        format: InputFormat,
+    ) -> Result<Self> {
         if !path.is_dir() {
             return Err(PackageError::DirectoryNotFound(path.to_path_buf()));
         }
 
-        let files = collect_rd_files(path, recursive)?;
-        let alias_index = build_alias_index(&files)?;
+        let files = collect_files(path, recursive, format)?;
+        let alias_index = build_alias_index(&files, format)?;
 
         Ok(Self {
             root: path.to_path_buf(),
             files,
             alias_index,
+            format,
         })
     }
 
@@ -281,7 +307,7 @@ pub fn generate_topic_index(
     let mut topics = Vec::new();
 
     for file in &package.files {
-        match extract_topic_info(file, &options.output_extension) {
+        match extract_topic_info(file, &options.output_extension, package.format) {
             Ok(info) => {
                 // Skip internal topics unless include_internal is set
                 if !options.include_internal
@@ -309,16 +335,12 @@ pub fn generate_topic_index(
 }
 
 /// Extract topic information from a single Rd file
-fn extract_topic_info(file: &Path, output_extension: &str) -> Result<TopicInfo> {
-    let content = fs::read_to_string(file)?;
-
-    // Extract roxygen2 metadata (source files) from header comments
-    let roxygen = parse_roxygen_comments(&content);
-
-    let doc = parse(&content).map_err(|e| PackageError::Parse {
-        file: file.to_path_buf(),
-        message: e.to_string(),
-    })?;
+fn extract_topic_info(
+    file: &Path,
+    output_extension: &str,
+    format: InputFormat,
+) -> Result<TopicInfo> {
+    let (doc, source_files) = load_document(file, format)?;
 
     // Extract name
     let name = doc
@@ -333,7 +355,7 @@ fn extract_topic_info(file: &Path, output_extension: &str) -> Result<TopicInfo> 
         .unwrap_or_default();
 
     // Extract metadata using shared function
-    let metadata = extract_rd_metadata(&doc, roxygen.source_files);
+    let metadata = extract_rd_metadata(&doc, source_files);
 
     // Determine output filename
     let basename = file.file_stem().and_then(|s| s.to_str()).unwrap_or("");
@@ -412,6 +434,108 @@ pub fn convert_package(
     })
 }
 
+/// Export all Rd files in a directory as AST JSON envelopes
+///
+/// Each `.Rd` file is parsed, its roxygen2-derived `source_files` are
+/// extracted, and the result is wrapped in an [`RdAstEnvelope`] and written
+/// as a `<stem>.json` file, mirroring the input file's relative path under
+/// `output_dir`.
+///
+/// Unlike [`convert_package`], this does not build an alias index (link
+/// resolution happens later, at conversion time) and applies no
+/// `\keyword{internal}` filtering: every file is exported, since filtering
+/// is the responsibility of the final conversion stage.
+pub fn export_package_ast(
+    input_dir: &Path,
+    recursive: bool,
+    output_dir: &Path,
+    jobs: Option<usize>,
+) -> Result<ConvertResult> {
+    if !input_dir.is_dir() {
+        return Err(PackageError::DirectoryNotFound(input_dir.to_path_buf()));
+    }
+
+    // Configure thread pool if specified
+    if let Some(n) = jobs {
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(n)
+            .build_global()
+            .ok();
+    }
+
+    let files = collect_files(input_dir, recursive, InputFormat::Rd)?;
+
+    // Create output directory if needed
+    fs::create_dir_all(output_dir)?;
+
+    // Export files in parallel
+    let results: Vec<_> = files
+        .par_iter()
+        .map(|file| export_single_file(file, input_dir, output_dir))
+        .collect();
+
+    // Collect results
+    let mut success_count = 0;
+    let mut failed_files = Vec::new();
+    let mut output_files = Vec::new();
+
+    for result in results {
+        match result {
+            Ok(output_path) => {
+                success_count += 1;
+                output_files.push(output_path);
+            }
+            Err((input_path, message)) => {
+                failed_files.push((input_path, message));
+            }
+        }
+    }
+
+    Ok(ConvertResult {
+        success_count,
+        failed_files,
+        output_files,
+        skipped_internal: Vec::new(),
+    })
+}
+
+/// Parse a single Rd file and write it as an AST JSON envelope
+fn export_single_file(
+    input: &Path,
+    root: &Path,
+    output_dir: &Path,
+) -> std::result::Result<PathBuf, (PathBuf, String)> {
+    let export = || -> std::result::Result<PathBuf, String> {
+        let content = fs::read_to_string(input).map_err(|e| e.to_string())?;
+
+        let roxygen = parse_roxygen_comments(&content);
+        let doc = parse(&content).map_err(|e| format!("Parse error: {}", e))?;
+
+        let source = input
+            .file_name()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_string());
+        let envelope = RdAstEnvelope::new(doc, source, roxygen.source_files);
+        let json = envelope.to_json_pretty().map_err(|e| e.to_string())?;
+
+        // Determine output path
+        let relative = input.strip_prefix(root).unwrap_or(input);
+        let output_path = output_dir.join(relative).with_extension("json");
+
+        // Create parent directory if needed
+        if let Some(parent) = output_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+
+        // Write output
+        fs::write(&output_path, json).map_err(|e| e.to_string())?;
+
+        Ok(output_path)
+    };
+
+    export().map_err(|message| (input.to_path_buf(), message))
+}
+
 /// Check if a document has \keyword{internal}
 fn has_keyword_internal(doc: &rd2qmd_core::RdDocument) -> bool {
     doc.get_sections(&SectionTag::Keyword)
@@ -426,12 +550,9 @@ fn convert_single_file(
     options: &PackageConvertOptions,
 ) -> ConvertOutcome {
     let convert = || -> std::result::Result<PathBuf, ConvertError> {
-        // Read input file
-        let content = fs::read_to_string(input).map_err(|e| ConvertError::Failed(e.to_string()))?;
-
-        // Parse Rd
-        let doc =
-            parse(&content).map_err(|e| ConvertError::Failed(format!("Parse error: {}", e)))?;
+        // Read and parse the input file (Rd or AST JSON, depending on package.format)
+        let (doc, source_files) = load_document(input, package.format)
+            .map_err(|e| ConvertError::Failed(e.to_string()))?;
 
         // Check for \keyword{internal} - skip unless include_internal is set
         if !options.include_internal && has_keyword_internal(&doc) {
@@ -480,8 +601,7 @@ fn convert_single_file(
         };
 
         // Extract Rd metadata, including source files from roxygen2 comments
-        let roxygen = parse_roxygen_comments(&content);
-        let metadata = extract_rd_metadata(&doc, roxygen.source_files);
+        let metadata = extract_rd_metadata(&doc, source_files);
 
         // Build writer options
         let writer_options = WriterOptions {
@@ -526,8 +646,11 @@ fn convert_single_file(
     }
 }
 
-/// Collect all .Rd files in a directory
-fn collect_rd_files(dir: &Path, recursive: bool) -> Result<Vec<PathBuf>> {
+/// Collect all documentation files in a directory
+///
+/// Scans for `.Rd`/`.rd` files with [`InputFormat::Rd`], or `.json` files
+/// with [`InputFormat::AstJson`].
+fn collect_files(dir: &Path, recursive: bool, format: InputFormat) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
 
     for entry in fs::read_dir(dir)? {
@@ -535,23 +658,58 @@ fn collect_rd_files(dir: &Path, recursive: bool) -> Result<Vec<PathBuf>> {
         let path = entry.path();
 
         if path.is_file() {
-            if let Some(ext) = path.extension()
-                && ext.eq_ignore_ascii_case("rd")
-            {
+            let matches = match format {
+                InputFormat::Rd => path
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("rd")),
+                InputFormat::AstJson => path
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("json")),
+            };
+            if matches {
                 files.push(path);
             }
         } else if path.is_dir() && recursive {
-            files.extend(collect_rd_files(&path, recursive)?);
+            files.extend(collect_files(&path, recursive, format)?);
         }
     }
 
     Ok(files)
 }
 
-/// Build an alias index from a list of Rd files
+/// Read and parse a single documentation file, returning its AST and the
+/// roxygen2-derived list of R source files
 ///
-/// Returns a HashMap mapping alias names to Rd file basenames (without extension)
-fn build_alias_index(files: &[PathBuf]) -> Result<HashMap<String, String>> {
+/// With [`InputFormat::Rd`], the file is read as Rd source and parsed; the
+/// source files are extracted from roxygen2 header comments. With
+/// [`InputFormat::AstJson`], the file is decoded as an [`RdAstEnvelope`]
+/// instead, and its `source_files` field is used directly.
+fn load_document(path: &Path, format: InputFormat) -> Result<(RdDocument, Vec<String>)> {
+    let content = fs::read_to_string(path)?;
+
+    match format {
+        InputFormat::Rd => {
+            let roxygen = parse_roxygen_comments(&content);
+            let doc = parse(&content).map_err(|e| PackageError::Parse {
+                file: path.to_path_buf(),
+                message: e.to_string(),
+            })?;
+            Ok((doc, roxygen.source_files))
+        }
+        InputFormat::AstJson => {
+            let envelope = RdAstEnvelope::from_json(&content).map_err(|e| PackageError::Parse {
+                file: path.to_path_buf(),
+                message: e.to_string(),
+            })?;
+            Ok((envelope.document, envelope.source_files))
+        }
+    }
+}
+
+/// Build an alias index from a list of documentation files
+///
+/// Returns a HashMap mapping alias names to file basenames (without extension)
+fn build_alias_index(files: &[PathBuf], format: InputFormat) -> Result<HashMap<String, String>> {
     let mut index = HashMap::new();
 
     for file in files {
@@ -561,12 +719,7 @@ fn build_alias_index(files: &[PathBuf]) -> Result<HashMap<String, String>> {
             .unwrap_or("")
             .to_string();
 
-        // Parse the file to extract aliases
-        let content = fs::read_to_string(file)?;
-        let doc = parse(&content).map_err(|e| PackageError::Parse {
-            file: file.clone(),
-            message: e.to_string(),
-        })?;
+        let (doc, _source_files) = load_document(file, format)?;
 
         // Extract all \alias{} sections
         let alias_sections = doc.get_sections(&SectionTag::Alias);
@@ -783,7 +936,7 @@ mod tests {
         fs::write(&rd_path, rd_content).unwrap();
 
         let files = vec![rd_path];
-        let index = build_alias_index(&files).unwrap();
+        let index = build_alias_index(&files, InputFormat::Rd).unwrap();
 
         assert_eq!(index.get("my_func"), Some(&"my_func".to_string()));
         assert_eq!(index.get("my_func_alias"), Some(&"my_func".to_string()));
@@ -1727,5 +1880,147 @@ x <- 1
         let names: Vec<_> = index.topics.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"public_func"));
         assert!(names.contains(&"internal_func"));
+    }
+
+    // ========================================================================
+    // AST JSON export/import tests
+    // ========================================================================
+
+    #[test]
+    fn test_export_package_ast() {
+        let dir = tempdir().unwrap();
+        let out_dir = tempdir().unwrap();
+
+        let rd_roxygen = r#"% Generated by roxygen2: do not edit by hand
+% Please edit documentation in R/coord-map.R
+\name{coord_map}
+\alias{coord_map}
+\title{Map projections}
+\description{Projects coordinates onto a map.}
+"#;
+        fs::write(dir.path().join("coord_map.Rd"), rd_roxygen).unwrap();
+
+        let result = export_package_ast(dir.path(), false, out_dir.path(), Some(1)).unwrap();
+
+        assert_eq!(result.success_count, 1);
+        assert!(result.failed_files.is_empty());
+        assert!(result.skipped_internal.is_empty());
+
+        let json_path = out_dir.path().join("coord_map.json");
+        assert!(json_path.exists());
+
+        let content = fs::read_to_string(&json_path).unwrap();
+        let envelope = RdAstEnvelope::from_json(&content).unwrap();
+        assert_eq!(envelope.source, Some("coord_map.Rd".to_string()));
+        assert_eq!(envelope.source_files, vec!["R/coord-map.R".to_string()]);
+    }
+
+    #[test]
+    fn test_export_package_ast_exports_internal_topics_too() {
+        let dir = tempdir().unwrap();
+        let out_dir = tempdir().unwrap();
+
+        let rd_internal = r#"\name{internal_func}
+\alias{internal_func}
+\title{Internal Function}
+\keyword{internal}
+\description{An internal function.}
+"#;
+        fs::write(dir.path().join("internal_func.Rd"), rd_internal).unwrap();
+
+        let result = export_package_ast(dir.path(), false, out_dir.path(), Some(1)).unwrap();
+
+        assert_eq!(result.success_count, 1);
+        assert!(out_dir.path().join("internal_func.json").exists());
+    }
+
+    #[test]
+    fn test_package_from_directory_with_ast_json_format() {
+        let dir = tempdir().unwrap();
+        let json_dir = tempdir().unwrap();
+        let out_dir = tempdir().unwrap();
+
+        let rd_main = r#"\name{main_func}
+\alias{main_func}
+\title{Main Function}
+\description{See \link{helper_func} for details.}
+"#;
+        let rd_helper = r#"\name{helper_func}
+\alias{helper_func}
+\title{Helper Function}
+\description{A helper function.}
+"#;
+        fs::write(dir.path().join("main_func.Rd"), rd_main).unwrap();
+        fs::write(dir.path().join("helper_func.Rd"), rd_helper).unwrap();
+
+        export_package_ast(dir.path(), false, json_dir.path(), Some(1)).unwrap();
+
+        let package =
+            RdPackage::from_directory_with_format(json_dir.path(), false, InputFormat::AstJson)
+                .unwrap();
+        assert_eq!(package.files.len(), 2);
+        assert_eq!(package.resolve_alias("main_func"), Some("main_func"));
+        assert_eq!(package.resolve_alias("helper_func"), Some("helper_func"));
+
+        let options = PackageConvertOptions {
+            output_dir: out_dir.path().to_path_buf(),
+            frontmatter: false,
+            pagetitle: false,
+            parallel_jobs: Some(1),
+            ..Default::default()
+        };
+        let result = PackageConverter::new(&package, options).convert().unwrap();
+        assert_eq!(result.conversion.success_count, 2);
+
+        let main_content = fs::read_to_string(out_dir.path().join("main_func.qmd")).unwrap();
+        assert!(main_content.contains("[`helper_func`](helper_func.qmd)"));
+    }
+
+    #[test]
+    fn test_topic_index_from_ast_json_format() {
+        let dir = tempdir().unwrap();
+        let json_dir = tempdir().unwrap();
+
+        let rd_roxygen = r#"% Generated by roxygen2: do not edit by hand
+% Please edit documentation in R/coord-map.R
+\name{coord_map}
+\alias{coord_map}
+\title{Map projections}
+\description{Projects coordinates onto a map.}
+"#;
+        fs::write(dir.path().join("coord_map.Rd"), rd_roxygen).unwrap();
+
+        export_package_ast(dir.path(), false, json_dir.path(), Some(1)).unwrap();
+
+        let package =
+            RdPackage::from_directory_with_format(json_dir.path(), false, InputFormat::AstJson)
+                .unwrap();
+        let options = TopicIndexOptions {
+            output_extension: "qmd".to_string(),
+            include_internal: false,
+        };
+        let index = generate_topic_index(&package, &options).unwrap();
+
+        assert_eq!(index.topics.len(), 1);
+        assert_eq!(index.topics[0].name, "coord_map");
+        assert_eq!(
+            index.topics[0].metadata.source_files,
+            vec!["R/coord-map.R".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_ast_json_version_mismatch_reported_as_parse_error() {
+        let json_dir = tempdir().unwrap();
+        fs::write(
+            json_dir.path().join("broken.json"),
+            r#"{"version":99,"source":null,"sourceFiles":[],"document":{"sections":[]}}"#,
+        )
+        .unwrap();
+
+        let result =
+            RdPackage::from_directory_with_format(json_dir.path(), false, InputFormat::AstJson);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("broken.json"));
     }
 }

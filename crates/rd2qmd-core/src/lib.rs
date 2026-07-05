@@ -37,6 +37,10 @@
 //! let qmd = convert_rd_content(r#"\name{foo}\title{Foo}\description{A function.}"#, &options).unwrap();
 //! ```
 //!
+//! [`convert_rd_document`] is the same pipeline for callers that already have
+//! a parsed [`RdDocument`] (e.g. from an [`RdAstEnvelope`]); it cannot fail
+//! with a parse error.
+//!
 //! ## Low-level: [`rd_to_mdast`] / [`rd_to_mdast_with_options`]
 //!
 //! For advanced use cases requiring direct access to the mdast intermediate representation.
@@ -58,6 +62,7 @@
 //! - `roxygen`: Enable source file extraction from roxygen2 comments
 //!   and roxygen2 markdown code block handling
 
+pub mod ast_io;
 pub mod convert;
 
 #[cfg(feature = "roxygen")]
@@ -67,6 +72,8 @@ use std::collections::HashMap;
 
 // Re-export rd-parser types
 pub use rd_parser::{RdDocument, RdNode, RdSection, SectionTag, parse};
+
+pub use ast_io::{AST_FORMAT_VERSION, AstIoError, RdAstEnvelope};
 
 // ============================================================================
 // Error types
@@ -489,6 +496,39 @@ pub fn convert_rd_content(
 ) -> Result<String, ConvertError> {
     let doc = parse(content).map_err(|e| ConvertError::Parse(e.to_string()))?;
 
+    #[cfg(feature = "roxygen")]
+    let source_files = rd_parser::parse_roxygen_comments(content).source_files;
+    #[cfg(not(feature = "roxygen"))]
+    let source_files = vec![];
+
+    Ok(convert_rd_document(&doc, source_files, options))
+}
+
+/// Convert an already-parsed Rd document to Quarto Markdown
+///
+/// This is the same conversion pipeline as [`convert_rd_content`], but takes
+/// an already-parsed [`RdDocument`] (e.g. deserialized from an
+/// [`RdAstEnvelope`]) instead of raw Rd content, so it cannot fail with a
+/// parse error.
+///
+/// `source_files` is the roxygen2-derived list of R source files (see
+/// `rd_parser::parse_roxygen_comments`), since that information is extracted
+/// from raw Rd text and is not part of the AST itself.
+///
+/// # Example
+///
+/// ```
+/// use rd2qmd_core::{convert_rd_document, parse, RdConvertOptions};
+///
+/// let doc = parse(r#"\name{foo}\title{Foo}\description{A function.}"#).unwrap();
+/// let qmd = convert_rd_document(&doc, vec![], &RdConvertOptions::default());
+/// assert!(qmd.contains("Foo"));
+/// ```
+pub fn convert_rd_document(
+    doc: &RdDocument,
+    source_files: Vec<String>,
+    options: &RdConvertOptions,
+) -> String {
     // Build converter options
     let converter_options = RdToMdastOptions {
         internal_link_url: options.links.internal_link_url.clone(),
@@ -505,7 +545,7 @@ pub fn convert_rd_content(
     };
 
     // Convert to mdast
-    let mdast = rd_to_mdast_with_options(&doc, &converter_options);
+    let mdast = rd_to_mdast_with_options(doc, &converter_options);
 
     // Extract title and name for frontmatter
     let title = doc
@@ -526,12 +566,7 @@ pub fn convert_rd_content(
     };
 
     // Extract metadata
-    #[cfg(feature = "roxygen")]
-    let source_files = rd_parser::parse_roxygen_comments(content).source_files;
-    #[cfg(not(feature = "roxygen"))]
-    let source_files = vec![];
-
-    let metadata = extract_rd_metadata(&doc, source_files);
+    let metadata = extract_rd_metadata(doc, source_files);
 
     // Build writer options
     let writer_options = WriterOptions {
@@ -548,7 +583,7 @@ pub fn convert_rd_content(
         quarto_code_blocks: options.code.quarto_code_blocks,
     };
 
-    Ok(mdast_to_qmd(&mdast, &writer_options))
+    mdast_to_qmd(&mdast, &writer_options)
 }
 
 #[cfg(test)]
@@ -1073,5 +1108,39 @@ for \eqn{x = 0, 1, 2, \ldots}{x = 0, 1, 2, ...}. The mean is
         let result = RdConverter::new(content).convert();
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_convert_rd_document_matches_convert_rd_content() {
+        let content = r#"\name{foo}
+\title{Foo Function}
+\description{Does foo. See \link{bar}.}
+"#;
+        let mut alias_map = HashMap::new();
+        alias_map.insert("bar".to_string(), "bar_file".to_string());
+
+        let options = RdConvertOptions {
+            frontmatter: FrontmatterOptions {
+                enabled: true,
+                pagetitle: true,
+            },
+            links: LinkOptions {
+                internal_link_url: Some("{file}.qmd".to_string()),
+                alias_map: Some(alias_map),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let from_content = convert_rd_content(content, &options).unwrap();
+
+        let doc = parse(content).unwrap();
+        #[cfg(feature = "roxygen")]
+        let source_files = rd_parser::parse_roxygen_comments(content).source_files;
+        #[cfg(not(feature = "roxygen"))]
+        let source_files = vec![];
+        let from_document = convert_rd_document(&doc, source_files, &options);
+
+        assert_eq!(from_content, from_document);
     }
 }
