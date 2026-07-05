@@ -268,7 +268,7 @@ fn main() -> Result<()> {
     match cli.subcommand {
         Commands::Convert(args) => run_convert_command(&args, cli.verbose, cli.quiet),
         Commands::Index(args) => run_index_command(&args),
-        Commands::Init(args) => run_init_command(&args),
+        Commands::Init(args) => run_init_command(&args, cli.quiet),
     }
 }
 
@@ -741,7 +741,7 @@ fn run_index_command(args: &IndexArgs) -> Result<()> {
 }
 
 /// Run the init subcommand: generate configuration file
-fn run_init_command(args: &InitArgs) -> Result<()> {
+fn run_init_command(args: &InitArgs, quiet: bool) -> Result<()> {
     // Handle --schema flag: output JSON schema to stdout
     if args.schema {
         let schema = Config::json_schema_string()?;
@@ -766,7 +766,9 @@ fn run_init_command(args: &InitArgs) -> Result<()> {
         )
     })?;
 
-    eprintln!("Created configuration file: {}", args.output.display());
+    if !quiet {
+        eprintln!("Created configuration file: {}", args.output.display());
+    }
     Ok(())
 }
 
