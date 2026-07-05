@@ -23,6 +23,8 @@
 
 - Links whose text equals their URL (e.g. from `\url{}`) are now written as CommonMark autolinks (`<https://example.com>` instead of `[https://example.com](https://example.com)`), so renderers that display link URLs alongside the text no longer show the URL twice.
 
+- **Breaking:** Conversion is now a `convert` subcommand instead of the top-level command, e.g. `rd2qmd man/ -o docs/` becomes `rd2qmd convert man/ -o docs/`. Running `rd2qmd` with no arguments now shows the help text instead of erroring. `-v`/`--verbose` and `-q`/`--quiet` are now global flags accepted by every subcommand (e.g. `rd2qmd index -v`).
+
 ## [0.3.0] - 2026-07-02
 
 ### Changed

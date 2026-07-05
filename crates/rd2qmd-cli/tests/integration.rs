@@ -35,7 +35,7 @@ fn convert_fixture(name: &str, args: &[&str]) -> String {
     ));
 
     let mut cmd = Command::new(rd2qmd_binary());
-    cmd.arg(&input).arg("-o").arg(&output);
+    cmd.arg("convert").arg(&input).arg("-o").arg(&output);
     for arg in args {
         cmd.arg(arg);
     }
@@ -159,6 +159,7 @@ fn test_directory_conversion() {
     fs::create_dir_all(&output_dir).expect("Failed to create output dir");
 
     let status = Command::new(rd2qmd_binary())
+        .arg("convert")
         .arg(&fixtures)
         .arg("-o")
         .arg(&output_dir)
@@ -188,6 +189,7 @@ fn test_directory_conversion_pipe_table() {
     fs::create_dir_all(&output_dir).expect("Failed to create output dir");
 
     let status = Command::new(rd2qmd_binary())
+        .arg("convert")
         .arg(&fixtures)
         .arg("-o")
         .arg(&output_dir)
@@ -224,6 +226,32 @@ fn test_init_config() {
     let _ = fs::remove_file(&output_file);
 
     insta::assert_snapshot!("init_config_toml", content);
+}
+
+#[test]
+fn test_init_config_quiet() {
+    let output_file = std::env::temp_dir().join("rd2qmd_test_init_config_quiet.toml");
+    let _ = fs::remove_file(&output_file);
+
+    let output = Command::new(rd2qmd_binary())
+        .arg("init")
+        .arg("-q")
+        .arg("-o")
+        .arg(&output_file)
+        .output()
+        .expect("Failed to run rd2qmd init -q");
+
+    assert!(output.status.success(), "rd2qmd init -q failed");
+    assert!(
+        output.stderr.is_empty(),
+        "rd2qmd init -q should not print to stderr, got: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        output_file.exists(),
+        "rd2qmd init -q should create the config file"
+    );
+    let _ = fs::remove_file(&output_file);
 }
 
 #[test]
@@ -292,6 +320,7 @@ fn external_links_warnings(extra_args: &[&str]) -> String {
     .expect("Failed to write config");
 
     let output = Command::new(rd2qmd_binary())
+        .arg("convert")
         .arg(&man_dir)
         .arg("-o")
         .arg(root.join("out"))

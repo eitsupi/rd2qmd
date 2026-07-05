@@ -39,17 +39,25 @@ powershell -ExecutionPolicy Bypass -c "irm https://github.com/eitsupi/rd2qmd/rel
 
 ## Usage
 
+rd2qmd provides three subcommands:
+
+- `convert` — convert Rd files to Quarto Markdown, R Markdown, or standard Markdown
+- `index` — generate a JSON topic index (see [Topic index generation](#topic-index-generation))
+- `init` — create a starter `_rd2qmd.toml` configuration file
+
+`-v, --verbose` and `-q, --quiet` are global flags available on every subcommand.
+
 ### Basic usage
 
 ```bash
 # Convert a single file (outputs to same directory)
-rd2qmd file.Rd
+rd2qmd convert file.Rd
 
 # Convert to a specific output file
-rd2qmd file.Rd -o output.qmd
+rd2qmd convert file.Rd -o output.qmd
 
 # Convert to standard Markdown instead of Quarto
-rd2qmd file.Rd -f md
+rd2qmd convert file.Rd -f md
 ```
 
 ### Directory conversion
@@ -58,13 +66,13 @@ When converting a directory, rd2qmd builds an alias index for internal link reso
 
 ```bash
 # Convert all .Rd files in a directory
-rd2qmd man/ -o docs/
+rd2qmd convert man/ -o docs/
 
 # Process subdirectories recursively
-rd2qmd man/ -o docs/ -r
+rd2qmd convert man/ -o docs/ -r
 
 # Use parallel processing with 4 jobs
-rd2qmd man/ -o docs/ -j4
+rd2qmd convert man/ -o docs/ -j4
 ```
 
 ### Options
@@ -125,7 +133,7 @@ out of the box. Two common customizations:
   these URIs; the scheme is chosen and interpreted by the consumer.
 
   ```sh
-  rd2qmd man/ -o docs/ \
+  rd2qmd convert man/ -o docs/ \
     --external-link-url "x-r-help:{package}/{topic}" \
     --unqualified-link-url "x-r-help:{topic}"
   ```
@@ -188,7 +196,7 @@ rd2qmd index man/
 rd2qmd index man/ | jq '.topics[] | select(.lifecycle)'
 
 # Generate index while converting
-rd2qmd man/ -o docs/ --topic-index index.json
+rd2qmd convert man/ -o docs/ --topic-index index.json
 ```
 
 The index includes topic name, output file, title, aliases, and lifecycle stage:
@@ -331,19 +339,19 @@ The Arguments section is rendered using `--arguments-format`. Rd argument descri
 Convert ggplot2 documentation to Quarto:
 
 ```bash
-rd2qmd ggplot2/man/ -o docs/reference/ -v
+rd2qmd convert ggplot2/man/ -o docs/reference/ -v
 ```
 
 Convert a single function's documentation:
 
 ```bash
-rd2qmd ggplot2/man/geom_point.Rd -o geom_point.qmd
+rd2qmd convert ggplot2/man/geom_point.Rd -o geom_point.qmd
 ```
 
 Convert to standard Markdown for a static site:
 
 ```bash
-rd2qmd ggplot2/man/ -o docs/ -f md
+rd2qmd convert ggplot2/man/ -o docs/ -f md
 ```
 
 ## Performance
