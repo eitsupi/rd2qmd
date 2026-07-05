@@ -55,6 +55,15 @@ enum InputFormat {
     Ast,
 }
 
+impl InputFormat {
+    fn file_extension(self) -> &'static str {
+        match self {
+            Self::Rd => ".Rd",
+            Self::Ast => ".json",
+        }
+    }
+}
+
 impl From<InputFormat> for PackageInputFormat {
     fn from(format: InputFormat) -> Self {
         match format {
@@ -606,7 +615,11 @@ fn convert_directory(
 
     // Load package with alias index
     if verbose {
-        eprintln!("Scanning {} for Rd files...", input.display());
+        eprintln!(
+            "Scanning {} for {} files...",
+            input.display(),
+            input_format.file_extension()
+        );
     }
 
     let package = RdPackage::from_directory_with_format(input, recursive, input_format.into())
@@ -614,13 +627,21 @@ fn convert_directory(
 
     if package.files().is_empty() {
         if !quiet {
-            eprintln!("No .Rd files found in {}", input.display());
+            eprintln!(
+                "No {} files found in {}",
+                input_format.file_extension(),
+                input.display()
+            );
         }
         return Ok(());
     }
 
     if verbose {
-        eprintln!("Found {} .Rd files", package.files().len());
+        eprintln!(
+            "Found {} {} files",
+            package.files().len(),
+            input_format.file_extension()
+        );
         eprintln!(
             "Built alias index with {} entries",
             package.alias_index().len()
@@ -917,7 +938,11 @@ fn run_index_command(args: &IndexArgs) -> Result<()> {
     .with_context(|| format!("Failed to scan directory: {}", args.input.display()))?;
 
     if package.files().is_empty() {
-        anyhow::bail!("No .Rd files found in {}", args.input.display());
+        anyhow::bail!(
+            "No {} files found in {}",
+            args.input_format.file_extension(),
+            args.input.display()
+        );
     }
 
     let index_options = TopicIndexOptions {

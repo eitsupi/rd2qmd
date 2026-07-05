@@ -715,3 +715,41 @@ fn test_parse_defaults_directory() {
 
     assert_eq!(files, expected);
 }
+
+#[test]
+fn test_convert_empty_ast_directory_mentions_json_files() {
+    let root = unique_temp_dir("convert_empty_ast");
+    fs::create_dir_all(&root).expect("Failed to create temp dir");
+
+    let output = Command::new(rd2qmd_binary())
+        .arg("convert")
+        .arg(&root)
+        .arg("--input-format")
+        .arg("ast")
+        .output()
+        .expect("Failed to run rd2qmd convert");
+
+    let _ = fs::remove_dir_all(&root);
+
+    assert!(output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("No .json files found"));
+}
+
+#[test]
+fn test_index_empty_ast_directory_mentions_json_files() {
+    let root = unique_temp_dir("index_empty_ast");
+    fs::create_dir_all(&root).expect("Failed to create temp dir");
+
+    let output = Command::new(rd2qmd_binary())
+        .arg("index")
+        .arg(&root)
+        .arg("--input-format")
+        .arg("ast")
+        .output()
+        .expect("Failed to run rd2qmd index");
+
+    let _ = fs::remove_dir_all(&root);
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("No .json files found"));
+}
