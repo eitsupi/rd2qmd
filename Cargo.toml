@@ -34,7 +34,7 @@ schemars = "1"
 tabled = { version = "0.21", default-features = false, features = ["std"] }
 
 # External link resolution (optional)
-r-description = "0.3.7"
+r-description = "0.4.0"
 saphyr = "0.0.6"
 reqwest = { version = "0.13", features = ["blocking"], default-features = false }
 url = "2"
