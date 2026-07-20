@@ -7,8 +7,10 @@ use super::leaf_text::{flatten_prose_leaves, flatten_verbatim_leaves};
 
 /// Convert the primitive inline nodes currently supported by the AST migration.
 pub(crate) fn convert_inline_node(node: &RdNode) -> Option<Node> {
-    if let RdNode::Text(text) = node {
-        return Some(Node::text(text.clone()));
+    match node {
+        RdNode::Text(text) => return Some(Node::text(text.clone())),
+        RdNode::RCode(code) | RdNode::Verb(code) => return Some(Node::inline_code(code.clone())),
+        _ => {}
     }
 
     // Real source-path tracking is deferred until a later migration phase.
@@ -62,7 +64,56 @@ pub(crate) fn convert_inline_node(node: &RdNode) -> Option<Node> {
 
 /// Convert all supported primitive inline nodes, skipping out-of-scope nodes.
 pub(crate) fn convert_inline_nodes(nodes: &[RdNode]) -> Vec<Node> {
-    nodes.iter().filter_map(convert_inline_node).collect()
+    let mut converted = Vec::new();
+    for node in nodes {
+        if let RdNode::Group(group) = node {
+            converted.extend(convert_inline_nodes(group.children()));
+        } else if let Some(node) = convert_inline_node(node) {
+            converted.push(node);
+        }
+    }
+    converted
+}
+
+/// Extract trimmed plain text from an mdast node sequence.
+pub(crate) fn extract_plain_text(nodes: &[Node]) -> String {
+    fn append_node_text(node: &Node, text: &mut String) {
+        match node {
+            Node::Heading(node) => append_children_text(&node.children, text),
+            Node::Paragraph(node) => append_children_text(&node.children, text),
+            Node::ThematicBreak => {}
+            Node::Blockquote(node) => append_children_text(&node.children, text),
+            Node::List(node) => append_children_text(&node.children, text),
+            Node::ListItem(node) => append_children_text(&node.children, text),
+            Node::Code(node) => text.push_str(&node.value),
+            Node::Table(node) => append_children_text(&node.children, text),
+            Node::TableRow(node) => append_children_text(&node.children, text),
+            Node::TableCell(node) => append_children_text(&node.children, text),
+            Node::DefinitionList(node) => append_children_text(&node.children, text),
+            Node::DefinitionTerm(node) => append_children_text(&node.children, text),
+            Node::DefinitionDescription(node) => append_children_text(&node.children, text),
+            Node::Text(node) => text.push_str(&node.value),
+            Node::Emphasis(node) => append_children_text(&node.children, text),
+            Node::Strong(node) => append_children_text(&node.children, text),
+            Node::InlineCode(node) => text.push_str(&node.value),
+            Node::Break => {}
+            Node::Link(node) => append_children_text(&node.children, text),
+            Node::Image(node) => text.push_str(&node.alt),
+            Node::Math(node) => text.push_str(&node.value),
+            Node::InlineMath(node) => text.push_str(&node.value),
+            Node::Html(node) => text.push_str(&node.value),
+        }
+    }
+
+    fn append_children_text(nodes: &[Node], text: &mut String) {
+        for node in nodes {
+            append_node_text(node, text);
+        }
+    }
+
+    let mut text = String::new();
+    append_children_text(nodes, &mut text);
+    text.trim().to_owned()
 }
 
 fn convert_inline_span(kind: RdInlineSpanKind, body: &[RdNode]) -> Option<Node> {
@@ -127,7 +178,7 @@ mod tests {
     use rd_ast::{RdNode, RdTag};
     use rd2qmd_mdast::Node;
 
-    use super::{convert_inline_node, convert_inline_nodes};
+    use super::{convert_inline_node, convert_inline_nodes, extract_plain_text};
 
     fn text(value: &str) -> RdNode {
         RdNode::Text(value.to_owned())
@@ -317,5 +368,23 @@ mod tests {
     fn skips_nodes_outside_this_substep() {
         let link = tagged(RdTag::Link, vec![text("topic")]);
         assert_eq!(convert_inline_node(&link), None);
+    }
+
+    #[test]
+    fn extracts_plain_text_from_nested_mdast_nodes() {
+        let nodes = vec![
+            Node::text("  plain "),
+            Node::emphasis(vec![
+                Node::text("emphasized "),
+                Node::strong(vec![Node::text("strong")]),
+            ]),
+            Node::inline_code(" code "),
+            Node::image("plot.png", "plot alt"),
+        ];
+
+        assert_eq!(
+            extract_plain_text(&nodes),
+            "plain emphasized strong code plot alt"
+        );
     }
 }

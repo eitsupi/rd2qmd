@@ -14,7 +14,7 @@ pub(crate) use document::{
     FixedSectionKind, build_document_structure, extract_document_metadata,
 };
 #[allow(unused_imports)]
-pub(crate) use inline::{convert_inline_node, convert_inline_nodes};
+pub(crate) use inline::{convert_inline_node, convert_inline_nodes, extract_plain_text};
 #[allow(unused_imports)]
 pub(crate) use leaf_text::{
     LeafShapeError, flatten_prose_leaves, flatten_rcode_leaves, flatten_verbatim_leaves,

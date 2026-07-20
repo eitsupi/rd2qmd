@@ -2,7 +2,7 @@
 
 use rd_ast::{RdArgument, RdDocument, RdNode};
 
-use super::leaf_text::flatten_prose_leaves;
+use super::inline::{convert_inline_nodes, extract_plain_text};
 
 /// The document-level information needed by later rendering steps.
 #[derive(Debug, Clone, PartialEq)]
@@ -162,10 +162,7 @@ fn push_nodes<'a>(
 }
 
 fn prose_text(nodes: &[RdNode]) -> String {
-    flatten_prose_leaves(nodes)
-        .unwrap_or_else(|error| error.recovered_text().to_owned())
-        .trim()
-        .to_owned()
+    extract_plain_text(&convert_inline_nodes(nodes))
 }
 
 fn sorted_unique(values: impl Iterator<Item = String>) -> Vec<String> {
@@ -311,15 +308,31 @@ mod tests {
                 vec![
                     RdNode::Text("  A ".to_owned()),
                     RdNode::group(vec![RdNode::RCode("mixed".to_owned())]),
-                    RdNode::Verb(" title  ".to_owned()),
+                    RdNode::Verb(" title ".to_owned()),
+                    RdNode::tagged(RdTag::R, None, vec![]),
                 ],
             ),
             tagged(RdTag::Name, "  topic-name  "),
         ]);
 
         let structure = build_document_structure(&document);
-        assert_eq!(structure.title.as_deref(), Some("A mixed title"));
+        assert_eq!(structure.title.as_deref(), Some("A mixed title R"));
         assert_eq!(structure.name.as_deref(), Some("topic-name"));
+
+        let special_character_document = RdDocument::new(vec![RdNode::tagged(
+            RdTag::Title,
+            None,
+            vec![
+                RdNode::Text("Using ".to_owned()),
+                RdNode::tagged(RdTag::R, None, vec![]),
+            ],
+        )]);
+        assert_eq!(
+            build_document_structure(&special_character_document)
+                .title
+                .as_deref(),
+            Some("Using R")
+        );
     }
 
     #[test]
