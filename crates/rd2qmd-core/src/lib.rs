@@ -65,6 +65,9 @@
 pub mod ast_io;
 pub mod convert;
 
+#[allow(dead_code)]
+mod source_parse;
+
 #[cfg(feature = "roxygen")]
 pub mod roxygen_code_block;
 
