@@ -3,11 +3,14 @@
 //! This module coexists with the legacy convert implementation while conversion
 //! is migrated in small, independently testable steps.
 
+mod code;
 mod document;
 mod inline;
 mod leaf_text;
 mod traversal;
 
+#[allow(unused_imports)]
+pub(crate) use code::convert_usage;
 #[allow(unused_imports)]
 pub(crate) use document::{
     DocumentMetadata, DocumentSection, DocumentStructure, FixedSection, FixedSectionBody,
