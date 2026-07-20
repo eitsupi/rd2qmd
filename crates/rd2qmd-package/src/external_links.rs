@@ -436,6 +436,17 @@ url: https://dplyr.tidyverse.org/
     }
 
     #[test]
+    #[ignore = "requires network access to a real pkgdown site"]
+    fn test_http_get_fetches_real_https_pkgdown_metadata() {
+        let resolver = PackageUrlResolver::new(PackageUrlResolverOptions::default());
+
+        let content = resolver.http_get("https://dplyr.tidyverse.org/pkgdown.yml");
+
+        assert!(content.is_some(), "HTTPS pkgdown.yml fetch failed");
+        assert!(!content.unwrap().trim().is_empty());
+    }
+
+    #[test]
     fn test_collect_external_packages() {
         let dir = tempdir().unwrap();
 
