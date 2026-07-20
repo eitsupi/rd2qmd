@@ -4,6 +4,7 @@
 //! is migrated in small, independently testable steps.
 
 mod document;
+mod inline;
 mod leaf_text;
 mod traversal;
 
@@ -12,6 +13,8 @@ pub(crate) use document::{
     DocumentMetadata, DocumentSection, DocumentStructure, FixedSection, FixedSectionBody,
     FixedSectionKind, build_document_structure, extract_document_metadata,
 };
+#[allow(unused_imports)]
+pub(crate) use inline::{convert_inline_node, convert_inline_nodes};
 #[allow(unused_imports)]
 pub(crate) use leaf_text::{
     LeafShapeError, flatten_prose_leaves, flatten_rcode_leaves, flatten_verbatim_leaves,
