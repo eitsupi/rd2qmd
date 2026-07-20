@@ -5,6 +5,11 @@ use rd_ast::{RdMethodKind, RdNode, RdPath};
 /// Flatten a Usage section while preserving its source whitespace.
 pub(crate) fn convert_usage(nodes: &[RdNode]) -> String {
     let mut output = String::new();
+    append_usage(nodes, &mut output);
+    output
+}
+
+fn append_usage(nodes: &[RdNode], output: &mut String) {
     let mut index = 0;
     let base_path = RdPath::new(Vec::new());
 
@@ -12,7 +17,15 @@ pub(crate) fn convert_usage(nodes: &[RdNode]) -> String {
         match &nodes[index] {
             RdNode::RCode(code) => output.push_str(code),
             RdNode::Comment(_) => {}
+            RdNode::Group(group) => append_usage(group.children(), output),
+            RdNode::Raw(raw) => append_usage(raw.children(), output),
             node => {
+                if let Some(symbol) = node.text_symbol(&base_path) {
+                    output.push_str(symbol.fallback_text());
+                    index += 1;
+                    continue;
+                }
+
                 let Some(method) = node.method(&base_path) else {
                     index += 1;
                     continue;
@@ -50,12 +63,10 @@ pub(crate) fn convert_usage(nodes: &[RdNode]) -> String {
         }
         index += 1;
     }
-
-    output
 }
 
 fn try_format_infix_call(generic: &str, call_text: &str) -> Option<String> {
-    let leading_len = call_text.len() - call_text.trim_start().len();
+    let leading_len = call_text.len() - call_text.trim_start_matches([' ', '\t']).len();
     let call_text_trimmed = &call_text[leading_len..];
     if !call_text_trimmed.starts_with('(') {
         return None;
@@ -223,7 +234,7 @@ fn format_infix_call(operator: &str, args: &[String]) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use rd_ast::{RdNode, RdTag};
+    use rd_ast::{RdNode, RdTag, producer};
 
     use super::convert_usage;
 
@@ -236,6 +247,10 @@ mod tests {
                 RdNode::group(vec![RdNode::Text(qualifier.to_owned())]),
             ],
         )
+    }
+
+    fn raw(nodes: Vec<RdNode>) -> RdNode {
+        RdNode::Raw(producer::raw_node(None, None, nodes, None, vec![]))
     }
 
     #[test]
@@ -281,6 +296,48 @@ mod tests {
             convert_usage(&nodes),
             "# S3 method for class 'numbers'\n+(\n  e1,\n  e2\n)\n"
         );
+    }
+
+    #[test]
+    fn leaves_infix_call_starting_on_a_new_line_unformatted() {
+        let same_line = vec![
+            method(RdTag::Method, "+", "numbers"),
+            RdNode::RCode("(e1, e2)\n".to_owned()),
+        ];
+        let next_line = vec![
+            method(RdTag::Method, "+", "numbers"),
+            RdNode::RCode("\n(e1, e2)\n".to_owned()),
+        ];
+
+        assert_eq!(
+            convert_usage(&same_line),
+            "# S3 method for class 'numbers'\ne1 + e2\n"
+        );
+        assert_eq!(
+            convert_usage(&next_line),
+            "# S3 method for class 'numbers'\n+\n(e1, e2)\n"
+        );
+    }
+
+    #[test]
+    fn preserves_text_symbols_in_usage_code() {
+        let nodes = vec![
+            RdNode::RCode("f(".to_owned()),
+            RdNode::tagged(RdTag::Dots, None, vec![]),
+            RdNode::RCode(")\n".to_owned()),
+        ];
+
+        assert_eq!(convert_usage(&nodes), "f(...)\n");
+    }
+
+    #[test]
+    fn preserves_rcode_nested_in_group_and_raw_nodes() {
+        let nodes = vec![
+            RdNode::group(vec![RdNode::RCode("grouped()\n".to_owned())]),
+            raw(vec![RdNode::RCode("recovered()\n".to_owned())]),
+        ];
+
+        assert_eq!(convert_usage(&nodes), "grouped()\nrecovered()\n");
     }
 
     #[test]
