@@ -807,6 +807,24 @@ mod tests {
     }
 
     #[test]
+    fn test_inline_code_that_looks_executable_to_knitr_is_padded() {
+        for value in ["r 1+1", "r <-  x + amount * runif(n, -1, 1)", "r\t1+1"] {
+            let root = Root::new(vec![Node::paragraph(vec![Node::inline_code(value)])]);
+            let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+            assert_eq!(qmd.trim(), format!("`` {value} ``"));
+        }
+    }
+
+    #[test]
+    fn test_inline_code_only_guards_r_followed_by_ascii_whitespace() {
+        for value in ["r", "runif(n)", "R 1+1", "python 1+1"] {
+            let root = Root::new(vec![Node::paragraph(vec![Node::inline_code(value)])]);
+            let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+            assert_eq!(qmd.trim(), format!("`{value}`"));
+        }
+    }
+
+    #[test]
     fn test_inline_code_with_backticks() {
         let root = Root::new(vec![Node::paragraph(vec![Node::inline_code(
             "code with ` backtick",
