@@ -10,7 +10,7 @@ mod leaf_text;
 mod traversal;
 
 #[allow(unused_imports)]
-pub(crate) use code::convert_usage;
+pub(crate) use code::{ExampleOptions, convert_examples, convert_usage};
 #[allow(unused_imports)]
 pub(crate) use document::{
     DocumentMetadata, DocumentSection, DocumentStructure, FixedSection, FixedSectionBody,

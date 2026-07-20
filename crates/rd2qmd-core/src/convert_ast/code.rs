@@ -1,15 +1,131 @@
-//! Conversion of Usage-section code from rd_ast nodes.
+//! Conversion of R-like Usage and Examples sections from rd_ast nodes.
 
-use rd_ast::{RdMethodKind, RdNode, RdPath};
+use rd_ast::{RdExampleControlKind, RdMethodKind, RdNode, RdPath};
+use rd2qmd_mdast::Node;
+
+use super::leaf_text::flatten_verbatim_leaves;
+
+/// Execution and output-format policy for an Examples section.
+pub(crate) struct ExampleOptions {
+    pub(crate) exec_dontrun: bool,
+    pub(crate) exec_donttest: bool,
+    pub(crate) quarto_code_blocks: bool,
+}
 
 /// Flatten a Usage section while preserving its source whitespace.
 pub(crate) fn convert_usage(nodes: &[RdNode]) -> String {
     let mut output = String::new();
-    append_usage(nodes, &mut output);
+    append_rcode(nodes, &mut output);
     output
 }
 
-fn append_usage(nodes: &[RdNode], output: &mut String) {
+/// Convert an Examples section into separately fenced code blocks.
+pub(crate) fn convert_examples(nodes: &[RdNode], options: &ExampleOptions) -> Vec<Node> {
+    let mut result = Vec::new();
+    let mut current_code = String::new();
+    let mut has_executable = false;
+    let base_path = RdPath::new(Vec::new());
+
+    for node in nodes {
+        let Some(control) = node.example_control(&base_path) else {
+            has_executable = true;
+            append_rcode(std::slice::from_ref(node), &mut current_code);
+            continue;
+        };
+
+        match control.kind() {
+            RdExampleControlKind::DontRun => {
+                flush_code(&mut current_code, &mut result, true);
+                has_executable = false;
+
+                let code = recover_verbatim(control.body());
+                push_code(&mut result, &code, options.exec_dontrun);
+            }
+            RdExampleControlKind::DontTest => {
+                flush_code(&mut current_code, &mut result, true);
+                has_executable = false;
+
+                let mut code = String::new();
+                append_rcode(control.body(), &mut code);
+                push_code(&mut result, &code, options.exec_donttest);
+            }
+            RdExampleControlKind::DontShow | RdExampleControlKind::TestOnly => {
+                let mut code = String::new();
+                append_rcode(control.body(), &mut code);
+                let trimmed = code.trim();
+                let open_braces = trimmed
+                    .chars()
+                    .filter(|&character| character == '{')
+                    .count();
+                let close_braces = trimmed
+                    .chars()
+                    .filter(|&character| character == '}')
+                    .count();
+
+                // roxygen2's @examplesIf emits an incomplete opening wrapper and a
+                // separate leading-`}` closing wrapper. Neither fragment is code.
+                let is_start_wrapper = open_braces > close_braces;
+                let is_end_wrapper = trimmed.starts_with('}');
+
+                if !is_start_wrapper && !is_end_wrapper && !trimmed.is_empty() {
+                    flush_code(&mut current_code, &mut result, true);
+                    has_executable = false;
+
+                    if options.quarto_code_blocks {
+                        push_code(&mut result, &format!("#| include: false\n{trimmed}"), true);
+                    }
+                }
+            }
+            RdExampleControlKind::DontDiff => {
+                has_executable = true;
+                append_rcode(control.body(), &mut current_code);
+            }
+            _ => {
+                has_executable = true;
+                append_rcode(control.body(), &mut current_code);
+            }
+        }
+    }
+
+    if has_executable {
+        flush_code(&mut current_code, &mut result, true);
+    } else if !current_code.trim().is_empty() {
+        flush_code(&mut current_code, &mut result, false);
+    }
+
+    result
+}
+
+fn recover_verbatim(nodes: &[RdNode]) -> String {
+    match flatten_verbatim_leaves(nodes) {
+        Ok(code) => code,
+        Err(error) => error.recovered_text().to_owned(),
+    }
+}
+
+fn push_code(result: &mut Vec<Node>, code: &str, executable: bool) {
+    let trimmed = code.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+
+    if executable {
+        result.push(Node::code_with_meta(
+            Some("r".to_string()),
+            Some("executable".to_string()),
+            trimmed,
+        ));
+    } else {
+        result.push(Node::code(Some("r".to_string()), trimmed));
+    }
+}
+
+fn flush_code(code: &mut String, result: &mut Vec<Node>, executable: bool) {
+    push_code(result, code, executable);
+    code.clear();
+}
+
+fn append_rcode(nodes: &[RdNode], output: &mut String) {
     let mut index = 0;
     let base_path = RdPath::new(Vec::new());
 
@@ -17,8 +133,8 @@ fn append_usage(nodes: &[RdNode], output: &mut String) {
         match &nodes[index] {
             RdNode::RCode(code) => output.push_str(code),
             RdNode::Comment(_) => {}
-            RdNode::Group(group) => append_usage(group.children(), output),
-            RdNode::Raw(raw) => append_usage(raw.children(), output),
+            RdNode::Group(group) => append_rcode(group.children(), output),
+            RdNode::Raw(raw) => append_rcode(raw.children(), output),
             node => {
                 if let Some(symbol) = node.text_symbol(&base_path) {
                     output.push_str(symbol.fallback_text());
@@ -235,8 +351,33 @@ fn format_infix_call(operator: &str, args: &[String]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use rd_ast::{RdNode, RdTag, producer};
+    use rd2qmd_mdast::Node;
 
-    use super::convert_usage;
+    use super::{ExampleOptions, convert_examples, convert_usage};
+
+    fn example_options(
+        exec_dontrun: bool,
+        exec_donttest: bool,
+        quarto_code_blocks: bool,
+    ) -> ExampleOptions {
+        ExampleOptions {
+            exec_dontrun,
+            exec_donttest,
+            quarto_code_blocks,
+        }
+    }
+
+    fn control(tag: RdTag, body: Vec<RdNode>) -> RdNode {
+        RdNode::tagged(tag, None, body)
+    }
+
+    fn executable(value: &str) -> Node {
+        Node::code_with_meta(Some("r".to_string()), Some("executable".to_string()), value)
+    }
+
+    fn plain(value: &str) -> Node {
+        Node::code(Some("r".to_string()), value)
+    }
 
     fn method(tag: RdTag, generic: &str, qualifier: &str) -> RdNode {
         RdNode::tagged(
@@ -375,5 +516,160 @@ mod tests {
         ];
 
         assert_eq!(convert_usage(&nodes), "  leading\ntrailing  \n\n");
+    }
+
+    #[test]
+    fn converts_regular_examples_to_one_executable_block() {
+        let nodes = vec![
+            RdNode::RCode("\nfirst()\n".to_owned()),
+            RdNode::group(vec![RdNode::RCode("second()\n".to_owned())]),
+        ];
+
+        assert_eq!(
+            convert_examples(&nodes, &example_options(false, false, false)),
+            vec![executable("first()\nsecond()")]
+        );
+    }
+
+    #[test]
+    fn dontrun_is_a_separate_block_with_configurable_execution() {
+        let nodes = vec![
+            RdNode::RCode("before()\n".to_owned()),
+            control(RdTag::DontRun, vec![RdNode::Verb("never()\n".to_owned())]),
+            RdNode::RCode("after()\n".to_owned()),
+        ];
+
+        assert_eq!(
+            convert_examples(&nodes, &example_options(false, false, false)),
+            vec![
+                executable("before()"),
+                plain("never()"),
+                executable("after()")
+            ]
+        );
+        assert_eq!(
+            convert_examples(&nodes, &example_options(true, false, false)),
+            vec![
+                executable("before()"),
+                executable("never()"),
+                executable("after()")
+            ]
+        );
+    }
+
+    #[test]
+    fn donttest_is_a_separate_block_with_configurable_execution() {
+        let nodes = vec![
+            RdNode::RCode("before()\n".to_owned()),
+            control(RdTag::DontTest, vec![RdNode::RCode("slow()\n".to_owned())]),
+            RdNode::RCode("after()\n".to_owned()),
+        ];
+
+        assert_eq!(
+            convert_examples(&nodes, &example_options(false, false, false)),
+            vec![
+                executable("before()"),
+                plain("slow()"),
+                executable("after()")
+            ]
+        );
+        assert_eq!(
+            convert_examples(&nodes, &example_options(false, true, false)),
+            vec![
+                executable("before()"),
+                executable("slow()"),
+                executable("after()")
+            ]
+        );
+    }
+
+    #[test]
+    fn genuine_dontshow_is_hidden_in_quarto_and_omitted_otherwise() {
+        let nodes = vec![control(
+            RdTag::DontShow,
+            vec![RdNode::RCode("setup()\n".to_owned())],
+        )];
+
+        assert_eq!(
+            convert_examples(&nodes, &example_options(false, false, true)),
+            vec![executable("#| include: false\nsetup()")]
+        );
+        assert!(convert_examples(&nodes, &example_options(false, false, false)).is_empty());
+    }
+
+    #[test]
+    fn examples_if_dontshow_wrapper_fragments_are_skipped() {
+        let nodes = vec![
+            control(
+                RdTag::DontShow,
+                vec![RdNode::RCode("if (condition) {\n".to_owned())],
+            ),
+            RdNode::RCode("inside()\n".to_owned()),
+            control(
+                RdTag::DontShow,
+                vec![RdNode::RCode("} # end wrapper\n".to_owned())],
+            ),
+        ];
+
+        assert_eq!(
+            convert_examples(&nodes, &example_options(false, false, true)),
+            vec![executable("inside()")]
+        );
+    }
+
+    #[test]
+    fn dontdiff_merges_with_surrounding_executable_code() {
+        let nodes = vec![
+            RdNode::RCode("before()\n".to_owned()),
+            control(
+                RdTag::DontDiff,
+                vec![RdNode::RCode("variable_output()\n".to_owned())],
+            ),
+            RdNode::RCode("after()\n".to_owned()),
+        ];
+
+        assert_eq!(
+            convert_examples(&nodes, &example_options(false, false, false)),
+            vec![executable("before()\nvariable_output()\nafter()")]
+        );
+    }
+
+    #[test]
+    fn testonly_matches_dontshow_for_complete_code_and_wrappers() {
+        let complete = vec![control(
+            RdTag::TestOnly,
+            vec![RdNode::RCode("stopifnot(TRUE)\n".to_owned())],
+        )];
+        let wrappers = vec![
+            control(
+                RdTag::TestOnly,
+                vec![RdNode::RCode("if (condition) {\n".to_owned())],
+            ),
+            RdNode::RCode("inside()\n".to_owned()),
+            control(RdTag::TestOnly, vec![RdNode::RCode("}\n".to_owned())]),
+        ];
+
+        assert_eq!(
+            convert_examples(&complete, &example_options(false, false, true)),
+            vec![executable("#| include: false\nstopifnot(TRUE)")]
+        );
+        assert!(convert_examples(&complete, &example_options(false, false, false)).is_empty());
+        assert_eq!(
+            convert_examples(&wrappers, &example_options(false, false, true)),
+            vec![executable("inside()")]
+        );
+    }
+
+    #[test]
+    fn empty_trailing_control_does_not_create_a_spurious_block() {
+        let nodes = vec![
+            RdNode::RCode("before()\n".to_owned()),
+            control(RdTag::DontRun, vec![]),
+        ];
+
+        assert_eq!(
+            convert_examples(&nodes, &example_options(false, false, false)),
+            vec![executable("before()")]
+        );
     }
 }
