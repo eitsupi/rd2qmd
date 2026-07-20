@@ -9,8 +9,6 @@ aliases:
   - "examplesif"
 ---
 
-# Test @examplesIf pattern
-
 ## Description
 
  Test file for roxygen2's @examplesIf pattern which uses `\dontshow` wrappers. 

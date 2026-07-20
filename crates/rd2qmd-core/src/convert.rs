@@ -54,6 +54,10 @@ pub enum ArgumentsFormat {
 /// `\linkS4class{cls}` links target the `{cls}-class` topic.
 #[derive(Debug, Clone)]
 pub struct RdToMdastOptions {
+    /// Include the Rd title as an H1 heading in the document body.
+    /// Defaults to true; callers that put the title in frontmatter can disable
+    /// this to avoid rendering the title twice.
+    pub include_title_heading: bool,
     /// URL template for internal links resolved via `alias_map`.
     /// Use `{file}` as placeholder for the alias-resolved file basename and
     /// `{topic}` for the link topic.
@@ -113,6 +117,7 @@ pub struct RdToMdastOptions {
 impl Default for RdToMdastOptions {
     fn default() -> Self {
         Self {
+            include_title_heading: true,
             internal_link_url: None,
             alias_map: None,
             unqualified_link_url: None,
@@ -172,7 +177,9 @@ impl Converter {
         let mut children = Vec::new();
 
         // Extract title first
-        if let Some(title) = doc.get_section(&SectionTag::Title) {
+        if self.options.include_title_heading
+            && let Some(title) = doc.get_section(&SectionTag::Title)
+        {
             let title_text = self.extract_text(&title.content);
             children.push(Node::heading(1, vec![Node::text(title_text.trim())]));
         }
@@ -1745,7 +1752,7 @@ fn format_infix_call(operator: &str, args: &[String]) -> Option<String> {
     }
 }
 
-fn special_char_to_string(ch: SpecialChar) -> &'static str {
+pub(crate) fn special_char_to_string(ch: SpecialChar) -> &'static str {
     match ch {
         SpecialChar::R => "R",
         SpecialChar::Dots => "...",

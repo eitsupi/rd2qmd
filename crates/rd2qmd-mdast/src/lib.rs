@@ -33,7 +33,9 @@ pub use writer::{Frontmatter, RdMetadata, WriterOptions, mdast_to_qmd};
 /// Chooses a fence one backtick longer than the longest consecutive backtick run
 /// in `value`, so the delimiter never appears inside the span. Adds padding spaces
 /// when a multi-backtick fence is used, to prevent ambiguity when the code starts or
-/// ends with a backtick character.
+/// ends with a backtick character. Values beginning with `r` plus ASCII whitespace
+/// also use a padded double-backtick fence so Quarto's knitr engine cannot mistake
+/// literal code for an executable inline R expression.
 ///
 /// Also prepends a space when `prev_ends_with_backtick` is true to prevent
 /// adjacent backtick spans from merging into a single code span.
@@ -54,12 +56,17 @@ pub fn format_inline_code(value: &str, prev_ends_with_backtick: bool) -> String 
         })
         .0;
 
-    if max_run == 0 {
+    let looks_like_inline_r = value
+        .strip_prefix('r')
+        .and_then(|rest| rest.chars().next())
+        .is_some_and(|character| character.is_ascii_whitespace());
+
+    if max_run == 0 && !looks_like_inline_r {
         out.push('`');
         out.push_str(value);
         out.push('`');
     } else {
-        let fence = "`".repeat(max_run + 1);
+        let fence = "`".repeat(if max_run == 0 { 2 } else { max_run + 1 });
         out.push_str(&fence);
         out.push(' ');
         out.push_str(value);

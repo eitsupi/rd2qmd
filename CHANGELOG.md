@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Complete uniform suppression of the duplicate Rd title heading when YAML frontmatter is enabled across all output formats.
+- Preserve special-character macros, encoded text, and link/S4-class/DOI display text when extracting frontmatter metadata.
+- Enable a TLS backend for `reqwest` so external link resolution can actually fetch HTTPS `pkgdown.yml` sites instead of silently failing.
+- Escape inline code spans that start with `r` plus whitespace so Quarto's knitr engine doesn't misinterpret literal code as executable inline R.
+
 ## [0.4.0] - 2026-07-05
 
 ### Added

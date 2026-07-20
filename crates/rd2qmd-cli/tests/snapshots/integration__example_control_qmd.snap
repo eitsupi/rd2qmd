@@ -9,8 +9,6 @@ aliases:
   - "example_control"
 ---
 
-# Example control macros test
-
 ## Description
 
  Test file for `\dontrun`, `\donttest`, and `\dontshow` macros. 

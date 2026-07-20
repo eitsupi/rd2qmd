@@ -9,8 +9,6 @@ aliases:
   - "formatting"
 ---
 
-# Formatting Examples
-
 ## Description
 
  This demonstrates _emphasis_, **strong text**, and `inline code`. It also has a [hyperlink](https://example.com) and email: [test@example.com](mailto:test@example.com). 
