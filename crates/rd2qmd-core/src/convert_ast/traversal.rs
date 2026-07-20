@@ -1,4 +1,6 @@
-//! Source-order paragraph boundary scanning for rd_ast sibling nodes.
+//! Source-order block-content scanning for rd_ast sibling nodes.
+
+use rd_ast::RdTag;
 
 /// A borrowed piece of source content belonging to one paragraph.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -7,20 +9,24 @@ pub(crate) enum ParagraphItem<'a> {
     Text(&'a str),
 }
 
-/// Scan siblings into paragraphs, retaining visible source nodes in order.
+/// One paragraph or semantic block retained in source order.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum BlockContentItem<'a> {
+    Paragraph(Vec<ParagraphItem<'a>>),
+    Block(&'a rd_ast::RdNode),
+}
+
+/// Scan siblings into paragraphs and semantic blocks in source order.
 ///
 /// Whitespace is held until the next visible item. A boundary requires at
 /// least two newlines in whitespace/comments after visible content. Tagged
 /// nodes are atomic and are not inspected for internal newlines.
-///
-/// Block classification is conservative until semantic dispatch is added;
-/// currently no tagged node is classified as a block.
-pub(crate) fn scan_paragraphs(nodes: &[rd_ast::RdNode]) -> Vec<Vec<ParagraphItem<'_>>> {
-    let mut paragraphs = Vec::new();
+pub(crate) fn scan_block_content(nodes: &[rd_ast::RdNode]) -> Vec<BlockContentItem<'_>> {
+    let mut items = Vec::new();
     let mut state = ScanState::default();
-    scan(nodes, &mut state, &mut paragraphs);
-    flush(&mut state, &mut paragraphs);
-    paragraphs
+    scan(nodes, &mut state, &mut items);
+    flush(&mut state, &mut items);
+    items
 }
 
 #[derive(Default)]
@@ -34,7 +40,7 @@ struct ScanState<'a> {
 fn scan<'a>(
     nodes: &'a [rd_ast::RdNode],
     state: &mut ScanState<'a>,
-    paragraphs: &mut Vec<Vec<ParagraphItem<'a>>>,
+    items: &mut Vec<BlockContentItem<'a>>,
 ) {
     for node in nodes {
         match node {
@@ -44,19 +50,20 @@ fn scan<'a>(
                         append_whitespace(part, state);
                     } else {
                         let visible = part.trim_end_matches(char::is_whitespace);
-                        append_visible(ParagraphItem::Text(visible), state, paragraphs);
+                        append_visible(ParagraphItem::Text(visible), state, items);
                         append_whitespace(&part[visible.len()..], state);
                     }
                 }
             }
             rd_ast::RdNode::Comment(_) => {}
-            rd_ast::RdNode::Group(group) => scan(group.children(), state, paragraphs),
-            rd_ast::RdNode::Raw(raw) => scan(raw.children(), state, paragraphs),
+            rd_ast::RdNode::Group(group) => scan(group.children(), state, items),
+            rd_ast::RdNode::Raw(raw) => scan(raw.children(), state, items),
             rd_ast::RdNode::Tagged(_) if is_block_level(node) => {
-                flush(state, paragraphs);
+                flush(state, items);
+                items.push(BlockContentItem::Block(node));
             }
             rd_ast::RdNode::Tagged(_) | rd_ast::RdNode::RCode(_) | rd_ast::RdNode::Verb(_) => {
-                append_visible(ParagraphItem::Node(node), state, paragraphs);
+                append_visible(ParagraphItem::Node(node), state, items);
             }
             _ => {}
         }
@@ -73,11 +80,11 @@ fn append_whitespace<'a>(whitespace: &'a str, state: &mut ScanState<'a>) {
 fn append_visible<'a>(
     item: ParagraphItem<'a>,
     state: &mut ScanState<'a>,
-    paragraphs: &mut Vec<Vec<ParagraphItem<'a>>>,
+    items: &mut Vec<BlockContentItem<'a>>,
 ) {
     if state.has_visible {
         if state.pending_newlines >= 2 {
-            flush(state, paragraphs);
+            flush(state, items);
         } else {
             state
                 .current
@@ -92,23 +99,31 @@ fn append_visible<'a>(
     state.has_visible = true;
 }
 
-fn flush<'a>(state: &mut ScanState<'a>, paragraphs: &mut Vec<Vec<ParagraphItem<'a>>>) {
+fn flush<'a>(state: &mut ScanState<'a>, items: &mut Vec<BlockContentItem<'a>>) {
     state.pending_whitespace.clear();
     state.pending_newlines = 0;
     if state.has_visible {
-        paragraphs.push(std::mem::take(&mut state.current));
+        items.push(BlockContentItem::Paragraph(std::mem::take(
+            &mut state.current,
+        )));
     }
     state.has_visible = false;
 }
 
-fn is_block_level(_node: &rd_ast::RdNode) -> bool {
-    // TODO: classify semantic block tags when block conversion is introduced.
-    false
+fn is_block_level(node: &rd_ast::RdNode) -> bool {
+    node.as_tagged().is_some_and(|tagged| {
+        matches!(
+            tagged.tag(),
+            RdTag::Itemize | RdTag::Enumerate | RdTag::Describe | RdTag::Preformatted | RdTag::Deqn
+        )
+    })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{ParagraphItem, scan_paragraphs};
+    use rd_ast::{RdNode, RdTag, producer};
+
+    use super::{BlockContentItem, ParagraphItem, scan_block_content};
 
     fn paragraph_text(items: &[ParagraphItem<'_>]) -> String {
         items
@@ -125,25 +140,37 @@ mod tests {
     #[test]
     fn finds_two_paragraphs() {
         let parsed = rd_source::parse(b"first\n\nsecond").unwrap();
-        let paragraphs = scan_paragraphs(parsed.document().nodes());
-        assert_eq!(paragraphs.len(), 2);
-        assert_eq!(paragraph_text(&paragraphs[0]), "first");
-        assert_eq!(paragraph_text(&paragraphs[1]), "second");
+        let items = scan_block_content(parsed.document().nodes());
+        let [
+            BlockContentItem::Paragraph(first),
+            BlockContentItem::Paragraph(second),
+        ] = items.as_slice()
+        else {
+            panic!("expected two paragraphs");
+        };
+        assert_eq!(paragraph_text(first), "first");
+        assert_eq!(paragraph_text(second), "second");
     }
 
     #[test]
     fn comments_do_not_break_blank_line_detection() {
         let parsed = rd_source::parse(b"first\n% comment\n\nsecond").unwrap();
-        let paragraphs = scan_paragraphs(parsed.document().nodes());
-        assert_eq!(paragraphs.len(), 2);
-        assert_eq!(paragraph_text(&paragraphs[0]), "first");
-        assert_eq!(paragraph_text(&paragraphs[1]), "second");
+        let items = scan_block_content(parsed.document().nodes());
+        let [
+            BlockContentItem::Paragraph(first),
+            BlockContentItem::Paragraph(second),
+        ] = items.as_slice()
+        else {
+            panic!("expected two paragraphs");
+        };
+        assert_eq!(paragraph_text(first), "first");
+        assert_eq!(paragraph_text(second), "second");
     }
 
     #[test]
     fn whitespace_only_input_has_no_paragraphs() {
         let parsed = rd_source::parse(b" \n\n\t").unwrap();
-        assert!(scan_paragraphs(parsed.document().nodes()).is_empty());
+        assert!(scan_block_content(parsed.document().nodes()).is_empty());
     }
 
     #[test]
@@ -154,9 +181,11 @@ mod tests {
             rd_ast::RdNode::Text(" after".to_string()),
         ];
 
-        let paragraphs = scan_paragraphs(&nodes);
-        assert_eq!(paragraphs.len(), 1);
-        assert_eq!(paragraph_text(&paragraphs[0]), "before inside after");
+        let items = scan_block_content(&nodes);
+        let [BlockContentItem::Paragraph(paragraph)] = items.as_slice() else {
+            panic!("expected one paragraph");
+        };
+        assert_eq!(paragraph_text(paragraph), "before inside after");
     }
 
     #[test]
@@ -166,14 +195,61 @@ mod tests {
             rd_ast::RdNode::RCode("same".to_string()),
         ];
 
-        let paragraphs = scan_paragraphs(&nodes);
-        assert_eq!(paragraphs.len(), 1);
-        assert_eq!(paragraphs[0].len(), 2);
-        assert_eq!(paragraph_text(&paragraphs[0]), "samesame");
+        let items = scan_block_content(&nodes);
+        let [BlockContentItem::Paragraph(paragraph)] = items.as_slice() else {
+            panic!("expected one paragraph");
+        };
+        assert_eq!(paragraph.len(), 2);
+        assert_eq!(paragraph_text(paragraph), "samesame");
         assert!(matches!(
-            paragraphs[0].as_slice(),
+            paragraph.as_slice(),
             [ParagraphItem::Node(first), ParagraphItem::Node(second)]
                 if std::ptr::eq(*first, &nodes[0]) && std::ptr::eq(*second, &nodes[1])
+        ));
+    }
+
+    #[test]
+    fn retains_block_between_surrounding_paragraphs() {
+        let nodes = vec![
+            RdNode::Text("before\n\n".to_owned()),
+            RdNode::tagged(RdTag::Itemize, None, vec![]),
+            RdNode::Text("\n\nafter".to_owned()),
+        ];
+
+        let items = scan_block_content(&nodes);
+        assert!(matches!(
+            items.as_slice(),
+            [
+                BlockContentItem::Paragraph(before),
+                BlockContentItem::Block(block),
+                BlockContentItem::Paragraph(after),
+            ] if paragraph_text(before) == "before"
+                && std::ptr::eq(*block, &nodes[1])
+                && paragraph_text(after) == "after"
+        ));
+    }
+
+    #[test]
+    fn finds_blocks_nested_in_group_and_raw_wrappers() {
+        let grouped_block = RdNode::tagged(RdTag::Preformatted, None, vec![]);
+        let raw_block = RdNode::tagged(RdTag::Deqn, None, vec![]);
+        let nodes = vec![
+            RdNode::group(vec![grouped_block]),
+            RdNode::Raw(producer::raw_node(
+                None,
+                None,
+                vec![raw_block],
+                None,
+                vec![],
+            )),
+        ];
+
+        let items = scan_block_content(&nodes);
+        assert!(matches!(
+            items.as_slice(),
+            [BlockContentItem::Block(first), BlockContentItem::Block(second)]
+                if first.as_tagged().unwrap().tag() == &RdTag::Preformatted
+                    && second.as_tagged().unwrap().tag() == &RdTag::Deqn
         ));
     }
 }

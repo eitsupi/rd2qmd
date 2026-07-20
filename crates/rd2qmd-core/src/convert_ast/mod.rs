@@ -3,12 +3,15 @@
 //! This module coexists with the legacy convert implementation while conversion
 //! is migrated in small, independently testable steps.
 
+mod blocks;
 mod code;
 mod document;
 mod inline;
 mod leaf_text;
 mod traversal;
 
+#[allow(unused_imports)]
+pub(crate) use blocks::{BlockConversionContext, convert_block_content};
 #[allow(unused_imports)]
 pub(crate) use code::{ExampleOptions, convert_examples, convert_usage};
 #[allow(unused_imports)]
@@ -25,4 +28,4 @@ pub(crate) use leaf_text::{
     LeafShapeError, flatten_prose_leaves, flatten_rcode_leaves, flatten_verbatim_leaves,
 };
 #[allow(unused_imports)]
-pub(crate) use traversal::scan_paragraphs;
+pub(crate) use traversal::{BlockContentItem, ParagraphItem, scan_block_content};

@@ -101,6 +101,11 @@ pub(crate) fn convert_inline_node(
     }
 }
 
+/// Convert a prose text leaf with Markdown-safe whitespace normalization.
+pub(super) fn convert_text(text: &str) -> Node {
+    Node::text(normalize_whitespace(text))
+}
+
 /// Convert all supported inline nodes, skipping out-of-scope nodes.
 pub(crate) fn convert_inline_nodes(
     nodes: &[RdNode],
