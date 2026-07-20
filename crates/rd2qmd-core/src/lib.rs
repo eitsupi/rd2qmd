@@ -222,6 +222,14 @@ pub fn extract_text(nodes: &[RdNode]) -> String {
                     result.push_str(topic);
                 }
             }
+            RdNode::LinkS4Class { package, classname } => {
+                if let Some(pkg) = package {
+                    result.push_str(&format!("{pkg}::{classname}"));
+                } else {
+                    result.push_str(classname);
+                }
+            }
+            RdNode::Doi(id) => result.push_str(&format!("doi:{id}")),
             _ => {}
         }
     }
@@ -665,6 +673,25 @@ mod tests {
         assert_eq!(extract_text(&[display_text]), "Display text");
         assert_eq!(extract_text(&[qualified]), "pkg::topic");
         assert_eq!(extract_text(&[unqualified]), "topic");
+    }
+
+    #[test]
+    fn test_extract_text_s4_classes_and_doi() {
+        let qualified = RdNode::LinkS4Class {
+            package: Some("pkg".to_string()),
+            classname: "classname".to_string(),
+        };
+        let unqualified = RdNode::LinkS4Class {
+            package: None,
+            classname: "classname".to_string(),
+        };
+
+        assert_eq!(extract_text(&[qualified]), "pkg::classname");
+        assert_eq!(extract_text(&[unqualified]), "classname");
+        assert_eq!(
+            extract_text(&[RdNode::Doi("10.1000/xyz".to_string())]),
+            "doi:10.1000/xyz"
+        );
     }
 
     #[test]

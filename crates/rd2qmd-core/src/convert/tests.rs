@@ -1,4 +1,5 @@
 use super::*;
+use crate::{FrontmatterOptions, RdConvertOptions, convert_rd_content};
 use rd_parser::parse;
 use rd2qmd_mdast::mdast_to_qmd;
 
@@ -22,6 +23,25 @@ fn test_title_heading_can_be_disabled() {
 
     assert!(mdast.children.is_empty());
     assert!(RdToMdastOptions::default().include_title_heading);
+}
+
+#[test]
+fn test_convert_rd_content_preserves_s4_class_and_doi_in_title() {
+    let content = r#"\name{test}
+\title{See \linkS4class{Foo} and \doi{10.1000/xyz}}
+\description{A test function.}
+"#;
+    let options = RdConvertOptions {
+        frontmatter: FrontmatterOptions {
+            enabled: true,
+            pagetitle: false,
+        },
+        ..Default::default()
+    };
+
+    let result = convert_rd_content(content, &options).unwrap();
+    assert!(result.contains("title: \"See Foo and doi:10.1000/xyz\""));
+    assert!(!result.contains("title: \"See  and\""));
 }
 
 #[test]
