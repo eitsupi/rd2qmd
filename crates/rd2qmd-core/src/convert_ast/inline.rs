@@ -3,12 +3,12 @@
 use rd_ast::{RdEquationDisplay, RdInlineSpanKind, RdNode, RdPath, RdTag};
 use rd2qmd_mdast::{Html, Image, Node};
 
-use super::leaf_text::{flatten_prose_leaves, flatten_verbatim_leaves};
+use super::leaf_text::flatten_verbatim_leaves;
 
 /// Convert the primitive inline nodes currently supported by the AST migration.
 pub(crate) fn convert_inline_node(node: &RdNode) -> Option<Node> {
     match node {
-        RdNode::Text(text) => return Some(Node::text(text.clone())),
+        RdNode::Text(text) => return Some(Node::text(normalize_whitespace(text))),
         RdNode::RCode(code) | RdNode::Verb(code) => return Some(Node::inline_code(code.clone())),
         _ => {}
     }
@@ -155,11 +155,35 @@ fn convert_inline_span(kind: RdInlineSpanKind, body: &[RdNode]) -> Option<Node> 
 }
 
 fn prose_text(nodes: &[RdNode]) -> String {
-    flatten_prose_leaves(nodes).unwrap_or_else(|error| error.recovered_text().to_owned())
+    extract_plain_text(&convert_inline_nodes(nodes))
 }
 
 fn verbatim_text(nodes: &[RdNode]) -> String {
     flatten_verbatim_leaves(nodes).unwrap_or_else(|error| error.recovered_text().to_owned())
+}
+
+fn normalize_whitespace(text: &str) -> String {
+    if text.is_empty() {
+        return String::new();
+    }
+
+    let has_leading = text.chars().next().is_some_and(char::is_whitespace);
+    let has_trailing = text.chars().next_back().is_some_and(char::is_whitespace);
+    let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    if normalized.is_empty() {
+        return " ".to_owned();
+    }
+
+    let mut result = String::new();
+    if has_leading {
+        result.push(' ');
+    }
+    result.push_str(&normalized);
+    if has_trailing {
+        result.push(' ');
+    }
+    result
 }
 
 fn extract_alt_from_attrs(attributes: &str) -> Option<String> {
@@ -223,6 +247,39 @@ mod tests {
                 Node::text(" c"),
             ]))
         );
+    }
+
+    #[test]
+    fn normalizes_multiline_text_inside_strong() {
+        let node = tagged(RdTag::Strong, vec![text("first\n\nsecond")]);
+
+        assert_eq!(
+            convert_inline_node(&node),
+            Some(Node::strong(vec![Node::text("first second")]))
+        );
+    }
+
+    #[test]
+    fn preserves_nested_dots_in_code() {
+        let node = tagged(
+            RdTag::Code,
+            vec![text("f("), tagged(RdTag::Dots, vec![]), text(")")],
+        );
+
+        assert_eq!(
+            convert_inline_node(&node),
+            Some(Node::inline_code("f(...)"))
+        );
+    }
+
+    #[test]
+    fn preserves_nested_r_symbol_in_single_quotes() {
+        let node = tagged(
+            RdTag::SQuote,
+            vec![text("using "), tagged(RdTag::R, vec![])],
+        );
+
+        assert_eq!(convert_inline_node(&node), Some(Node::text("'using R'")));
     }
 
     #[test]
