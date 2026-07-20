@@ -84,7 +84,7 @@ rd2qmd convert man/ -o docs/ -j4
 | `-f, --format <FORMAT>` | Output format: `qmd` (default), `md`, or `rmd` |
 | `-j, --jobs <N>` | Number of parallel jobs (defaults to CPU count) |
 | `-r, --recursive` | Process directories recursively |
-| `--no-frontmatter` | Disable YAML frontmatter |
+| `--no-frontmatter` | Disable YAML frontmatter; use this for a visible body `# Title` in Markdown consumers that do not render YAML titles |
 | `--no-pagetitle` | Skip pkgdown-style `pagetitle` metadata (`"<title> — <name>"`) |
 | `--quarto-code-blocks <BOOL>` | Use `{r}` code blocks (auto-set based on format) |
 | `--arguments-format <FORMAT>` | Arguments format: `list-table` (default), `grid-table`, `pipe-table`, or `list` |
@@ -309,6 +309,8 @@ Use `--prefer-ascii-math` (config: `output.prefer_ascii_math`) when targeting a 
 
 ## Output formats
 
+All formats put the title in YAML frontmatter instead of a body heading. Use `--no-frontmatter` to restore a body `# Title` for renderers such as plain GitHub file preview or Pandoc's default Markdown output.
+
 ### Quarto Markdown (`.qmd`)
 
 The default format produces Quarto-compatible markdown with:
@@ -324,6 +326,8 @@ Use `-f md` for standard markdown with:
 - YAML frontmatter with title and pagetitle
 - Plain `r` code blocks (non-executable)
 - Internal links resolved to `.md` files
+
+Unlike Quarto, not all `.md` consumers render a YAML frontmatter title as a visible heading; use `--no-frontmatter` when portability requires a body heading.
 
 ### Arguments format
 

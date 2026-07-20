@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Complete uniform suppression of the duplicate Rd title heading when YAML frontmatter is enabled across all output formats.
+- Preserve special-character macros, encoded text, and link display text when extracting frontmatter metadata.
+
 ## [0.4.0] - 2026-07-05
 
 ### Added

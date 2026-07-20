@@ -9,8 +9,6 @@ aliases:
   - "with_links"
 ---
 
-# Function with Links
-
 ## Description
 
  This function demonstrates various link types. See [`simple`](x-r-help:simple) for a simpler example. Also see [`stats::lm`](x-r-help:stats/lm) for linear models. 

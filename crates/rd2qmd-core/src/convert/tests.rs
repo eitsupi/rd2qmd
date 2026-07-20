@@ -12,6 +12,19 @@ fn test_simple_conversion() {
 }
 
 #[test]
+fn test_title_heading_can_be_disabled() {
+    let doc = parse("\\name{hello}\n\\title{Hello}").unwrap();
+    let options = RdToMdastOptions {
+        include_title_heading: false,
+        ..Default::default()
+    };
+    let mdast = rd_to_mdast_with_options(&doc, &options);
+
+    assert!(mdast.children.is_empty());
+    assert!(RdToMdastOptions::default().include_title_heading);
+}
+
+#[test]
 fn test_code_section() {
     let doc = parse("\\title{Test}\n\\usage{foo(x, y)}").unwrap();
     let mdast = rd_to_mdast(&doc);

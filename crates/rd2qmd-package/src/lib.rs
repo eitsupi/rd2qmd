@@ -566,6 +566,7 @@ fn convert_single_file(
             .clone()
             .unwrap_or_else(|| format!("{{file}}.{}", options.output_extension));
         let converter_options = RdToMdastOptions {
+            include_title_heading: !options.frontmatter,
             internal_link_url: Some(internal_link_url),
             alias_map: Some(package.alias_index.clone()),
             unqualified_link_url: options.unqualified_link_url.clone(),
@@ -1174,7 +1175,7 @@ An old deprecated function.
         // Check content
         let alpha_content = fs::read_to_string(out_dir.path().join("alpha.qmd")).unwrap();
         assert!(alpha_content.contains("title: \"Alpha Function\""));
-        assert!(alpha_content.contains("# Alpha Function"));
+        assert!(!alpha_content.contains("\n# Alpha Function\n"));
 
         // Fallbacks should be empty when external links not used
         #[cfg(feature = "external-links")]

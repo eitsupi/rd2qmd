@@ -207,6 +207,21 @@ pub fn extract_text(nodes: &[RdNode]) -> String {
             RdNode::Code(children) | RdNode::Emph(children) | RdNode::Strong(children) => {
                 result.push_str(&extract_text(children));
             }
+            RdNode::Special(ch) => result.push_str(crate::convert::special_char_to_string(*ch)),
+            RdNode::Enc { encoded, .. } => result.push_str(encoded),
+            RdNode::Link {
+                package,
+                topic,
+                text,
+            } => {
+                if let Some(text_nodes) = text {
+                    result.push_str(&extract_text(text_nodes));
+                } else if let Some(pkg) = package {
+                    result.push_str(&format!("{pkg}::{topic}"));
+                } else {
+                    result.push_str(topic);
+                }
+            }
             _ => {}
         }
     }
@@ -531,6 +546,7 @@ pub fn convert_rd_document(
 ) -> String {
     // Build converter options
     let converter_options = RdToMdastOptions {
+        include_title_heading: !options.frontmatter.enabled,
         internal_link_url: options.links.internal_link_url.clone(),
         alias_map: options.links.alias_map.clone(),
         unqualified_link_url: options.links.unqualified_link_url.clone(),
@@ -615,6 +631,62 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_text_special_and_encoded_text() {
+        let nodes = vec![
+            RdNode::Text("Using ".to_string()),
+            RdNode::Special(rd_parser::SpecialChar::R),
+            RdNode::Text(" ".to_string()),
+            RdNode::Enc {
+                encoded: "café".to_string(),
+                fallback: "cafe".to_string(),
+            },
+        ];
+        assert_eq!(extract_text(&nodes), "Using R café");
+    }
+
+    #[test]
+    fn test_extract_text_links() {
+        let display_text = RdNode::Link {
+            package: Some("pkg".to_string()),
+            topic: "topic".to_string(),
+            text: Some(vec![RdNode::Text("Display text".to_string())]),
+        };
+        let qualified = RdNode::Link {
+            package: Some("pkg".to_string()),
+            topic: "topic".to_string(),
+            text: None,
+        };
+        let unqualified = RdNode::Link {
+            package: None,
+            topic: "topic".to_string(),
+            text: None,
+        };
+
+        assert_eq!(extract_text(&[display_text]), "Display text");
+        assert_eq!(extract_text(&[qualified]), "pkg::topic");
+        assert_eq!(extract_text(&[unqualified]), "topic");
+    }
+
+    #[test]
+    fn test_convert_rd_content_preserves_special_character_in_title() {
+        let content = r#"\name{test}
+\title{Using \R}
+\description{A test function.}
+"#;
+        let options = RdConvertOptions {
+            frontmatter: FrontmatterOptions {
+                enabled: true,
+                pagetitle: false,
+            },
+            ..Default::default()
+        };
+
+        let result = convert_rd_content(content, &options).unwrap();
+        assert!(result.contains("title: \"Using R\""));
+        assert!(!result.contains("title: \"Using\""));
+    }
+
+    #[test]
     fn test_convert_rd_content_basic() {
         let content = r#"\name{test}
 \title{Test Function}
@@ -630,7 +702,7 @@ mod tests {
 
         let result = convert_rd_content(content, &options).unwrap();
         assert!(result.contains("title: \"Test Function\""));
-        assert!(result.contains("# Test Function"));
+        assert!(!result.contains("\n# Test Function\n"));
         assert!(result.contains("A test function."));
     }
 
