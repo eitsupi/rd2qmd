@@ -2,7 +2,7 @@
 
 use rd_ast::{RdArgument, RdDocument, RdNode};
 
-use super::inline::{convert_inline_nodes, extract_plain_text};
+use super::inline::{LinkResolutionContext, convert_inline_nodes, extract_plain_text};
 
 /// The document-level information needed by later rendering steps.
 #[derive(Debug, Clone, PartialEq)]
@@ -162,7 +162,10 @@ fn push_nodes<'a>(
 }
 
 fn prose_text(nodes: &[RdNode]) -> String {
-    extract_plain_text(&convert_inline_nodes(nodes))
+    extract_plain_text(&convert_inline_nodes(
+        nodes,
+        &LinkResolutionContext::default(),
+    ))
 }
 
 fn sorted_unique(values: impl Iterator<Item = String>) -> Vec<String> {

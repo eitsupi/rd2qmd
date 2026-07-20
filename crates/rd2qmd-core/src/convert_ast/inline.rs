@@ -1,12 +1,29 @@
-//! Conversion of primitive inline rd_ast nodes to mdast nodes.
+//! Conversion of inline rd_ast nodes to mdast nodes.
 
-use rd_ast::{RdEquationDisplay, RdInlineSpanKind, RdNode, RdPath, RdTag};
+use std::collections::HashMap;
+
+use rd_ast::{
+    RdEquationDisplay, RdInlineSpanKind, RdLinkDestination, RdLinkTopic, RdNode, RdPath, RdTag,
+};
 use rd2qmd_mdast::{Html, Image, Node};
 
 use super::leaf_text::flatten_verbatim_leaves;
 
-/// Convert the primitive inline nodes currently supported by the AST migration.
-pub(crate) fn convert_inline_node(node: &RdNode) -> Option<Node> {
+/// Borrowed configuration used to resolve Rd links without cloning converter options.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct LinkResolutionContext<'a> {
+    pub(crate) internal_link_url: Option<&'a str>,
+    pub(crate) unqualified_link_url: Option<&'a str>,
+    pub(crate) external_link_url: Option<&'a str>,
+    pub(crate) alias_map: Option<&'a HashMap<String, String>>,
+    pub(crate) package_urls: Option<&'a HashMap<String, String>>,
+}
+
+/// Convert the inline nodes currently supported by the AST migration.
+pub(crate) fn convert_inline_node(
+    node: &RdNode,
+    context: &LinkResolutionContext<'_>,
+) -> Option<Node> {
     match node {
         RdNode::Text(text) => return Some(Node::text(normalize_whitespace(text))),
         RdNode::RCode(code) | RdNode::Verb(code) => return Some(Node::inline_code(code.clone())),
@@ -17,7 +34,7 @@ pub(crate) fn convert_inline_node(node: &RdNode) -> Option<Node> {
     let base_path = RdPath::new(Vec::new());
 
     if let Some(span) = node.inline_span(&base_path) {
-        return convert_inline_span(span.kind(), span.body());
+        return convert_inline_span(span.kind(), span.body(), context);
     }
 
     if let Some(symbol) = node.text_symbol(&base_path) {
@@ -29,9 +46,9 @@ pub(crate) fn convert_inline_node(node: &RdNode) -> Option<Node> {
         RdTag::Cr if tagged.option().is_none() && tagged.children().is_empty() => Some(Node::Break),
         RdTag::Enc => node
             .enc(&base_path)
-            .map(|encoding| Node::text(prose_text(encoding.encoded()))),
+            .map(|encoding| Node::text(prose_text(encoding.encoded(), context))),
         RdTag::Eqn | RdTag::Deqn => tagged.inspect_equation(&base_path).ok().map(|equation| {
-            let latex = prose_text(equation.latex());
+            let latex = prose_text(equation.latex(), context);
             match equation.display() {
                 RdEquationDisplay::Inline => Node::inline_math(latex),
                 RdEquationDisplay::Block => Node::math(latex),
@@ -58,19 +75,44 @@ pub(crate) fn convert_inline_node(node: &RdNode) -> Option<Node> {
         RdTag::Out => Some(Node::Html(Html {
             value: verbatim_text(tagged.children()),
         })),
+        RdTag::Href => tagged.inspect_href(&base_path).ok().map(|href| {
+            Node::link(
+                prose_text(href.url(), context),
+                convert_inline_nodes(href.display(), context),
+            )
+        }),
+        RdTag::Link => tagged
+            .inspect_link(&base_path)
+            .ok()
+            .and_then(|link| convert_link(&link, context)),
+        RdTag::LinkS4Class => convert_s4_class_link(node, &base_path, context),
+        RdTag::Doi
+            if tagged.option().is_none() && matches!(tagged.children(), [RdNode::Text(_)]) =>
+        {
+            let [RdNode::Text(id)] = tagged.children() else {
+                unreachable!("DOI shape was checked above")
+            };
+            Some(Node::link(
+                format!("https://doi.org/{id}"),
+                vec![Node::text(format!("doi:{id}"))],
+            ))
+        }
         _ => None,
     }
 }
 
-/// Convert all supported primitive inline nodes, skipping out-of-scope nodes.
-pub(crate) fn convert_inline_nodes(nodes: &[RdNode]) -> Vec<Node> {
+/// Convert all supported inline nodes, skipping out-of-scope nodes.
+pub(crate) fn convert_inline_nodes(
+    nodes: &[RdNode],
+    context: &LinkResolutionContext<'_>,
+) -> Vec<Node> {
     let mut converted = Vec::new();
     for node in nodes {
         if let RdNode::Group(group) = node {
-            converted.extend(convert_inline_nodes(group.children()));
+            converted.extend(convert_inline_nodes(group.children(), context));
         } else if let RdNode::Raw(raw) = node {
-            converted.extend(convert_inline_nodes(raw.children()));
-        } else if let Some(node) = convert_inline_node(node) {
+            converted.extend(convert_inline_nodes(raw.children(), context));
+        } else if let Some(node) = convert_inline_node(node, context) {
             converted.push(node);
         }
     }
@@ -118,13 +160,17 @@ pub(crate) fn extract_plain_text(nodes: &[Node]) -> String {
     text.trim().to_owned()
 }
 
-fn convert_inline_span(kind: RdInlineSpanKind, body: &[RdNode]) -> Option<Node> {
+fn convert_inline_span(
+    kind: RdInlineSpanKind,
+    body: &[RdNode],
+    context: &LinkResolutionContext<'_>,
+) -> Option<Node> {
     let node = match kind {
         RdInlineSpanKind::Emph | RdInlineSpanKind::Dfn => {
-            Node::emphasis(convert_inline_nodes(body))
+            Node::emphasis(convert_inline_nodes(body, context))
         }
         RdInlineSpanKind::Strong | RdInlineSpanKind::Bold => {
-            Node::strong(convert_inline_nodes(body))
+            Node::strong(convert_inline_nodes(body, context))
         }
         RdInlineSpanKind::Code
         | RdInlineSpanKind::Samp
@@ -132,32 +178,143 @@ fn convert_inline_span(kind: RdInlineSpanKind, body: &[RdNode]) -> Option<Node> 
         | RdInlineSpanKind::Kbd
         | RdInlineSpanKind::Option
         | RdInlineSpanKind::Command
-        | RdInlineSpanKind::Env => Node::inline_code(prose_text(body)),
+        | RdInlineSpanKind::Env => Node::inline_code(prose_text(body, context)),
         RdInlineSpanKind::Verb => Node::inline_code(verbatim_text(body)),
         RdInlineSpanKind::Var | RdInlineSpanKind::Cite => {
-            Node::emphasis(vec![Node::text(prose_text(body))])
+            Node::emphasis(vec![Node::text(prose_text(body, context))])
         }
         RdInlineSpanKind::Acronym | RdInlineSpanKind::Abbr | RdInlineSpanKind::Special => {
-            Node::text(prose_text(body))
+            Node::text(prose_text(body, context))
         }
-        RdInlineSpanKind::SQuote => Node::text(format!("'{}'", prose_text(body))),
-        RdInlineSpanKind::DQuote => Node::text(format!("\"{}\"", prose_text(body))),
+        RdInlineSpanKind::SQuote => Node::text(format!("'{}'", prose_text(body, context))),
+        RdInlineSpanKind::DQuote => Node::text(format!("\"{}\"", prose_text(body, context))),
         RdInlineSpanKind::Url => {
-            let url = prose_text(body);
+            let url = prose_text(body, context);
             Node::link(url.clone(), vec![Node::text(url)])
         }
         RdInlineSpanKind::Email => {
-            let email = prose_text(body);
+            let email = prose_text(body, context);
             Node::link(format!("mailto:{email}"), vec![Node::text(email)])
         }
-        RdInlineSpanKind::Pkg => Node::strong(vec![Node::text(prose_text(body))]),
+        RdInlineSpanKind::Pkg => Node::strong(vec![Node::text(prose_text(body, context))]),
         _ => return None,
     };
     Some(node)
 }
 
-fn prose_text(nodes: &[RdNode]) -> String {
-    extract_plain_text(&convert_inline_nodes(nodes))
+fn prose_text(nodes: &[RdNode], context: &LinkResolutionContext<'_>) -> String {
+    extract_plain_text(&convert_inline_nodes(nodes, context))
+}
+
+fn convert_link(link: &rd_ast::RdLink<'_>, context: &LinkResolutionContext<'_>) -> Option<Node> {
+    match link.destination() {
+        RdLinkDestination::DisplayText { nodes } => {
+            let topic = prose_text(nodes, context);
+            Some(resolve_unqualified_link(&topic, topic.clone(), context))
+        }
+        RdLinkDestination::Explicit { topic } => Some(resolve_unqualified_link(
+            topic,
+            prose_text(link.display(), context),
+            context,
+        )),
+        RdLinkDestination::Package { package, topic } => match topic {
+            RdLinkTopic::Explicit(topic) => Some(resolve_qualified_link(
+                package,
+                topic,
+                prose_text(link.display(), context),
+                context,
+            )),
+            RdLinkTopic::DisplayText(nodes) => {
+                let topic = prose_text(nodes, context);
+                Some(resolve_qualified_link(
+                    package,
+                    &topic,
+                    format!("{package}::{topic}"),
+                    context,
+                ))
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn convert_s4_class_link(
+    node: &RdNode,
+    base_path: &RdPath,
+    context: &LinkResolutionContext<'_>,
+) -> Option<Node> {
+    let link = node.s4_class_link(base_path)?;
+    let classname = link.class_text()?;
+    let topic = format!("{classname}-class");
+    match link.package() {
+        Some(_) => {
+            let package = link.package_text()?;
+            Some(resolve_qualified_link(
+                &package,
+                &topic,
+                format!("{package}::{topic}"),
+                context,
+            ))
+        }
+        None => Some(resolve_unqualified_link(
+            &topic,
+            format!("{classname}-class"),
+            context,
+        )),
+    }
+}
+
+fn resolve_qualified_link(
+    package: &str,
+    topic: &str,
+    display: String,
+    context: &LinkResolutionContext<'_>,
+) -> Node {
+    if let Some(template) = context
+        .package_urls
+        .and_then(|package_urls| package_urls.get(package))
+    {
+        Node::link(
+            template.replace("{topic}", topic),
+            vec![Node::inline_code(display)],
+        )
+    } else if let Some(template) = context.external_link_url {
+        Node::link(
+            template
+                .replace("{package}", package)
+                .replace("{topic}", topic),
+            vec![Node::inline_code(display)],
+        )
+    } else {
+        Node::inline_code(display)
+    }
+}
+
+fn resolve_unqualified_link(
+    topic: &str,
+    display: String,
+    context: &LinkResolutionContext<'_>,
+) -> Node {
+    if let Some(target_file) = context.alias_map.and_then(|alias_map| alias_map.get(topic)) {
+        if let Some(template) = context.internal_link_url {
+            Node::link(
+                template
+                    .replace("{file}", target_file)
+                    .replace("{topic}", topic),
+                vec![Node::inline_code(display)],
+            )
+        } else {
+            Node::inline_code(display)
+        }
+    } else if let Some(template) = context.unqualified_link_url {
+        Node::link(
+            template.replace("{topic}", topic),
+            vec![Node::inline_code(display)],
+        )
+    } else {
+        Node::inline_code(display)
+    }
 }
 
 fn verbatim_text(nodes: &[RdNode]) -> String {
@@ -201,10 +358,23 @@ fn extract_alt_from_attrs(attributes: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use rd_ast::{RdNode, RdTag, producer};
     use rd2qmd_mdast::Node;
 
-    use super::{convert_inline_node, convert_inline_nodes, extract_plain_text};
+    use super::{
+        LinkResolutionContext, convert_inline_node as convert_inline_node_with_context,
+        convert_inline_nodes as convert_inline_nodes_with_context, extract_plain_text,
+    };
+
+    fn convert_inline_node(node: &RdNode) -> Option<Node> {
+        convert_inline_node_with_context(node, &LinkResolutionContext::default())
+    }
+
+    fn convert_inline_nodes(nodes: &[RdNode]) -> Vec<Node> {
+        convert_inline_nodes_with_context(nodes, &LinkResolutionContext::default())
+    }
 
     fn text(value: &str) -> RdNode {
         RdNode::Text(value.to_owned())
@@ -216,6 +386,10 @@ mod tests {
 
     fn tagged(tag: RdTag, children: Vec<RdNode>) -> RdNode {
         RdNode::tagged(tag, None, children)
+    }
+
+    fn tagged_with_option(tag: RdTag, option: &str, children: Vec<RdNode>) -> RdNode {
+        RdNode::tagged(tag, Some(vec![text(option)]), children)
     }
 
     fn span(tag: RdTag, value: &str) -> RdNode {
@@ -439,8 +613,198 @@ mod tests {
 
     #[test]
     fn skips_nodes_outside_this_substep() {
-        let link = tagged(RdTag::Link, vec![text("topic")]);
-        assert_eq!(convert_inline_node(&link), None);
+        let cran_package = tagged(RdTag::CranPkg, vec![text("stats")]);
+        assert_eq!(convert_inline_node(&cran_package), None);
+    }
+
+    #[test]
+    fn converts_href_with_recursively_converted_display_markup() {
+        let href = tagged(
+            RdTag::Href,
+            vec![
+                group(vec![text("https://example.com/reference")]),
+                group(vec![
+                    text("the "),
+                    tagged(RdTag::Strong, vec![text("reference")]),
+                ]),
+            ],
+        );
+
+        assert_eq!(
+            convert_inline_node(&href),
+            Some(Node::link(
+                "https://example.com/reference",
+                vec![
+                    Node::text("the "),
+                    Node::strong(vec![Node::text("reference")]),
+                ],
+            ))
+        );
+    }
+
+    #[test]
+    fn resolves_bare_link_through_alias_map_or_falls_back_to_code() {
+        let link = tagged(RdTag::Link, vec![text("helper")]);
+        assert_eq!(
+            convert_inline_node(&link),
+            Some(Node::inline_code("helper"))
+        );
+
+        let alias_map = HashMap::from([("helper".to_owned(), "utils".to_owned())]);
+        let context = LinkResolutionContext {
+            internal_link_url: Some("{file}.qmd#{topic}"),
+            unqualified_link_url: Some("https://fallback.example/{topic}"),
+            alias_map: Some(&alias_map),
+            ..LinkResolutionContext::default()
+        };
+        assert_eq!(
+            convert_inline_node_with_context(&link, &context),
+            Some(Node::link(
+                "utils.qmd#helper",
+                vec![Node::inline_code("helper")],
+            ))
+        );
+
+        let context_without_internal_template = LinkResolutionContext {
+            unqualified_link_url: Some("https://fallback.example/{topic}"),
+            alias_map: Some(&alias_map),
+            ..LinkResolutionContext::default()
+        };
+        assert_eq!(
+            convert_inline_node_with_context(&link, &context_without_internal_template),
+            Some(Node::inline_code("helper"))
+        );
+    }
+
+    #[test]
+    fn resolves_explicit_unqualified_link_or_falls_back_to_code() {
+        let link = tagged_with_option(
+            RdTag::Link,
+            "=helper",
+            vec![text("shown "), tagged(RdTag::Emph, vec![text("name")])],
+        );
+        assert_eq!(
+            convert_inline_node(&link),
+            Some(Node::inline_code("shown name"))
+        );
+
+        let context = LinkResolutionContext {
+            unqualified_link_url: Some("https://example.com/{topic}.html"),
+            ..LinkResolutionContext::default()
+        };
+        assert_eq!(
+            convert_inline_node_with_context(&link, &context),
+            Some(Node::link(
+                "https://example.com/helper.html",
+                vec![Node::inline_code("shown name")],
+            ))
+        );
+    }
+
+    #[test]
+    fn resolves_explicit_qualified_link_with_package_url_precedence_or_code_fallback() {
+        let link = tagged_with_option(
+            RdTag::Link,
+            "dplyr:mutate",
+            vec![tagged(RdTag::Strong, vec![text("transform")])],
+        );
+        assert_eq!(
+            convert_inline_node(&link),
+            Some(Node::inline_code("transform"))
+        );
+
+        let package_urls = HashMap::from([(
+            "dplyr".to_owned(),
+            "https://dplyr.example/{topic}".to_owned(),
+        )]);
+        let context = LinkResolutionContext {
+            external_link_url: Some("x-r-help:{package}/{topic}"),
+            package_urls: Some(&package_urls),
+            ..LinkResolutionContext::default()
+        };
+        assert_eq!(
+            convert_inline_node_with_context(&link, &context),
+            Some(Node::link(
+                "https://dplyr.example/mutate",
+                vec![Node::inline_code("transform")],
+            ))
+        );
+    }
+
+    #[test]
+    fn resolves_display_topic_qualified_link_externally_or_falls_back_to_code() {
+        let link = tagged_with_option(RdTag::Link, "dplyr", vec![text("mutate")]);
+        assert_eq!(
+            convert_inline_node(&link),
+            Some(Node::inline_code("dplyr::mutate"))
+        );
+
+        let context = LinkResolutionContext {
+            external_link_url: Some("x-r-help:{package}/{topic}"),
+            ..LinkResolutionContext::default()
+        };
+        assert_eq!(
+            convert_inline_node_with_context(&link, &context),
+            Some(Node::link(
+                "x-r-help:dplyr/mutate",
+                vec![Node::inline_code("dplyr::mutate")],
+            ))
+        );
+    }
+
+    #[test]
+    fn resolves_qualified_and_unqualified_s4_class_links() {
+        let qualified =
+            tagged_with_option(RdTag::LinkS4Class, "methods", vec![text("envRefClass")]);
+        let unqualified = tagged(RdTag::LinkS4Class, vec![text("MyClass")]);
+        assert_eq!(
+            convert_inline_nodes(&[qualified.clone(), unqualified.clone()]),
+            vec![
+                Node::inline_code("methods::envRefClass-class"),
+                Node::inline_code("MyClass-class"),
+            ]
+        );
+
+        let context = LinkResolutionContext {
+            unqualified_link_url: Some("https://example.com/{topic}.html"),
+            external_link_url: Some("x-r-help:{package}/{topic}"),
+            ..LinkResolutionContext::default()
+        };
+        assert_eq!(
+            convert_inline_nodes_with_context(&[qualified, unqualified], &context),
+            vec![
+                Node::link(
+                    "x-r-help:methods/envRefClass-class",
+                    vec![Node::inline_code("methods::envRefClass-class")],
+                ),
+                Node::link(
+                    "https://example.com/MyClass-class.html",
+                    vec![Node::inline_code("MyClass-class")],
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn converts_only_curated_doi_shape() {
+        let doi = tagged(RdTag::Doi, vec![text("10.1000/xyz")]);
+        assert_eq!(
+            convert_inline_node(&doi),
+            Some(Node::link(
+                "https://doi.org/10.1000/xyz",
+                vec![Node::text("doi:10.1000/xyz")],
+            ))
+        );
+
+        let malformed_dois = [
+            tagged(RdTag::Doi, vec![]),
+            tagged(RdTag::Doi, vec![text("one"), text("two")]),
+            tagged(RdTag::Doi, vec![verb("10.1000/xyz")]),
+            tagged_with_option(RdTag::Doi, "option", vec![text("10.1000/xyz")]),
+        ];
+        for malformed in malformed_dois {
+            assert_eq!(convert_inline_node(&malformed), None);
+        }
     }
 
     #[test]
