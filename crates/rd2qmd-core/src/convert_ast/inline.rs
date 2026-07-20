@@ -172,8 +172,17 @@ fn convert_inline_span(
         RdInlineSpanKind::Strong | RdInlineSpanKind::Bold => {
             Node::strong(convert_inline_nodes(body, context))
         }
-        RdInlineSpanKind::Code
-        | RdInlineSpanKind::Samp
+        RdInlineSpanKind::Code => {
+            if let [node] = body
+                && node
+                    .as_tagged()
+                    .is_some_and(|tagged| tagged.tag() == &RdTag::Link)
+            {
+                return convert_inline_node(node, context);
+            }
+            Node::inline_code(prose_text(body, context))
+        }
+        RdInlineSpanKind::Samp
         | RdInlineSpanKind::File
         | RdInlineSpanKind::Kbd
         | RdInlineSpanKind::Option
@@ -459,6 +468,64 @@ mod tests {
         assert_eq!(
             convert_inline_node(&node),
             Some(Node::inline_code("recovered"))
+        );
+    }
+
+    #[test]
+    fn preserves_resolved_link_nested_directly_in_code() {
+        let node = tagged(
+            RdTag::Code,
+            vec![tagged_with_option(
+                RdTag::Link,
+                "=alias",
+                vec![text("display")],
+            )],
+        );
+        let alias_map = HashMap::from([("alias".to_owned(), "target".to_owned())]);
+        let context = LinkResolutionContext {
+            internal_link_url: Some("{file}.qmd#{topic}"),
+            alias_map: Some(&alias_map),
+            ..LinkResolutionContext::default()
+        };
+
+        assert_eq!(
+            convert_inline_node_with_context(&node, &context),
+            Some(Node::link(
+                "target.qmd#alias",
+                vec![Node::inline_code("display")],
+            ))
+        );
+    }
+
+    #[test]
+    fn delegates_unresolved_link_nested_directly_in_code_to_link_fallback() {
+        let link = tagged_with_option(RdTag::Link, "=alias", vec![text("display")]);
+        let node = tagged(RdTag::Code, vec![link.clone()]);
+
+        let bare_link_fallback = convert_inline_node(&link);
+        assert_eq!(bare_link_fallback, Some(Node::inline_code("display")));
+        assert_eq!(convert_inline_node(&node), bare_link_fallback);
+    }
+
+    #[test]
+    fn flattens_code_with_link_and_additional_child() {
+        let node = tagged(
+            RdTag::Code,
+            vec![
+                tagged_with_option(RdTag::Link, "=alias", vec![text("display")]),
+                text(" suffix"),
+            ],
+        );
+        let alias_map = HashMap::from([("alias".to_owned(), "target".to_owned())]);
+        let context = LinkResolutionContext {
+            internal_link_url: Some("{file}.qmd#{topic}"),
+            alias_map: Some(&alias_map),
+            ..LinkResolutionContext::default()
+        };
+
+        assert_eq!(
+            convert_inline_node_with_context(&node, &context),
+            Some(Node::inline_code("display suffix"))
         );
     }
 
