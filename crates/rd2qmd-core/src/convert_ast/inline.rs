@@ -68,6 +68,8 @@ pub(crate) fn convert_inline_nodes(nodes: &[RdNode]) -> Vec<Node> {
     for node in nodes {
         if let RdNode::Group(group) = node {
             converted.extend(convert_inline_nodes(group.children()));
+        } else if let RdNode::Raw(raw) = node {
+            converted.extend(convert_inline_nodes(raw.children()));
         } else if let Some(node) = convert_inline_node(node) {
             converted.push(node);
         }
@@ -199,7 +201,7 @@ fn extract_alt_from_attrs(attributes: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use rd_ast::{RdNode, RdTag};
+    use rd_ast::{RdNode, RdTag, producer};
     use rd2qmd_mdast::Node;
 
     use super::{convert_inline_node, convert_inline_nodes, extract_plain_text};
@@ -222,6 +224,10 @@ mod tests {
 
     fn group(nodes: Vec<RdNode>) -> RdNode {
         RdNode::group(nodes)
+    }
+
+    fn raw(nodes: Vec<RdNode>) -> RdNode {
+        RdNode::Raw(producer::raw_node(None, None, nodes, None, vec![]))
     }
 
     fn figure(file: &str, second: Option<&str>) -> RdNode {
@@ -269,6 +275,16 @@ mod tests {
         assert_eq!(
             convert_inline_node(&node),
             Some(Node::inline_code("f(...)"))
+        );
+    }
+
+    #[test]
+    fn preserves_recovered_text_nested_in_code_raw_node() {
+        let node = tagged(RdTag::Code, vec![raw(vec![text("recovered")])]);
+
+        assert_eq!(
+            convert_inline_node(&node),
+            Some(Node::inline_code("recovered"))
         );
     }
 
