@@ -1,7 +1,9 @@
 //! General block-content assembly for the rd_ast conversion migration.
 
-use rd_ast::{RdListItem, RdListKind, RdNode, RdPath, RdTag};
-use rd2qmd_mdast::Node;
+use rd_ast::{RdArgument, RdListItem, RdListKind, RdNode, RdPath, RdTag};
+use rd2qmd_mdast::{Align, Html, Node, Root, WriterOptions, mdast_to_qmd};
+use tabled::settings::Style;
+use tabled::settings::style::HorizontalLine;
 
 use super::{
     inline::{self, LinkResolutionContext},
@@ -27,6 +29,573 @@ pub(crate) fn convert_block_content(
             BlockContentItem::Block(node) => convert_block(node, context),
         })
         .collect()
+}
+
+/// Convert an already-structured Arguments section in the requested output format.
+pub(crate) fn convert_arguments(
+    arguments: &[RdArgument<'_>],
+    format: crate::ArgumentsFormat,
+    context: &BlockConversionContext<'_>,
+) -> Vec<Node> {
+    match format {
+        crate::ArgumentsFormat::PipeTable => convert_arguments_pipe(arguments, context),
+        crate::ArgumentsFormat::GridTable => convert_arguments_grid(arguments, context),
+        crate::ArgumentsFormat::ListTable => convert_arguments_list_table(arguments, context),
+        crate::ArgumentsFormat::List => convert_arguments_list(arguments, context),
+    }
+}
+
+/// Convert arguments to pipe table format.
+/// Pipe tables cannot contain block elements (lists, multiple paragraphs).
+/// Workaround: use `<br>` for line breaks and flatten lists with bullet markers.
+fn convert_arguments_pipe(
+    arguments: &[RdArgument<'_>],
+    context: &BlockConversionContext<'_>,
+) -> Vec<Node> {
+    if arguments.is_empty() {
+        return Vec::new();
+    }
+
+    let header_row = Node::table_row(vec![
+        Node::table_cell(vec![Node::text("Argument")]),
+        Node::table_cell(vec![Node::text("Description")]),
+    ]);
+    let mut rows = vec![header_row];
+
+    for argument in arguments {
+        let term_text = argument_name(argument, context);
+        rows.push(Node::table_row(vec![
+            Node::table_cell(vec![Node::inline_code(term_text.trim())]),
+            Node::table_cell(flatten_for_table_cell(argument.description, context)),
+        ]));
+    }
+
+    vec![Node::table(
+        vec![Some(Align::Left), Some(Align::Left)],
+        rows,
+    )]
+}
+
+/// Convert arguments to Pandoc grid table format.
+/// Grid tables support block elements (lists, paragraphs) within cells.
+fn convert_arguments_grid(
+    arguments: &[RdArgument<'_>],
+    context: &BlockConversionContext<'_>,
+) -> Vec<Node> {
+    use tabled::builder::Builder;
+
+    if arguments.is_empty() {
+        return Vec::new();
+    }
+
+    let mut builder = Builder::default();
+    builder.push_record(["Argument", "Description"]);
+
+    for argument in arguments {
+        let term_text = argument_name(argument, context);
+        let arg_text = rd2qmd_mdast::format_inline_code(term_text.trim(), false);
+        let desc_text = convert_to_markdown_text(argument.description, context);
+        builder.push_record([arg_text, desc_text]);
+    }
+
+    let mut table = builder.build();
+    let grid_style = Style::ascii().horizontals([(
+        1,
+        HorizontalLine::new('=')
+            .left('+')
+            .right('+')
+            .intersection('+'),
+    )]);
+    let grid_table = table.with(grid_style).to_string();
+
+    vec![Node::Html(Html { value: grid_table })]
+}
+
+/// Convert arguments to Quarto list-table format.
+/// Requires Quarto 1.9+ and is compatible with q2.
+fn convert_arguments_list_table(
+    arguments: &[RdArgument<'_>],
+    context: &BlockConversionContext<'_>,
+) -> Vec<Node> {
+    if arguments.is_empty() {
+        return Vec::new();
+    }
+
+    let rows: Vec<_> = arguments
+        .iter()
+        .map(|argument| {
+            let term_text = argument_name(argument, context);
+            let arg_text = rd2qmd_mdast::format_inline_code(term_text.trim(), false);
+            let desc_nodes = convert_block_content(argument.description, context);
+            let desc_text = render_list_table_cell(&desc_nodes);
+            (arg_text, desc_text)
+        })
+        .collect();
+
+    let mut output = String::new();
+    output.push_str("::: {.list-table header-rows=1}\n\n");
+    output.push_str("- - Argument\n  - Description\n");
+
+    for (arg, desc) in &rows {
+        output.push('\n');
+        output.push_str("- - ");
+        output.push_str(arg);
+        output.push('\n');
+        output.push_str("  - ");
+        output.push_str(desc);
+        output.push('\n');
+    }
+
+    output.push_str("\n:::\n");
+    vec![Node::Html(Html { value: output })]
+}
+
+/// Convert arguments to Markdown loose-list format.
+fn convert_arguments_list(
+    arguments: &[RdArgument<'_>],
+    context: &BlockConversionContext<'_>,
+) -> Vec<Node> {
+    if arguments.is_empty() {
+        return Vec::new();
+    }
+
+    let items: Vec<_> = arguments
+        .iter()
+        .map(|argument| {
+            let term_text = argument_name(argument, context);
+            let arg_code = rd2qmd_mdast::format_inline_code(term_text.trim(), false);
+            let desc_nodes = convert_block_content(argument.description, context);
+            let desc_text = render_block_content(&desc_nodes, 2);
+            (arg_code, desc_text)
+        })
+        .collect();
+
+    let mut output = String::new();
+    for (i, (arg, desc)) in items.iter().enumerate() {
+        if i > 0 {
+            output.push('\n');
+        }
+        output.push_str("- **");
+        output.push_str(arg);
+        output.push_str("**\n");
+
+        if !desc.is_empty() {
+            output.push('\n');
+            output.push_str("  ");
+            output.push_str(desc);
+            output.push('\n');
+        }
+    }
+
+    vec![Node::Html(Html { value: output })]
+}
+
+fn argument_name(argument: &RdArgument<'_>, context: &BlockConversionContext<'_>) -> String {
+    inline::extract_plain_text(&inline::convert_inline_nodes(argument.name, &context.links))
+}
+
+/// Flatten block content to inline nodes for GFM table cells.
+/// Uses `<br>` for paragraph breaks and flattens lists with bullet markers.
+fn flatten_for_table_cell(content: &[RdNode], context: &BlockConversionContext<'_>) -> Vec<Node> {
+    let block_nodes = convert_block_content(content, context);
+    let mut result = Vec::new();
+
+    for (i, node) in block_nodes.iter().enumerate() {
+        if i > 0 && !result.is_empty() {
+            result.push(Node::Html(Html {
+                value: " <br>".to_owned(),
+            }));
+        }
+
+        match node {
+            Node::Paragraph(paragraph) => result.extend(paragraph.children.clone()),
+            Node::List(list) => {
+                for (j, item) in list.children.iter().enumerate() {
+                    if j > 0 {
+                        result.push(Node::Html(Html {
+                            value: " <br>".to_owned(),
+                        }));
+                    }
+                    if let Node::ListItem(item) = item {
+                        let marker = if list.ordered {
+                            format!("{}. ", j + 1)
+                        } else {
+                            "- ".to_owned()
+                        };
+                        result.push(Node::text(marker));
+                        for child in &item.children {
+                            if let Node::Paragraph(paragraph) = child {
+                                result.extend(paragraph.children.clone());
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    result
+}
+
+/// Convert Rd content to a standalone Markdown string for a grid-table cell.
+///
+/// Grid tables are built from raw strings by `tabled`, whereas the main mdast
+/// writer owns one global output buffer and tracks whole-document line state.
+/// The dedicated serializers below therefore preserve the legacy subtree path
+/// until the writer can directly serialize isolated AST fragments.
+fn convert_to_markdown_text(content: &[RdNode], context: &BlockConversionContext<'_>) -> String {
+    nodes_to_markdown(&convert_block_content(content, context))
+}
+
+fn nodes_to_markdown(nodes: &[Node]) -> String {
+    let mut result = String::new();
+
+    for (i, node) in nodes.iter().enumerate() {
+        if i > 0 {
+            result.push_str("\n\n");
+        }
+
+        match node {
+            Node::Paragraph(paragraph) => {
+                result.push_str(&inline_nodes_to_markdown(&paragraph.children));
+            }
+            Node::List(list) => {
+                if i > 0 && !result.ends_with("\n\n") {
+                    result.push('\n');
+                }
+                for (j, item) in list.children.iter().enumerate() {
+                    if j > 0 {
+                        result.push('\n');
+                    }
+                    if let Node::ListItem(item) = item {
+                        let marker = if list.ordered {
+                            format!("{}. ", j + 1)
+                        } else {
+                            "- ".to_owned()
+                        };
+                        result.push_str(&marker);
+                        for child in &item.children {
+                            if let Node::Paragraph(paragraph) = child {
+                                result.push_str(&inline_nodes_to_markdown(&paragraph.children));
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            Node::Code(code) => {
+                let fence = code_fence(&code.value);
+                result.push_str(&fence);
+                if let Some(lang) = &code.lang {
+                    result.push_str(lang);
+                }
+                result.push('\n');
+                result.push_str(&code.value);
+                result.push('\n');
+                result.push_str(&fence);
+            }
+            _ => {
+                if let Some(text) = node_to_text(node) {
+                    result.push_str(&text);
+                }
+            }
+        }
+    }
+
+    result
+}
+
+fn inline_nodes_to_markdown(nodes: &[Node]) -> String {
+    let mut result = String::new();
+
+    for node in nodes {
+        match node {
+            Node::Text(text) => result.push_str(&text.value),
+            Node::InlineCode(code) => result.push_str(&rd2qmd_mdast::format_inline_code(
+                &code.value,
+                result.ends_with('`'),
+            )),
+            Node::Emphasis(emphasis) => {
+                result.push('*');
+                result.push_str(&inline_nodes_to_markdown(&emphasis.children));
+                result.push('*');
+            }
+            Node::Strong(strong) => {
+                result.push_str("**");
+                result.push_str(&inline_nodes_to_markdown(&strong.children));
+                result.push_str("**");
+            }
+            Node::Link(link) => {
+                result.push('[');
+                result.push_str(&inline_nodes_to_markdown(&link.children));
+                result.push_str("](");
+                result.push_str(&link.url);
+                result.push(')');
+            }
+            Node::InlineMath(math) => {
+                result.push('$');
+                result.push_str(&math.value);
+                result.push('$');
+            }
+            Node::Image(image) => {
+                result.push_str("![");
+                result.push_str(&image.alt);
+                result.push_str("](");
+                result.push_str(&image.url);
+                if let Some(title) = &image.title {
+                    result.push_str(" \"");
+                    result.push_str(title);
+                    result.push('"');
+                }
+                result.push(')');
+            }
+            Node::Break => result.push_str("  \n"),
+            Node::Html(html) => result.push_str(&html.value),
+            _ => {
+                if let Some(text) = node_to_text(node) {
+                    result.push_str(&text);
+                }
+            }
+        }
+    }
+
+    result
+}
+
+fn node_to_text(node: &Node) -> Option<String> {
+    match node {
+        Node::Text(text) => Some(text.value.clone()),
+        Node::InlineCode(code) => Some(format!("`{}`", code.value)),
+        Node::Paragraph(paragraph) => Some(inline_nodes_to_markdown(&paragraph.children)),
+        _ => None,
+    }
+}
+
+fn render_list_table_cell(nodes: &[Node]) -> String {
+    render_block_content(nodes, 4)
+}
+
+fn render_block_content(nodes: &[Node], indent: u8) -> String {
+    let indent = " ".repeat(indent as usize);
+    let indent = indent.as_str();
+    let mut result = String::new();
+    let mut first_block = true;
+
+    for node in nodes {
+        match node {
+            Node::Paragraph(paragraph) => {
+                let text = inline_nodes_to_markdown(&paragraph.children);
+                let text = text.trim_start();
+                if text.is_empty() {
+                    continue;
+                }
+                let indented = indent_cell_continuation(text, indent);
+                if first_block {
+                    result.push_str(&indented);
+                } else {
+                    result.push_str("\n\n");
+                    result.push_str(indent);
+                    result.push_str(&indented);
+                }
+                first_block = false;
+            }
+            Node::List(list) => {
+                let mut any_item = false;
+                for (j, list_item) in list.children.iter().enumerate() {
+                    if let Node::ListItem(item) = list_item {
+                        let marker = if list.ordered {
+                            format!("{}. ", j + 1)
+                        } else {
+                            "- ".to_owned()
+                        };
+                        let outer = if !first_block || j > 0 { indent } else { "" };
+                        let continuation = format!("{}{}", indent, " ".repeat(marker.len()));
+                        let (first_child_text, first_was_paragraph) = item
+                            .children
+                            .first()
+                            .map(|child| {
+                                if let Node::Paragraph(paragraph) = child {
+                                    (
+                                        indent_cell_continuation(
+                                            &inline_nodes_to_markdown(&paragraph.children),
+                                            &continuation,
+                                        ),
+                                        true,
+                                    )
+                                } else {
+                                    (String::new(), false)
+                                }
+                            })
+                            .unwrap_or((String::new(), false));
+
+                        if !any_item {
+                            if !first_block {
+                                result.push_str("\n\n");
+                            }
+                        } else {
+                            result.push('\n');
+                        }
+                        result.push_str(outer);
+                        result.push_str(&marker);
+                        result.push_str(&first_child_text);
+                        any_item = true;
+
+                        let skip_n = usize::from(first_was_paragraph);
+                        for child in item.children.iter().skip(skip_n) {
+                            let text = node_to_markdown_string(child);
+                            if text.is_empty() {
+                                continue;
+                            }
+                            result.push_str("\n\n");
+                            result.push_str(&continuation);
+                            for (i, line) in text.split('\n').enumerate() {
+                                if i > 0 {
+                                    result.push('\n');
+                                    if !line.is_empty() {
+                                        result.push_str(&continuation);
+                                    }
+                                }
+                                result.push_str(line);
+                            }
+                        }
+                    }
+                }
+                if any_item {
+                    first_block = false;
+                }
+            }
+            Node::Code(code) => {
+                let lang = code.lang.as_deref().unwrap_or("");
+                let fence = code_fence(&code.value);
+                result.push_str("\n\n");
+                result.push_str(indent);
+                result.push_str(&fence);
+                result.push_str(lang);
+                let lines: Vec<_> = code.value.split('\n').collect();
+                let code_lines = if lines.last() == Some(&"") {
+                    &lines[..lines.len() - 1]
+                } else {
+                    &lines[..]
+                };
+                for line in code_lines {
+                    result.push('\n');
+                    if !line.is_empty() {
+                        result.push_str(indent);
+                        result.push_str(line);
+                    }
+                }
+                result.push('\n');
+                result.push_str(indent);
+                result.push_str(&fence);
+                first_block = false;
+            }
+            Node::DefinitionList(_) | Node::Table(_) => {
+                let text = node_to_markdown_string(node);
+                if text.is_empty() {
+                    continue;
+                }
+                result.push_str("\n\n");
+                result.push_str(indent);
+                for (i, line) in text.split('\n').enumerate() {
+                    if i > 0 {
+                        result.push('\n');
+                        if !line.is_empty() {
+                            result.push_str(indent);
+                        }
+                    }
+                    result.push_str(line);
+                }
+                first_block = false;
+            }
+            _ => {
+                if let Some(text) = node_to_text(node) {
+                    let text = text.trim_start();
+                    if text.is_empty() {
+                        continue;
+                    }
+                    if first_block {
+                        result.push_str(text);
+                    } else {
+                        result.push_str("\n\n");
+                        result.push_str(indent);
+                        result.push_str(text);
+                    }
+                    first_block = false;
+                }
+            }
+        }
+    }
+
+    result
+}
+
+/// Serialize one mdast node through the real writer.
+fn node_to_markdown_string(node: &Node) -> String {
+    let root = Root::new(vec![node.clone()]);
+    let options = WriterOptions {
+        frontmatter: None,
+        // The migration context has no writer-format option yet. Preserve the
+        // legacy call site's default until the document converter is wired.
+        quarto_code_blocks: true,
+    };
+    mdast_to_qmd(&root, &options).trim().to_owned()
+}
+
+/// Return a backtick fence long enough to wrap `code`.
+fn code_fence(code: &str) -> String {
+    let max_run = code
+        .split('\n')
+        .filter_map(|line| {
+            let line = line.trim_start();
+            line.starts_with('`').then(|| {
+                line.chars()
+                    .take_while(|character| *character == '`')
+                    .count()
+            })
+        })
+        .max()
+        .unwrap_or(0);
+    "`".repeat(max_run.max(2) + 1)
+}
+
+/// Prefix every continuation line after the first newline with `prefix`.
+fn indent_cell_continuation(text: &str, prefix: &str) -> String {
+    let mut result = String::new();
+    for (i, line) in text.split('\n').enumerate() {
+        if i > 0 {
+            result.push('\n');
+            let line = line.trim_start();
+            if !line.is_empty() {
+                result.push_str(prefix);
+                result.push_str(&escape_md_list_marker(line));
+            }
+        } else {
+            result.push_str(line);
+        }
+    }
+    result
+}
+
+fn escape_md_list_marker(line: &str) -> std::borrow::Cow<'_, str> {
+    let mut chars = line.chars();
+    match chars.next() {
+        Some('-' | '*' | '+') if chars.next() == Some(' ') => format!("\\{line}").into(),
+        Some(character) if character.is_ascii_digit() => {
+            let digits_end = line
+                .chars()
+                .take_while(|character| character.is_ascii_digit())
+                .count();
+            let rest = &line[digits_end..];
+            if rest.starts_with(". ") || rest.starts_with(") ") {
+                format!("{}\\{rest}", &line[..digits_end]).into()
+            } else {
+                line.into()
+            }
+        }
+        _ => line.into(),
+    }
 }
 
 fn convert_paragraph(
@@ -102,7 +671,7 @@ fn convert_block(node: &RdNode, context: &BlockConversionContext<'_>) -> Option<
             if context.prefer_ascii_math
                 && let Some(ascii) = equation.ascii()
             {
-                let ascii = equation_text(ascii, &context.links);
+                let ascii = recover_verbatim(ascii);
                 if !ascii.trim().is_empty() {
                     return Some(Node::code(None, ascii));
                 }
@@ -123,10 +692,13 @@ fn equation_text(nodes: &[RdNode], links: &LinkResolutionContext<'_>) -> String 
 
 #[cfg(test)]
 mod tests {
-    use rd_ast::{RdNode, RdTag};
+    use rd_ast::{RdDocument, RdNode, RdTag};
     use rd2qmd_mdast::Node;
 
-    use super::{BlockConversionContext, convert_block_content};
+    use super::{
+        BlockConversionContext, convert_arguments, convert_block_content, inline_nodes_to_markdown,
+    };
+    use crate::ArgumentsFormat;
     use crate::convert_ast::inline::LinkResolutionContext;
 
     fn context(prefer_ascii_math: bool) -> BlockConversionContext<'static> {
@@ -166,6 +738,30 @@ mod tests {
 
     fn described_item(label: Vec<RdNode>, body: Vec<RdNode>) -> RdNode {
         tagged(RdTag::Item, vec![group(label), group(body)])
+    }
+
+    fn argument_document() -> RdDocument {
+        let arguments = vec![
+            described_item(
+                vec![text(" alpha ")],
+                vec![text("First paragraph\n\nSecond paragraph")],
+            ),
+            described_item(
+                vec![tagged(RdTag::Code, vec![text("choice")])],
+                vec![
+                    text("Choices:\n\n"),
+                    delimited_list(RdTag::Itemize, vec![vec![text("one")], vec![text("two")]]),
+                ],
+            ),
+        ];
+        RdDocument::new(vec![tagged(RdTag::Arguments, arguments)])
+    }
+
+    fn html_value(nodes: &[Node]) -> &str {
+        let [Node::Html(html)] = nodes else {
+            panic!("expected one raw output node")
+        };
+        &html.value
     }
 
     fn equation(latex: &str, ascii: Option<&str>) -> RdNode {
@@ -328,6 +924,16 @@ mod tests {
     }
 
     #[test]
+    fn block_equation_preserves_multiline_ascii_layout() {
+        let matrix = equation("matrix", Some("[ 1 2 ]\n[ 3 4 ]"));
+
+        assert_eq!(
+            convert_block_content(&[matrix], &context(true)),
+            vec![Node::code(None, "[ 1 2 ]\n[ 3 4 ]")]
+        );
+    }
+
+    #[test]
     fn interleaves_paragraphs_and_lists_in_source_order() {
         let list = delimited_list(RdTag::Itemize, vec![vec![text("item")]]);
         let nodes = vec![text("before\n\n"), list, text("\n\nafter")];
@@ -345,5 +951,87 @@ mod tests {
                 Node::paragraph(vec![Node::text("after")]),
             ]
         );
+    }
+
+    #[test]
+    fn converts_arguments_to_pipe_table_and_flattens_lists_with_breaks() {
+        let document = argument_document();
+        let arguments: Vec<_> = document.arguments().collect();
+        let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
+
+        let [Node::Table(table)] = converted.as_slice() else {
+            panic!("expected one table")
+        };
+        assert_eq!(table.align, [Some(rd2qmd_mdast::Align::Left); 2]);
+        assert_eq!(table.children.len(), 3);
+
+        let Node::TableRow(first_argument) = &table.children[1] else {
+            panic!("expected first argument row")
+        };
+        let Node::TableCell(first_description) = &first_argument.children[1] else {
+            panic!("expected first description cell")
+        };
+        assert_eq!(
+            inline_nodes_to_markdown(&first_description.children),
+            "First paragraph <br>Second paragraph"
+        );
+
+        let Node::TableRow(second_argument) = &table.children[2] else {
+            panic!("expected second argument row")
+        };
+        let Node::TableCell(second_description) = &second_argument.children[1] else {
+            panic!("expected second description cell")
+        };
+        assert_eq!(
+            inline_nodes_to_markdown(&second_description.children),
+            "Choices: <br>- one <br>- two"
+        );
+    }
+
+    #[test]
+    fn converts_arguments_to_grid_table_with_header_separator() {
+        let document = argument_document();
+        let arguments: Vec<_> = document.arguments().collect();
+        let converted = convert_arguments(&arguments, ArgumentsFormat::GridTable, &context(false));
+        let table = html_value(&converted);
+
+        assert!(table.contains("Argument"));
+        assert!(table.contains("Description"));
+        assert!(table.contains("First paragraph"));
+        assert!(table.contains("Second paragraph"));
+        assert!(table.contains("- one"));
+        assert!(table.contains("- two"));
+        assert!(table.lines().any(|line| line.contains('=')
+            && line.chars().all(|character| matches!(character, '+' | '='))));
+    }
+
+    #[test]
+    fn converts_arguments_to_quarto_list_table() {
+        let document = argument_document();
+        let arguments: Vec<_> = document.arguments().collect();
+        let converted = convert_arguments(&arguments, ArgumentsFormat::ListTable, &context(false));
+        let table = html_value(&converted);
+
+        assert!(table.starts_with("::: {.list-table header-rows=1}\n\n"));
+        assert!(table.contains("- - Argument\n  - Description\n"));
+        assert!(table.contains("- - `alpha`\n  - First paragraph\n\n    Second paragraph\n"));
+        assert!(table.contains("- - `choice`\n  - Choices:\n\n    - one\n    - two\n"));
+        assert!(table.ends_with("\n:::\n"));
+    }
+
+    #[test]
+    fn converts_arguments_to_loose_list_with_two_space_continuations() {
+        let document = argument_document();
+        let arguments: Vec<_> = document.arguments().collect();
+        let converted = convert_arguments(&arguments, ArgumentsFormat::List, &context(false));
+        let list = html_value(&converted);
+
+        assert!(list.contains("- **`alpha`**\n\n  First paragraph\n\n  Second paragraph\n"));
+        assert!(list.contains("- **`choice`**\n\n  Choices:\n\n  - one\n  - two\n"));
+    }
+
+    #[test]
+    fn empty_arguments_return_no_nodes() {
+        assert!(convert_arguments(&[], ArgumentsFormat::PipeTable, &context(false)).is_empty());
     }
 }

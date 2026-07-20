@@ -11,7 +11,7 @@ mod leaf_text;
 mod traversal;
 
 #[allow(unused_imports)]
-pub(crate) use blocks::{BlockConversionContext, convert_block_content};
+pub(crate) use blocks::{BlockConversionContext, convert_arguments, convert_block_content};
 #[allow(unused_imports)]
 pub(crate) use code::{ExampleOptions, convert_examples, convert_usage};
 #[allow(unused_imports)]

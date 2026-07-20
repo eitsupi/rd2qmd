@@ -424,15 +424,18 @@ impl<'a> Writer<'a> {
                 while i < dl.children.len() {
                     if let Node::DefinitionDescription(dd) = &dl.children[i] {
                         // Check if description contains block elements
-                        let has_block_elements = dd.children.iter().any(|c| {
-                            matches!(
-                                c,
-                                Node::List(_)
-                                    | Node::Code(_)
-                                    | Node::Table(_)
-                                    | Node::Blockquote(_)
-                            )
-                        });
+                        let has_block_elements = dd.children.len() > 1
+                            || dd.children.iter().any(|c| {
+                                matches!(
+                                    c,
+                                    Node::List(_)
+                                        | Node::Code(_)
+                                        | Node::Table(_)
+                                        | Node::Blockquote(_)
+                                        | Node::Math(_)
+                                        | Node::DefinitionList(_)
+                                )
+                            });
 
                         if has_block_elements {
                             // Block elements need special handling with indentation
@@ -456,6 +459,14 @@ impl<'a> Writer<'a> {
                                     Node::List(l) => {
                                         // List items indented by 4 spaces
                                         self.write_indented_list(l, 4);
+                                        self.output.push('\n');
+                                        after_first = true;
+                                    }
+                                    Node::Math(_) | Node::DefinitionList(_) => {
+                                        if after_first {
+                                            self.output.push_str("    ");
+                                        }
+                                        self.write_indented_definition_block(child, 4);
                                         self.output.push('\n');
                                         after_first = true;
                                     }
@@ -496,6 +507,24 @@ impl<'a> Writer<'a> {
         }
 
         self.at_line_start = true;
+    }
+
+    fn write_indented_definition_block(&mut self, node: &Node, indent: usize) {
+        let indent_str = " ".repeat(indent);
+        let start = self.output.len();
+        self.write_node(node);
+        let raw = self.output[start..].to_string();
+        self.output.truncate(start);
+
+        for (i, line) in raw.split('\n').enumerate() {
+            if i > 0 {
+                self.output.push('\n');
+                if !line.is_empty() {
+                    self.output.push_str(&indent_str);
+                }
+            }
+            self.output.push_str(line);
+        }
     }
 
     fn write_indented_list(&mut self, l: &crate::mdast::List, indent: usize) {
@@ -1126,8 +1155,74 @@ mod tests {
             Node::definition_description(vec![Node::paragraph(vec![Node::text("Definition")])]),
         ])]);
         let qmd = mdast_to_qmd(&root, &WriterOptions::default());
-        assert!(qmd.contains("Term"));
-        assert!(qmd.contains(":   Definition"));
+        insta::assert_snapshot!(qmd, @r###"
+        Term
+        :   Definition
+
+        "###);
+    }
+
+    #[test]
+    fn test_definition_list_description_with_two_paragraphs() {
+        let root = Root::new(vec![Node::definition_list(vec![
+            Node::definition_term(vec![Node::text("Term")]),
+            Node::definition_description(vec![
+                Node::paragraph(vec![Node::text("First paragraph")]),
+                Node::paragraph(vec![Node::text("Second paragraph")]),
+            ]),
+        ])]);
+
+        let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+        insta::assert_snapshot!(qmd, @r###"
+        Term
+        :   First paragraph
+
+            Second paragraph
+
+
+        "###);
+    }
+
+    #[test]
+    fn test_definition_list_description_with_math() {
+        let root = Root::new(vec![Node::definition_list(vec![
+            Node::definition_term(vec![Node::text("Term")]),
+            Node::definition_description(vec![Node::math("x^2 + y^2")]),
+        ])]);
+
+        let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+        insta::assert_snapshot!(qmd, @r###"
+        Term
+        :   $$
+            x^2 + y^2
+            $$
+
+
+        "###);
+    }
+
+    #[test]
+    fn test_definition_list_description_with_nested_definition_list() {
+        let nested = Node::definition_list(vec![
+            Node::definition_term(vec![Node::text("Nested term")]),
+            Node::definition_description(vec![Node::paragraph(vec![Node::text(
+                "Nested description",
+            )])]),
+        ]);
+        let root = Root::new(vec![Node::definition_list(vec![
+            Node::definition_term(vec![Node::text("Term")]),
+            Node::definition_description(vec![nested]),
+        ])]);
+
+        let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+        insta::assert_snapshot!(qmd, @r###"
+        Term
+        :   Nested term
+            :   Nested description
+
+
+
+        "###);
     }
 
     #[test]
