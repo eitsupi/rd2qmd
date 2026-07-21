@@ -290,7 +290,26 @@ fn flatten_for_table_cell(content: &[RdNode], context: &BlockConversionContext<'
 }
 
 fn extend_table_cell_inline(result: &mut Vec<Node>, nodes: &[Node]) {
-    result.extend(nodes.iter().map(sanitize_table_cell_inline_node));
+    result.extend(sanitize_table_cell_inline_nodes(nodes));
+}
+
+/// Normalize a sequence of inline nodes for embedding directly inside a
+/// `TableCell`'s `children`. Unlike [`sanitize_table_cell_inline_node`],
+/// this flattens any `Node::Paragraph` (produced when a multi-node
+/// conditional branch collapses, see `collapse_inline_nodes`) by splicing
+/// its sanitized children in place, since a `Paragraph` is a block node the
+/// real writer cannot safely nest inside a table cell.
+fn sanitize_table_cell_inline_nodes(nodes: &[Node]) -> Vec<Node> {
+    let mut result = Vec::with_capacity(nodes.len());
+    for node in nodes {
+        match node {
+            Node::Paragraph(paragraph) => {
+                result.extend(sanitize_table_cell_inline_nodes(&paragraph.children));
+            }
+            _ => result.push(sanitize_table_cell_inline_node(node)),
+        }
+    }
+    result
 }
 
 fn sanitize_table_cell_inline_node(node: &Node) -> Node {
@@ -298,10 +317,21 @@ fn sanitize_table_cell_inline_node(node: &Node) -> Node {
     match &mut node {
         Node::Text(text) => text.value = text.value.replace('|', "\\|"),
         Node::InlineCode(code) => code.value = code.value.replace('|', "\\|"),
-        Node::InlineMath(math) => math.value = math.value.replace('|', "\\|"),
+        // \deqn reached through the inline path (e.g. a plain \tabular cell,
+        // or a conditional branch) always arrives as InlineMath now (see
+        // inline.rs), which can still carry raw newlines from multiline
+        // LaTeX; collapse it to one line same as the Math case below.
         // Accepted limitation: this collapse is not TeX-comment-aware, so a `%` line
         // comment can swallow later `\deqn` content; handling `\%` needs TeX-aware
         // stripping for this narrow `\deqn`-in-`\tabular` case.
+        Node::InlineMath(math) => {
+            math.value = math
+                .value
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .replace('|', "\\|");
+        }
         Node::Math(math) => {
             return Node::InlineMath(rd2qmd_mdast::InlineMath {
                 value: math
@@ -326,36 +356,14 @@ fn sanitize_table_cell_inline_node(node: &Node) -> Node {
             });
         }
         Node::Emphasis(emphasis) => {
-            emphasis.children = emphasis
-                .children
-                .iter()
-                .map(sanitize_table_cell_inline_node)
-                .collect();
+            emphasis.children = sanitize_table_cell_inline_nodes(&emphasis.children);
         }
         Node::Strong(strong) => {
-            strong.children = strong
-                .children
-                .iter()
-                .map(sanitize_table_cell_inline_node)
-                .collect();
+            strong.children = sanitize_table_cell_inline_nodes(&strong.children);
         }
         Node::Link(link) => {
             link.url = link.url.replace('|', "\\|");
-            link.children = link
-                .children
-                .iter()
-                .map(sanitize_table_cell_inline_node)
-                .collect();
-        }
-        // A multi-node conditional branch (see collapse_inline_nodes) can land
-        // here as a nested Paragraph; sanitize its children too, so embedded
-        // `|` characters don't survive into the cell unescaped.
-        Node::Paragraph(paragraph) => {
-            paragraph.children = paragraph
-                .children
-                .iter()
-                .map(sanitize_table_cell_inline_node)
-                .collect();
+            link.children = sanitize_table_cell_inline_nodes(&link.children);
         }
         _ => {}
     }
@@ -843,17 +851,16 @@ fn convert_tabular(
         .rows()
         .iter()
         .map(|row| {
-            let cells = row
-                .cells()
-                .iter()
-                .map(|cell| {
-                    let children = inline::convert_inline_nodes(cell.nodes(), &context.inline)
-                        .iter()
-                        .map(sanitize_table_cell_inline_node)
-                        .collect();
-                    Node::table_cell(children)
-                })
-                .collect();
+            let cells =
+                row.cells()
+                    .iter()
+                    .map(|cell| {
+                        let children = sanitize_table_cell_inline_nodes(
+                            &inline::convert_inline_nodes(cell.nodes(), &context.inline),
+                        );
+                        Node::table_cell(children)
+                    })
+                    .collect();
             Node::table_row(cells)
         })
         .collect();
@@ -899,7 +906,7 @@ mod tests {
     use std::collections::HashMap;
 
     use rd_ast::{RdDocument, RdNode, RdTag};
-    use rd2qmd_mdast::Node;
+    use rd2qmd_mdast::{Node, Root, WriterOptions, mdast_to_qmd};
 
     use super::{
         BlockConversionContext, convert_arguments, convert_block_content, convert_custom_section,
@@ -1485,10 +1492,12 @@ mod tests {
     }
 
     #[test]
-    fn pipe_table_escapes_literal_pipes_in_nested_conditional_paragraphs() {
+    fn pipe_table_flattens_and_escapes_nested_conditional_paragraphs() {
         // A multi-node \ifelse branch collapses into a Node::Paragraph (see
-        // inline::collapse_inline_nodes); table-cell sanitization must recurse
-        // into it rather than passing embedded `|` characters through raw.
+        // inline::collapse_inline_nodes); table-cell content must flatten it
+        // away entirely (a Paragraph is a block node and structurally unsafe
+        // as a TableCell child in the real writer) and still escape embedded
+        // `|` characters.
         let multi_node_conditional = tagged(
             RdTag::IfElse,
             vec![
@@ -1511,14 +1520,47 @@ mod tests {
             panic!("expected description cell")
         };
 
-        let markdown = inline_nodes_to_markdown(&description.children);
+        // Structural invariant: no Paragraph (block node) may survive as a
+        // TableCell child, at any nesting depth.
+        fn assert_no_paragraphs(nodes: &[Node]) {
+            for node in nodes {
+                assert!(
+                    !matches!(node, Node::Paragraph(_)),
+                    "unexpected Paragraph in table-cell content: {node:?}"
+                );
+                let children: &[Node] = match node {
+                    Node::Emphasis(e) => &e.children,
+                    Node::Strong(s) => &s.children,
+                    Node::Link(l) => &l.children,
+                    _ => &[],
+                };
+                assert_no_paragraphs(children);
+            }
+        }
+        assert_no_paragraphs(&description.children);
+
+        // Render through the real writer -- not the file-local
+        // inline_nodes_to_markdown helper, whose own Paragraph-unwrapping
+        // fallback would mask exactly this class of bug -- and confirm the
+        // row stays a single line with pipes escaped.
+        let markdown = mdast_to_qmd(
+            &Root::new(vec![Node::Table(table.clone())]),
+            &WriterOptions {
+                frontmatter: None,
+                quarto_code_blocks: true,
+            },
+        );
+        let row_line = markdown
+            .lines()
+            .find(|line| line.contains("value"))
+            .expect("expected the argument row line");
         assert!(
-            !markdown.contains("a|b") && markdown.contains(r"a\|b"),
-            "expected escaped pipe in nested paragraph text, got: {markdown:?}"
+            !row_line.contains("a|b") && row_line.contains(r"a\|b"),
+            "expected escaped pipe in flattened paragraph text, got: {markdown:?}"
         );
         assert!(
-            !markdown.contains("c|d") && markdown.contains(r"c\|d"),
-            "expected escaped pipe in nested paragraph inline code, got: {markdown:?}"
+            !row_line.contains("c|d") && row_line.contains(r"c\|d"),
+            "expected escaped pipe in flattened paragraph inline code, got: {markdown:?}"
         );
     }
 

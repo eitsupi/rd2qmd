@@ -3,8 +3,7 @@
 use std::collections::HashMap;
 
 use rd_ast::{
-    RdConditionalKind, RdEquationDisplay, RdInlineSpanKind, RdLinkDestination, RdLinkTopic, RdNode,
-    RdPath, RdTag,
+    RdConditionalKind, RdInlineSpanKind, RdLinkDestination, RdLinkTopic, RdNode, RdPath, RdTag,
 };
 use rd2qmd_mdast::{Html, Image, Node};
 
@@ -55,6 +54,16 @@ pub(crate) fn convert_inline_node(
         RdTag::Enc => node
             .enc(&base_path)
             .map(|encoding| Node::text(prose_text(encoding.encoded(), context))),
+        // convert_inline_node's result can be nested inside Paragraph,
+        // Emphasis, Strong, or Link children, where a block node
+        // (Node::Code, Node::Math) is structurally unsafe for the writer
+        // (mdast.rs treats them as block nodes; the writer's line-start
+        // tracking isn't reliable across an inline/block transition). So
+        // \deqn -- a display equation -- reached through this path always
+        // degrades to its inline representation, regardless of
+        // RdEquationDisplay; only the block-scan path (blocks.rs's
+        // standalone Deqn handling) may produce a true block-level
+        // equation.
         RdTag::Eqn | RdTag::Deqn => tagged.inspect_equation(&base_path).ok().map(|equation| {
             if context.prefer_ascii_math
                 && let Some(ascii) = equation.ascii()
@@ -64,12 +73,7 @@ pub(crate) fn convert_inline_node(
                     return Node::inline_code(ascii);
                 }
             }
-            let latex = prose_text(equation.latex(), context);
-            match equation.display() {
-                RdEquationDisplay::Inline => Node::inline_math(latex),
-                RdEquationDisplay::Block => Node::math(latex),
-                _ => unreachable!("all equation display kinds are handled"),
-            }
+            Node::inline_math(prose_text(equation.latex(), context))
         }),
         RdTag::If | RdTag::IfElse => {
             let conditional = node.inspect_conditional(&base_path).ok().flatten()?;
@@ -768,7 +772,13 @@ mod tests {
     }
 
     #[test]
-    fn converts_inline_and_block_equations_using_latex() {
+    fn converts_eqn_and_deqn_to_inline_math_via_the_inline_path() {
+        // \deqn is a display equation, but convert_inline_node can only ever
+        // produce a genuinely inline result (its output may be nested inside
+        // Paragraph/Emphasis/Strong/Link children, where a block node is
+        // structurally unsafe) -- so it degrades to InlineMath here too.
+        // blocks.rs's standalone Deqn handling is what produces true block
+        // math.
         let nodes = vec![
             tagged(
                 RdTag::Eqn,
@@ -782,8 +792,42 @@ mod tests {
 
         assert_eq!(
             convert_inline_nodes(&nodes),
-            vec![Node::inline_math("x^2"), Node::math("x = y")]
+            vec![Node::inline_math("x^2"), Node::inline_math("x = y")]
         );
+    }
+
+    #[test]
+    fn deqn_via_conditional_stays_structurally_safe_next_to_prose() {
+        // A block-display \deqn reached through a conditional branch (the
+        // inline path) must not produce a block node (Node::Math/Node::Code)
+        // sitting next to plain text inside the same Paragraph -- that would
+        // be structurally unsafe for the real writer. Render through the
+        // actual writer, not a string-flattening shortcut, and confirm nothing
+        // resembling a fenced/attached block leaks into a single paragraph.
+        let branch = tagged(
+            RdTag::IfElse,
+            vec![
+                group(vec![text("text")]),
+                group(vec![
+                    text("before "),
+                    tagged(
+                        RdTag::Deqn,
+                        vec![group(vec![text("x = y")]), group(vec![text("x = y")])],
+                    ),
+                    text(" after"),
+                ]),
+                group(vec![text("else")]),
+            ],
+        );
+        let paragraph = Node::paragraph(convert_inline_nodes(&[branch]));
+
+        let markdown = render(vec![paragraph]);
+        assert!(
+            !markdown.contains("```"),
+            "a Deqn reached via the inline path must not render as a fenced block: {markdown:?}"
+        );
+        assert!(markdown.contains("before"));
+        assert!(markdown.contains("after"));
     }
 
     #[test]
