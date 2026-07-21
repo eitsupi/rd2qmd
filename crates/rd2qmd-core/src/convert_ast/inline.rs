@@ -24,6 +24,7 @@ pub(crate) struct LinkResolutionContext<'a> {
 pub(crate) struct InlineConversionContext<'a> {
     pub(crate) links: LinkResolutionContext<'a>,
     pub(crate) include_html_output: bool,
+    pub(crate) prefer_ascii_math: bool,
 }
 
 /// Convert the inline nodes currently supported by the AST migration.
@@ -55,6 +56,14 @@ pub(crate) fn convert_inline_node(
             .enc(&base_path)
             .map(|encoding| Node::text(prose_text(encoding.encoded(), context))),
         RdTag::Eqn | RdTag::Deqn => tagged.inspect_equation(&base_path).ok().map(|equation| {
+            if context.prefer_ascii_math
+                && let Some(ascii) = equation.ascii()
+            {
+                let ascii = super::blocks::recover_verbatim(ascii);
+                if !ascii.trim().is_empty() {
+                    return Node::inline_code(ascii);
+                }
+            }
             let latex = prose_text(equation.latex(), context);
             match equation.display() {
                 RdEquationDisplay::Inline => Node::inline_math(latex),
@@ -616,6 +625,7 @@ mod tests {
                 ..LinkResolutionContext::default()
             },
             include_html_output: false,
+            prefer_ascii_math: false,
         };
 
         assert_eq!(
@@ -654,6 +664,7 @@ mod tests {
                 ..LinkResolutionContext::default()
             },
             include_html_output: false,
+            prefer_ascii_math: false,
         };
 
         assert_eq!(
@@ -772,6 +783,37 @@ mod tests {
         assert_eq!(
             convert_inline_nodes(&nodes),
             vec![Node::inline_math("x^2"), Node::math("x = y")]
+        );
+    }
+
+    #[test]
+    fn inline_equation_uses_ascii_only_when_preferred_and_non_blank() {
+        let with_ascii = tagged(
+            RdTag::Eqn,
+            vec![group(vec![text("x^2")]), group(vec![text("x squared")])],
+        );
+        let blank_ascii = tagged(
+            RdTag::Eqn,
+            vec![group(vec![text("y^2")]), group(vec![text("  \n")])],
+        );
+        let ascii_context = InlineConversionContext {
+            prefer_ascii_math: true,
+            ..InlineConversionContext::default()
+        };
+
+        assert_eq!(
+            convert_inline_node_with_context(&with_ascii, &ascii_context),
+            Some(Node::inline_code("x squared")),
+        );
+        assert_eq!(
+            convert_inline_node(&with_ascii),
+            Some(Node::inline_math("x^2")),
+            "prefer_ascii_math defaults to false"
+        );
+        assert_eq!(
+            convert_inline_node_with_context(&blank_ascii, &ascii_context),
+            Some(Node::inline_math("y^2")),
+            "blank ascii text falls back to latex"
         );
     }
 
@@ -949,6 +991,7 @@ mod tests {
                 ..LinkResolutionContext::default()
             },
             include_html_output: false,
+            prefer_ascii_math: false,
         };
         assert_eq!(
             convert_inline_node_with_context(&link, &context),
@@ -965,6 +1008,7 @@ mod tests {
                 ..LinkResolutionContext::default()
             },
             include_html_output: false,
+            prefer_ascii_math: false,
         };
         assert_eq!(
             convert_inline_node_with_context(&link, &context_without_internal_template),
@@ -990,6 +1034,7 @@ mod tests {
                 ..LinkResolutionContext::default()
             },
             include_html_output: false,
+            prefer_ascii_math: false,
         };
         assert_eq!(
             convert_inline_node_with_context(&link, &context),
@@ -1023,6 +1068,7 @@ mod tests {
                 ..LinkResolutionContext::default()
             },
             include_html_output: false,
+            prefer_ascii_math: false,
         };
         assert_eq!(
             convert_inline_node_with_context(&link, &context),
@@ -1047,6 +1093,7 @@ mod tests {
                 ..LinkResolutionContext::default()
             },
             include_html_output: false,
+            prefer_ascii_math: false,
         };
         assert_eq!(
             convert_inline_node_with_context(&link, &context),
@@ -1077,6 +1124,7 @@ mod tests {
                 ..LinkResolutionContext::default()
             },
             include_html_output: false,
+            prefer_ascii_math: false,
         };
         assert_eq!(
             convert_inline_nodes_with_context(&[qualified, unqualified], &context),

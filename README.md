@@ -250,7 +250,7 @@ Each output file is an envelope around the parsed document:
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "source": "foo.Rd",
   "sourceFiles": ["R/foo.R"],
   "document": { ... }

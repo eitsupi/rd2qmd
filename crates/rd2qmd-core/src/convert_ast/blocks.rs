@@ -347,6 +347,16 @@ fn sanitize_table_cell_inline_node(node: &Node) -> Node {
                 .map(sanitize_table_cell_inline_node)
                 .collect();
         }
+        // A multi-node conditional branch (see collapse_inline_nodes) can land
+        // here as a nested Paragraph; sanitize its children too, so embedded
+        // `|` characters don't survive into the cell unescaped.
+        Node::Paragraph(paragraph) => {
+            paragraph.children = paragraph
+                .children
+                .iter()
+                .map(sanitize_table_cell_inline_node)
+                .collect();
+        }
         _ => {}
     }
     node
@@ -1475,6 +1485,44 @@ mod tests {
     }
 
     #[test]
+    fn pipe_table_escapes_literal_pipes_in_nested_conditional_paragraphs() {
+        // A multi-node \ifelse branch collapses into a Node::Paragraph (see
+        // inline::collapse_inline_nodes); table-cell sanitization must recurse
+        // into it rather than passing embedded `|` characters through raw.
+        let multi_node_conditional = tagged(
+            RdTag::IfElse,
+            vec![
+                group(vec![text("text")]),
+                group(vec![text("a|b "), tagged(RdTag::Code, vec![text("c|d")])]),
+                group(vec![text("else")]),
+            ],
+        );
+        let document = argument_document_with_description(vec![multi_node_conditional]);
+        let arguments: Vec<_> = document.arguments().collect();
+        let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
+
+        let [Node::Table(table)] = converted.as_slice() else {
+            panic!("expected one table")
+        };
+        let Node::TableRow(row) = &table.children[1] else {
+            panic!("expected argument row")
+        };
+        let Node::TableCell(description) = &row.children[1] else {
+            panic!("expected description cell")
+        };
+
+        let markdown = inline_nodes_to_markdown(&description.children);
+        assert!(
+            !markdown.contains("a|b") && markdown.contains(r"a\|b"),
+            "expected escaped pipe in nested paragraph text, got: {markdown:?}"
+        );
+        assert!(
+            !markdown.contains("c|d") && markdown.contains(r"c\|d"),
+            "expected escaped pipe in nested paragraph inline code, got: {markdown:?}"
+        );
+    }
+
+    #[test]
     fn pipe_table_sanitizer_escapes_literal_pipes_in_image_urls() {
         let sanitized = sanitize_table_cell_inline_node(&Node::image("path|name.png", "alt"));
 
@@ -1500,6 +1548,7 @@ mod tests {
                     ..LinkResolutionContext::default()
                 },
                 include_html_output: false,
+                prefer_ascii_math: false,
             },
             prefer_ascii_math: false,
             enclosing_heading_depth: 2,

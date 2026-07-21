@@ -49,6 +49,7 @@ fn block_context<'a>(options: &'a crate::RdToMdastOptions) -> BlockConversionCon
                 package_urls: options.package_urls.as_ref(),
             },
             include_html_output: options.include_html_output,
+            prefer_ascii_math: options.prefer_ascii_math,
         },
         prefer_ascii_math: options.prefer_ascii_math,
         enclosing_heading_depth: 2,
