@@ -208,7 +208,9 @@ fn flatten_for_table_cell(content: &[RdNode], context: &BlockConversionContext<'
         }
 
         match node {
-            Node::Paragraph(paragraph) => result.extend(paragraph.children.clone()),
+            Node::Paragraph(paragraph) => {
+                extend_table_cell_inline(&mut result, &paragraph.children);
+            }
             Node::List(list) => {
                 for (j, item) in list.children.iter().enumerate() {
                     if j > 0 {
@@ -225,7 +227,7 @@ fn flatten_for_table_cell(content: &[RdNode], context: &BlockConversionContext<'
                         result.push(Node::text(marker));
                         for child in &item.children {
                             if let Node::Paragraph(paragraph) = child {
-                                result.extend(paragraph.children.clone());
+                                extend_table_cell_inline(&mut result, &paragraph.children);
                                 break;
                             }
                         }
@@ -237,6 +239,45 @@ fn flatten_for_table_cell(content: &[RdNode], context: &BlockConversionContext<'
     }
 
     result
+}
+
+fn extend_table_cell_inline(result: &mut Vec<Node>, nodes: &[Node]) {
+    result.extend(nodes.iter().map(sanitize_table_cell_inline_node));
+}
+
+fn sanitize_table_cell_inline_node(node: &Node) -> Node {
+    let mut node = node.clone();
+    match &mut node {
+        Node::Text(text) => text.value = text.value.replace('|', "\\|"),
+        Node::Break => {
+            return Node::Html(Html {
+                value: "<br>".to_owned(),
+            });
+        }
+        Node::Emphasis(emphasis) => {
+            emphasis.children = emphasis
+                .children
+                .iter()
+                .map(sanitize_table_cell_inline_node)
+                .collect();
+        }
+        Node::Strong(strong) => {
+            strong.children = strong
+                .children
+                .iter()
+                .map(sanitize_table_cell_inline_node)
+                .collect();
+        }
+        Node::Link(link) => {
+            link.children = link
+                .children
+                .iter()
+                .map(sanitize_table_cell_inline_node)
+                .collect();
+        }
+        _ => {}
+    }
+    node
 }
 
 /// Convert Rd content to a standalone Markdown string for a grid-table cell.
@@ -295,6 +336,9 @@ fn nodes_to_markdown(nodes: &[Node]) -> String {
                 result.push_str(&code.value);
                 result.push('\n');
                 result.push_str(&fence);
+            }
+            Node::Math(_) | Node::DefinitionList(_) => {
+                result.push_str(&node_to_markdown_string(node));
             }
             _ => {
                 if let Some(text) = node_to_text(node) {
@@ -491,7 +535,7 @@ fn render_block_content(nodes: &[Node], indent: u8) -> String {
                 result.push_str(&fence);
                 first_block = false;
             }
-            Node::DefinitionList(_) | Node::Table(_) => {
+            Node::Math(_) | Node::DefinitionList(_) | Node::Table(_) => {
                 let text = node_to_markdown_string(node);
                 if text.is_empty() {
                     continue;
@@ -757,6 +801,13 @@ mod tests {
         RdDocument::new(vec![tagged(RdTag::Arguments, arguments)])
     }
 
+    fn argument_document_with_description(description: Vec<RdNode>) -> RdDocument {
+        RdDocument::new(vec![tagged(
+            RdTag::Arguments,
+            vec![described_item(vec![text("value")], description)],
+        )])
+    }
+
     fn html_value(nodes: &[Node]) -> &str {
         let [Node::Html(html)] = nodes else {
             panic!("expected one raw output node")
@@ -989,6 +1040,69 @@ mod tests {
     }
 
     #[test]
+    fn pipe_table_replaces_inline_breaks_with_html_breaks() {
+        let document = argument_document_with_description(vec![
+            text("before"),
+            tagged(RdTag::Cr, vec![]),
+            text("after"),
+        ]);
+        let arguments: Vec<_> = document.arguments().collect();
+        let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
+
+        let [Node::Table(table)] = converted.as_slice() else {
+            panic!("expected one table")
+        };
+        let Node::TableRow(row) = &table.children[1] else {
+            panic!("expected argument row")
+        };
+        let Node::TableCell(description) = &row.children[1] else {
+            panic!("expected description cell")
+        };
+
+        assert_eq!(
+            inline_nodes_to_markdown(&description.children),
+            "before<br>after"
+        );
+        assert!(
+            description
+                .children
+                .iter()
+                .any(|node| matches!(node, Node::Html(html) if html.value == "<br>"))
+        );
+        assert!(
+            !description
+                .children
+                .iter()
+                .any(|node| matches!(node, Node::Break))
+        );
+    }
+
+    #[test]
+    fn pipe_table_escapes_literal_pipes_in_text() {
+        let document = argument_document_with_description(vec![text("left | right")]);
+        let arguments: Vec<_> = document.arguments().collect();
+        let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
+
+        let [Node::Table(table)] = converted.as_slice() else {
+            panic!("expected one table")
+        };
+        let Node::TableRow(row) = &table.children[1] else {
+            panic!("expected argument row")
+        };
+        let Node::TableCell(description) = &row.children[1] else {
+            panic!("expected description cell")
+        };
+
+        assert_eq!(
+            inline_nodes_to_markdown(&description.children),
+            "left \\| right"
+        );
+        assert!(description.children.iter().all(|node| {
+            !matches!(node, Node::Text(text) if text.value.contains('|') && !text.value.contains("\\|"))
+        }));
+    }
+
+    #[test]
     fn converts_arguments_to_grid_table_with_header_separator() {
         let document = argument_document();
         let arguments: Vec<_> = document.arguments().collect();
@@ -1006,6 +1120,35 @@ mod tests {
     }
 
     #[test]
+    fn grid_table_preserves_block_equations() {
+        let document = argument_document_with_description(vec![equation("x^2 + y^2", None)]);
+        let arguments: Vec<_> = document.arguments().collect();
+        let converted = convert_arguments(&arguments, ArgumentsFormat::GridTable, &context(false));
+        let table = html_value(&converted);
+
+        assert!(table.contains("$$"));
+        assert!(table.contains("x^2 + y^2"));
+    }
+
+    #[test]
+    fn grid_table_preserves_nested_definition_lists() {
+        let describe = tagged(
+            RdTag::Describe,
+            vec![described_item(
+                vec![text("nested term")],
+                vec![text("nested description")],
+            )],
+        );
+        let document = argument_document_with_description(vec![describe]);
+        let arguments: Vec<_> = document.arguments().collect();
+        let converted = convert_arguments(&arguments, ArgumentsFormat::GridTable, &context(false));
+        let table = html_value(&converted);
+
+        assert!(table.contains("nested term"));
+        assert!(table.contains("nested description"));
+    }
+
+    #[test]
     fn converts_arguments_to_quarto_list_table() {
         let document = argument_document();
         let arguments: Vec<_> = document.arguments().collect();
@@ -1020,6 +1163,16 @@ mod tests {
     }
 
     #[test]
+    fn list_table_preserves_indented_block_equations() {
+        let document = argument_document_with_description(vec![equation("x^2 + y^2", None)]);
+        let arguments: Vec<_> = document.arguments().collect();
+        let converted = convert_arguments(&arguments, ArgumentsFormat::ListTable, &context(false));
+        let table = html_value(&converted);
+
+        assert!(table.contains("  - \n\n    $$\n    x^2 + y^2\n    $$\n"));
+    }
+
+    #[test]
     fn converts_arguments_to_loose_list_with_two_space_continuations() {
         let document = argument_document();
         let arguments: Vec<_> = document.arguments().collect();
@@ -1028,6 +1181,16 @@ mod tests {
 
         assert!(list.contains("- **`alpha`**\n\n  First paragraph\n\n  Second paragraph\n"));
         assert!(list.contains("- **`choice`**\n\n  Choices:\n\n  - one\n  - two\n"));
+    }
+
+    #[test]
+    fn loose_list_preserves_indented_block_equations() {
+        let document = argument_document_with_description(vec![equation("x^2 + y^2", None)]);
+        let arguments: Vec<_> = document.arguments().collect();
+        let converted = convert_arguments(&arguments, ArgumentsFormat::List, &context(false));
+        let list = html_value(&converted);
+
+        assert!(list.contains("- **`value`**\n\n  \n\n  $$\n  x^2 + y^2\n  $$\n"));
     }
 
     #[test]
