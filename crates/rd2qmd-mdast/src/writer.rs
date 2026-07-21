@@ -55,18 +55,22 @@ pub fn mdast_to_qmd(root: &Root, options: &WriterOptions) -> String {
     writer.write_root(root)
 }
 
-/// Format a URL as a valid CommonMark link destination.
+/// Format the identified CommonMark-unsafe URL cases as a link destination.
 ///
-/// Line endings are flattened to spaces. Destinations containing ASCII
-/// whitespace, ASCII control characters, or angle brackets use the bracketed
-/// destination form, with angle brackets escaped inside it.
+/// Line endings are flattened to spaces. Destinations containing whitespace,
+/// ASCII control characters, angle brackets, or parentheses use the bracketed
+/// destination fallback. This is a deliberate scope boundary, not a claim of
+/// exhaustive CommonMark round-trip safety.
 pub fn format_link_destination(url: &str) -> String {
     let url = replace_line_endings_with_space(url);
-    if url
-        .chars()
-        .any(|c| c.is_ascii_whitespace() || c.is_ascii_control() || matches!(c, '<' | '>'))
-    {
-        format!("<{}>", url.replace('<', "\\<").replace('>', "\\>"))
+    if url.chars().any(|c| {
+        c.is_ascii_whitespace() || c.is_ascii_control() || matches!(c, '<' | '>' | '(' | ')')
+    }) {
+        let escaped = url
+            .replace('\\', "\\\\")
+            .replace('<', "\\<")
+            .replace('>', "\\>");
+        format!("<{escaped}>")
     } else {
         url
     }
@@ -978,6 +982,18 @@ mod tests {
             (
                 String::from(r"https://example.com/<a>"),
                 String::from(r"[Example](<https://example.com/\<a\>>)"),
+            ),
+            (
+                String::from(r"foo(bar"),
+                String::from(r"[Example](<foo(bar>)"),
+            ),
+            (
+                String::from(r"foo(bar)baz"),
+                String::from(r"[Example](<foo(bar)baz>)"),
+            ),
+            (
+                String::from(r"foo\<bar"),
+                String::from(r"[Example](<foo\\\<bar>)"),
             ),
             (tab_url, tab_expected),
         ];
