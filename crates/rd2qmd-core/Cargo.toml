@@ -11,10 +11,6 @@ readme = "README.md"
 keywords.workspace = true
 categories = ["text-processing"]
 
-[features]
-default = []
-roxygen = []
-
 [dependencies]
 rd2qmd-mdast.workspace = true
 rd-ast.workspace = true

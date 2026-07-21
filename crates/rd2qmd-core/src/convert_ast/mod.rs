@@ -6,7 +6,6 @@ mod code;
 mod document;
 mod inline;
 mod leaf_text;
-#[cfg(feature = "roxygen")]
 mod roxygen;
 mod traversal;
 
@@ -28,7 +27,6 @@ pub(crate) use inline::{
     InlineConversionContext, LinkResolutionContext, convert_inline_node, convert_inline_nodes,
     extract_plain_text,
 };
-#[cfg(feature = "roxygen")]
 #[allow(unused_imports)]
 pub(crate) use roxygen::{RoxygenCodeBlock, try_match_roxygen_code_block};
 #[allow(unused_imports)]

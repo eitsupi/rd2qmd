@@ -2,7 +2,6 @@
 
 use rd_ast::RdTag;
 
-#[cfg(feature = "roxygen")]
 use super::roxygen::{RoxygenCodeBlock, try_match_roxygen_code_block};
 
 /// A borrowed piece of source content belonging to one paragraph.
@@ -17,7 +16,6 @@ pub(crate) enum ParagraphItem<'a> {
 pub(crate) enum BlockContentItem<'a> {
     Paragraph(Vec<ParagraphItem<'a>>),
     Block(&'a rd_ast::RdNode),
-    #[cfg(feature = "roxygen")]
     RoxygenCode(RoxygenCodeBlock),
 }
 
@@ -49,7 +47,6 @@ fn scan<'a>(
 ) {
     let mut cursor = 0;
     while cursor < nodes.len() {
-        #[cfg(feature = "roxygen")]
         if let Some(block) = try_match_roxygen_code_block(&nodes[cursor..]) {
             flush(state, items);
             items.push(BlockContentItem::RoxygenCode(block));

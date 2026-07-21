@@ -45,10 +45,6 @@ let mdast = rd_to_mdast(&doc);
 let qmd = mdast_to_qmd(&mdast, &WriterOptions::default());
 ```
 
-## Features
-
-- `roxygen` - Enable source file extraction from roxygen2 comments and roxygen2 markdown code block handling
-
 ## Dependencies
 
 This crate builds on:
