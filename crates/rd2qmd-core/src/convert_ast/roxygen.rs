@@ -52,17 +52,19 @@ fn recover_out_text(nodes: &[RdNode]) -> String {
 }
 
 fn extract_language_from_div(html: &str) -> Option<Option<String>> {
-    let class_start = html.find("class=\"")?;
-    let after_class = &html[class_start + 7..];
+    let after_tag = html.trim_start().strip_prefix("<div")?;
+    let class_start = after_tag.find("class=\"")?;
+    let after_class = &after_tag[class_start + 7..];
     let class_end = after_class.find('"')?;
     let class_value = &after_class[..class_end];
 
-    if let Some(rest) = class_value.strip_prefix("sourceCode") {
-        let language = rest.trim();
-        return Some((!language.is_empty()).then(|| language.to_owned()));
+    let tokens: Vec<&str> = class_value.split_whitespace().collect();
+    match tokens.as_slice() {
+        ["sourceCode"] => Some(None),
+        ["sourceCode", language] => Some(Some((*language).to_owned())),
+        ["r"] => Some(Some("r".to_owned())),
+        _ => None,
     }
-
-    (class_value == "r").then(|| Some("r".to_owned()))
 }
 
 fn is_closing_div(html: &str) -> bool {
@@ -115,6 +117,11 @@ mod tests {
             r#"\preformatted{code}"#.to_owned(),
             snippet("html", "sourceCode r", "code", false),
             snippet("html", "someOtherClass", "code", true),
+            snippet("html", "sourceCodeExtra", "code", true),
+            snippet("html", "rSuffix", "code", true),
+            r#"\if{html}{\out{<span class="sourceCode r">}}\preformatted{code
+}\if{html}{\out{</div>}}"#
+                .to_owned(),
         ];
 
         for source in cases {

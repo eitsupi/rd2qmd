@@ -31,6 +31,7 @@ pub(crate) fn convert_block_content(
                 convert_paragraph(items, context).into_iter().collect()
             }
             BlockContentItem::Block(node) => convert_block(node, context),
+            #[cfg(feature = "roxygen")]
             BlockContentItem::RoxygenCode(block) => vec![Node::code(block.language, block.code)],
         })
         .collect()
