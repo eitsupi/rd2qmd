@@ -11,13 +11,16 @@ mod leaf_text;
 mod traversal;
 
 #[allow(unused_imports)]
-pub(crate) use blocks::{BlockConversionContext, convert_arguments, convert_block_content};
+pub(crate) use blocks::{
+    BlockConversionContext, convert_arguments, convert_block_content, convert_custom_section,
+};
 #[allow(unused_imports)]
 pub(crate) use code::{ExampleOptions, convert_examples, convert_usage};
 #[allow(unused_imports)]
 pub(crate) use document::{
-    DocumentMetadata, DocumentSection, DocumentStructure, FixedSection, FixedSectionBody,
-    FixedSectionKind, build_document_structure, extract_document_metadata,
+    CustomSection, DocumentMetadata, DocumentSection, DocumentStructure, FixedSection,
+    FixedSectionBody, FixedSectionKind, build_custom_sections, build_document_structure,
+    extract_document_metadata,
 };
 #[allow(unused_imports)]
 pub(crate) use inline::{

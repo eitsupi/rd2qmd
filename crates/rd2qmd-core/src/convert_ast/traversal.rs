@@ -114,7 +114,14 @@ fn is_block_level(node: &rd_ast::RdNode) -> bool {
     node.as_tagged().is_some_and(|tagged| {
         matches!(
             tagged.tag(),
-            RdTag::Itemize | RdTag::Enumerate | RdTag::Describe | RdTag::Preformatted | RdTag::Deqn
+            RdTag::Itemize
+                | RdTag::Enumerate
+                | RdTag::Describe
+                | RdTag::Preformatted
+                | RdTag::Deqn
+                | RdTag::Tabular
+                | RdTag::Section
+                | RdTag::Subsection
         )
     })
 }

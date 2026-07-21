@@ -16,7 +16,20 @@ pub(crate) struct DocumentStructure<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum DocumentSection<'a> {
     Fixed(FixedSection<'a>),
-    Custom { title: String, body: &'a [RdNode] },
+    Custom(CustomSection<'a>),
+}
+
+/// One custom section and the nested subsections recognized by rd-ast.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct CustomSection<'a> {
+    pub(crate) title: &'a [RdNode],
+    pub(crate) body: &'a [RdNode],
+    pub(crate) nesting: usize,
+    /// This section's index within its parent's body (or within the
+    /// document, for a top-level section) — used to splice recursively
+    /// rendered subsections back into their correct source position.
+    pub(crate) source_index: usize,
+    pub(crate) children: Vec<CustomSection<'a>>,
 }
 
 /// One fixed-vocabulary Rd section and its unrendered body.
@@ -115,10 +128,11 @@ pub(crate) fn build_document_structure(document: &RdDocument) -> DocumentStructu
         document.see_also(),
     );
 
-    sections.extend(document.sections().map(|section| DocumentSection::Custom {
-        title: prose_text(section.title),
-        body: section.body,
-    }));
+    sections.extend(
+        build_custom_sections(document)
+            .into_iter()
+            .map(DocumentSection::Custom),
+    );
 
     push_nodes(
         &mut sections,
@@ -130,6 +144,51 @@ pub(crate) fn build_document_structure(document: &RdDocument) -> DocumentStructu
         title: document.title().map(prose_text),
         name: document.name().map(prose_text),
         sections,
+    }
+}
+
+/// Reconstruct the nested custom-section tree from rd-ast's preorder visits.
+pub(crate) fn build_custom_sections(document: &RdDocument) -> Vec<CustomSection<'_>> {
+    let mut roots: Vec<CustomSection<'_>> = Vec::new();
+    let mut stack: Vec<usize> = Vec::new();
+
+    for visit in document.section_tree() {
+        let nesting = visit.nesting();
+        stack.truncate(nesting);
+
+        let section = CustomSection {
+            title: visit.title(),
+            body: visit.body(),
+            nesting,
+            source_index: path_source_index(visit.path()),
+            children: Vec::new(),
+        };
+
+        let siblings = child_vec(&mut roots, &stack);
+        siblings.push(section);
+        stack.push(siblings.len() - 1);
+    }
+
+    roots
+}
+
+fn child_vec<'a, 'b>(
+    roots: &'a mut Vec<CustomSection<'b>>,
+    stack: &[usize],
+) -> &'a mut Vec<CustomSection<'b>> {
+    let mut children = roots;
+    for &index in stack {
+        children = &mut children[index].children;
+    }
+    children
+}
+
+fn path_source_index(path: &rd_ast::RdPath) -> usize {
+    match path.segments().last() {
+        Some(rd_ast::RdPathSegment::TopLevel(index) | rd_ast::RdPathSegment::Child(index)) => {
+            *index
+        }
+        _ => 0,
     }
 }
 
@@ -183,8 +242,8 @@ mod tests {
     use rd_ast::{RdDocument, RdNode, RdTag};
 
     use super::{
-        DocumentSection, FixedSectionBody, FixedSectionKind, build_document_structure,
-        extract_document_metadata,
+        DocumentSection, FixedSectionBody, FixedSectionKind, build_custom_sections,
+        build_document_structure, extract_document_metadata, prose_text,
     };
 
     fn tagged(tag: RdTag, text: &str) -> RdNode {
@@ -218,7 +277,7 @@ mod tests {
             .iter()
             .filter_map(|section| match section {
                 DocumentSection::Fixed(section) => Some(section.kind),
-                DocumentSection::Custom { .. } => None,
+                DocumentSection::Custom(_) => None,
             })
             .collect()
     }
@@ -282,24 +341,67 @@ mod tests {
         ));
         assert!(matches!(
             &structure.sections[1],
-            DocumentSection::Custom { title, .. } if title == "Second in output"
+            DocumentSection::Custom(section) if prose_text(section.title) == "Second in output"
         ));
         assert!(matches!(
             &structure.sections[2],
-            DocumentSection::Custom { title, .. } if title == "Third in output"
+            DocumentSection::Custom(section) if prose_text(section.title) == "Third in output"
         ));
         assert!(matches!(
             &structure.sections[3],
             DocumentSection::Fixed(section) if section.kind == FixedSectionKind::Examples
         ));
 
-        let DocumentSection::Custom { body, .. } = &structure.sections[1] else {
+        let DocumentSection::Custom(section) = &structure.sections[1] else {
             panic!("expected custom section");
         };
         assert!(std::ptr::eq(
-            *body,
+            section.body,
             document.sections().next().unwrap().body
         ));
+        assert_eq!(section.nesting, 0);
+        assert_eq!(section.source_index, 1);
+    }
+
+    #[test]
+    fn builds_multi_level_custom_section_tree() {
+        let subsection = |title: &str, body: &str| {
+            RdNode::tagged(
+                RdTag::Subsection,
+                None,
+                vec![
+                    RdNode::group(vec![RdNode::Text(title.to_owned())]),
+                    RdNode::group(vec![RdNode::Text(body.to_owned())]),
+                ],
+            )
+        };
+        let document = RdDocument::new(vec![RdNode::tagged(
+            RdTag::Section,
+            None,
+            vec![
+                RdNode::group(vec![RdNode::Text("Parent".to_owned())]),
+                RdNode::group(vec![
+                    RdNode::Text("intro".to_owned()),
+                    subsection("First child", "first body"),
+                    RdNode::Text("between".to_owned()),
+                    subsection("Second child", "second body"),
+                ]),
+            ],
+        )]);
+
+        let sections = build_custom_sections(&document);
+        assert_eq!(sections.len(), 1);
+        let parent = &sections[0];
+        assert_eq!(prose_text(parent.title), "Parent");
+        assert_eq!(parent.nesting, 0);
+        assert_eq!(parent.source_index, 0);
+        assert_eq!(parent.children.len(), 2);
+        assert_eq!(prose_text(parent.children[0].title), "First child");
+        assert_eq!(parent.children[0].nesting, 1);
+        assert_eq!(parent.children[0].source_index, 1);
+        assert_eq!(prose_text(parent.children[1].title), "Second child");
+        assert_eq!(parent.children[1].nesting, 1);
+        assert_eq!(parent.children[1].source_index, 3);
     }
 
     #[test]

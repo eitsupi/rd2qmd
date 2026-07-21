@@ -12,9 +12,11 @@ use super::{
 };
 
 /// Borrowed configuration used while converting general block content.
+#[derive(Clone, Copy)]
 pub(crate) struct BlockConversionContext<'a> {
     pub(crate) links: LinkResolutionContext<'a>,
     pub(crate) prefer_ascii_math: bool,
+    pub(crate) enclosing_heading_depth: u8,
 }
 
 /// Convert paragraphs and supported semantic blocks in source order.
@@ -24,11 +26,53 @@ pub(crate) fn convert_block_content(
 ) -> Vec<Node> {
     scan_block_content(nodes)
         .into_iter()
-        .filter_map(|item| match item {
-            BlockContentItem::Paragraph(items) => convert_paragraph(items, context),
+        .flat_map(|item| match item {
+            BlockContentItem::Paragraph(items) => {
+                convert_paragraph(items, context).into_iter().collect()
+            }
             BlockContentItem::Block(node) => convert_block(node, context),
         })
         .collect()
+}
+
+/// Convert one custom section tree while preserving nested source positions.
+pub(crate) fn convert_custom_section(
+    section: &super::document::CustomSection<'_>,
+    context: &BlockConversionContext<'_>,
+) -> Vec<Node> {
+    let depth = (2usize + section.nesting).min(6) as u8;
+    let mut nodes = vec![Node::heading(
+        depth,
+        inline::convert_inline_nodes(section.title, &context.links),
+    )];
+    nodes.extend(convert_custom_section_body(section, context, depth));
+    nodes
+}
+
+fn convert_custom_section_body(
+    section: &super::document::CustomSection<'_>,
+    context: &BlockConversionContext<'_>,
+    depth: u8,
+) -> Vec<Node> {
+    let child_context = BlockConversionContext {
+        enclosing_heading_depth: depth,
+        ..*context
+    };
+    let mut nodes = Vec::new();
+    let mut cursor = 0;
+    for child in &section.children {
+        nodes.extend(convert_block_content(
+            &section.body[cursor..child.source_index],
+            &child_context,
+        ));
+        nodes.extend(convert_custom_section(child, &child_context));
+        cursor = child.source_index + 1;
+    }
+    nodes.extend(convert_block_content(
+        &section.body[cursor..],
+        &child_context,
+    ));
+    nodes
 }
 
 /// Convert an already-structured Arguments section in the requested output format.
@@ -668,17 +712,21 @@ fn convert_paragraph(
     (!children.is_empty()).then(|| Node::paragraph(children))
 }
 
-fn convert_block(node: &RdNode, context: &BlockConversionContext<'_>) -> Option<Node> {
-    let tagged = node.as_tagged()?;
+fn convert_block(node: &RdNode, context: &BlockConversionContext<'_>) -> Vec<Node> {
+    let Some(tagged) = node.as_tagged() else {
+        return Vec::new();
+    };
     let base_path = RdPath::new(Vec::new());
 
     match tagged.tag() {
         RdTag::Itemize | RdTag::Enumerate => {
-            let list = tagged.inspect_list(&base_path).ok()?;
+            let Some(list) = tagged.inspect_list(&base_path).ok() else {
+                return Vec::new();
+            };
             let ordered = match list.kind() {
                 RdListKind::Itemize => false,
                 RdListKind::Enumerate => true,
-                _ => return None,
+                _ => return Vec::new(),
             };
 
             // Recovery-first: a malformed item is skipped without discarding
@@ -692,12 +740,14 @@ fn convert_block(node: &RdNode, context: &BlockConversionContext<'_>) -> Option<
                     _ => None,
                 })
                 .collect();
-            Some(Node::list(ordered, items))
+            vec![Node::list(ordered, items)]
         }
         RdTag::Describe => {
-            let list = tagged.inspect_list(&base_path).ok()?;
+            let Some(list) = tagged.inspect_list(&base_path).ok() else {
+                return Vec::new();
+            };
             if list.kind() != RdListKind::Describe {
-                return None;
+                return Vec::new();
             }
 
             // Recovery-first: malformed described items are skipped while
@@ -718,23 +768,93 @@ fn convert_block(node: &RdNode, context: &BlockConversionContext<'_>) -> Option<
                     context,
                 )));
             }
-            Some(Node::definition_list(children))
+            vec![Node::definition_list(children)]
         }
-        RdTag::Preformatted => Some(Node::code(None, recover_verbatim(tagged.children()))),
+        RdTag::Preformatted => vec![Node::code(None, recover_verbatim(tagged.children()))],
         RdTag::Deqn => {
-            let equation = tagged.inspect_equation(&base_path).ok()?;
+            let Some(equation) = tagged.inspect_equation(&base_path).ok() else {
+                return Vec::new();
+            };
             if context.prefer_ascii_math
                 && let Some(ascii) = equation.ascii()
             {
                 let ascii = recover_verbatim(ascii);
                 if !ascii.trim().is_empty() {
-                    return Some(Node::code(None, ascii));
+                    return vec![Node::code(None, ascii)];
                 }
             }
-            Some(Node::math(equation_text(equation.latex(), &context.links)))
+            vec![Node::math(equation_text(equation.latex(), &context.links))]
         }
-        _ => None,
+        RdTag::Tabular => convert_tabular(tagged, context).into_iter().collect(),
+        RdTag::Section | RdTag::Subsection => convert_section_like_block(tagged, context),
+        _ => Vec::new(),
     }
+}
+
+fn convert_tabular(
+    tagged: &rd_ast::RdTagged,
+    context: &BlockConversionContext<'_>,
+) -> Option<Node> {
+    let base_path = RdPath::new(Vec::new());
+    let table = tagged.inspect_tabular(&base_path).ok()?;
+    // rd-ast skips unrecognized colspec characters, whereas legacy conversion
+    // retained an unaligned placeholder. This can shift alignment for malformed
+    // specs; rows remain recovery-safe because the GFM writer pads ragged rows.
+    let align = table
+        .columns()
+        .iter()
+        .map(|column| match column {
+            rd_ast::RdColumnAlign::Left => Some(Align::Left),
+            rd_ast::RdColumnAlign::Center => Some(Align::Center),
+            rd_ast::RdColumnAlign::Right => Some(Align::Right),
+            _ => None,
+        })
+        .collect();
+    let rows = table
+        .rows()
+        .iter()
+        .map(|row| {
+            let cells = row
+                .cells()
+                .iter()
+                .map(|cell| {
+                    let children = inline::convert_inline_nodes(cell.nodes(), &context.links)
+                        .iter()
+                        .map(sanitize_table_cell_inline_node)
+                        .collect();
+                    Node::table_cell(children)
+                })
+                .collect();
+            Node::table_row(cells)
+        })
+        .collect();
+    Some(Node::table(align, rows))
+}
+
+fn convert_section_like_block(
+    tagged: &rd_ast::RdTagged,
+    context: &BlockConversionContext<'_>,
+) -> Vec<Node> {
+    if tagged.option().is_some() {
+        return Vec::new();
+    }
+    let [title, body] = tagged.children() else {
+        return Vec::new();
+    };
+    let (Some(title), Some(body)) = (title.as_group(), body.as_group()) else {
+        return Vec::new();
+    };
+    let depth = context.enclosing_heading_depth.saturating_add(1).min(6);
+    let mut nodes = vec![Node::heading(
+        depth,
+        inline::convert_inline_nodes(title.children(), &context.links),
+    )];
+    let child_context = BlockConversionContext {
+        enclosing_heading_depth: depth,
+        ..*context
+    };
+    nodes.extend(convert_block_content(body.children(), &child_context));
+    nodes
 }
 
 fn recover_verbatim(nodes: &[RdNode]) -> String {
@@ -753,16 +873,18 @@ mod tests {
     use rd2qmd_mdast::Node;
 
     use super::{
-        BlockConversionContext, convert_arguments, convert_block_content, inline_nodes_to_markdown,
-        sanitize_table_cell_inline_node,
+        BlockConversionContext, convert_arguments, convert_block_content, convert_custom_section,
+        inline_nodes_to_markdown, sanitize_table_cell_inline_node,
     };
     use crate::ArgumentsFormat;
+    use crate::convert_ast::document::build_custom_sections;
     use crate::convert_ast::inline::LinkResolutionContext;
 
     fn context(prefer_ascii_math: bool) -> BlockConversionContext<'static> {
         BlockConversionContext {
             links: LinkResolutionContext::default(),
             prefer_ascii_math,
+            enclosing_heading_depth: 2,
         }
     }
 
@@ -784,6 +906,10 @@ mod tests {
 
     fn tagged_with_option(tag: RdTag, option: &str, children: Vec<RdNode>) -> RdNode {
         RdNode::tagged(tag, Some(vec![text(option)]), children)
+    }
+
+    fn section_like(tag: RdTag, title: &str, body: Vec<RdNode>) -> RdNode {
+        tagged(tag, vec![group(vec![text(title)]), group(body)])
     }
 
     fn item_marker() -> RdNode {
@@ -1023,6 +1149,117 @@ mod tests {
     }
 
     #[test]
+    fn converts_tabular_alignment_rows_and_sanitized_cells() {
+        let table = tagged(
+            RdTag::Tabular,
+            vec![
+                group(vec![text("lcr")]),
+                group(vec![
+                    text("left | value"),
+                    tagged(RdTag::Tab, vec![]),
+                    tagged(RdTag::Strong, vec![text("center")]),
+                    tagged(RdTag::Tab, vec![]),
+                    tagged(RdTag::Code, vec![text("right|code")]),
+                    tagged(RdTag::Cr, vec![]),
+                    text("second row"),
+                ]),
+            ],
+        );
+
+        let converted = convert_block_content(&[table], &context(false));
+        let [Node::Table(table)] = converted.as_slice() else {
+            panic!("expected one table")
+        };
+        assert_eq!(
+            table.align,
+            [
+                Some(rd2qmd_mdast::Align::Left),
+                Some(rd2qmd_mdast::Align::Center),
+                Some(rd2qmd_mdast::Align::Right),
+            ]
+        );
+        assert_eq!(table.children.len(), 2);
+        let Node::TableRow(first_row) = &table.children[0] else {
+            panic!("expected first table row")
+        };
+        let cell_text: Vec<_> = first_row
+            .children
+            .iter()
+            .map(|cell| match cell {
+                Node::TableCell(cell) => inline_nodes_to_markdown(&cell.children),
+                _ => panic!("expected table cell"),
+            })
+            .collect();
+        assert_eq!(
+            cell_text,
+            ["left \\| value", "**center**", "`right\\|code`"]
+        );
+    }
+
+    #[test]
+    fn converts_section_like_block_outside_section_tree() {
+        let subsection = section_like(
+            RdTag::Subsection,
+            "Orphan subsection",
+            vec![text("orphan body")],
+        );
+
+        let converted = convert_block_content(&[subsection], &context(false));
+        assert!(matches!(
+            converted.as_slice(),
+            [Node::Heading(heading), Node::Paragraph(paragraph)]
+                if heading.depth == 3
+                    && inline_nodes_to_markdown(&heading.children) == "Orphan subsection"
+                    && inline_nodes_to_markdown(&paragraph.children) == "orphan body"
+        ));
+    }
+
+    #[test]
+    fn custom_section_tree_preserves_content_around_nested_subsections() {
+        let document = RdDocument::new(vec![section_like(
+            RdTag::Section,
+            "Parent",
+            vec![
+                text("intro"),
+                section_like(RdTag::Subsection, "First", vec![text("first body")]),
+                text("between"),
+                section_like(RdTag::Subsection, "Second", vec![text("second body")]),
+                text("after"),
+            ],
+        )]);
+        let sections = build_custom_sections(&document);
+
+        let converted = convert_custom_section(&sections[0], &context(false));
+        let summary: Vec<_> = converted
+            .iter()
+            .map(|node| match node {
+                Node::Heading(heading) => format!(
+                    "h{}:{}",
+                    heading.depth,
+                    inline_nodes_to_markdown(&heading.children)
+                ),
+                Node::Paragraph(paragraph) => {
+                    format!("p:{}", inline_nodes_to_markdown(&paragraph.children))
+                }
+                _ => panic!("unexpected custom-section node: {node:?}"),
+            })
+            .collect();
+        assert_eq!(
+            summary,
+            [
+                "h2:Parent",
+                "p:intro",
+                "h3:First",
+                "p:first body",
+                "p:between",
+                "h3:Second",
+                "p:second body",
+                "p:after",
+            ]
+        );
+    }
+
+    #[test]
     fn converts_arguments_to_pipe_table_and_flattens_lists_with_breaks() {
         let document = argument_document();
         let arguments: Vec<_> = document.arguments().collect();
@@ -1196,6 +1433,7 @@ mod tests {
                 ..LinkResolutionContext::default()
             },
             prefer_ascii_math: false,
+            enclosing_heading_depth: 2,
         };
         let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context);
 
