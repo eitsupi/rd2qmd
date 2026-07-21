@@ -297,7 +297,12 @@ fn sanitize_table_cell_inline_node(node: &Node) -> Node {
         Node::InlineMath(math) => math.value = math.value.replace('|', "\\|"),
         Node::Math(math) => {
             return Node::InlineMath(rd2qmd_mdast::InlineMath {
-                value: math.value.replace('|', "\\|"),
+                value: math
+                    .value
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ")
+                    .replace('|', "\\|"),
             });
         }
         Node::Image(image) => {
@@ -1219,6 +1224,33 @@ mod tests {
             panic!("expected one table cell")
         };
         assert_eq!(cell.children, [Node::inline_math("x \\| y")]);
+    }
+
+    #[test]
+    fn converts_tabular_multiline_block_math_to_single_line_inline_math() {
+        let table = tagged(
+            RdTag::Tabular,
+            vec![
+                group(vec![text("l")]),
+                group(vec![equation("x |\ny", None)]),
+            ],
+        );
+
+        let converted = convert_block_content(&[table], &context(false));
+        let [Node::Table(table)] = converted.as_slice() else {
+            panic!("expected one table")
+        };
+        let [Node::TableRow(row)] = table.children.as_slice() else {
+            panic!("expected one table row")
+        };
+        let [Node::TableCell(cell)] = row.children.as_slice() else {
+            panic!("expected one table cell")
+        };
+        assert_eq!(cell.children, [Node::inline_math("x \\| y")]);
+        let [Node::InlineMath(math)] = cell.children.as_slice() else {
+            panic!("expected inline math")
+        };
+        assert!(!math.value.contains('\n'));
     }
 
     #[test]
