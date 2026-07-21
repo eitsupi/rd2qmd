@@ -1,5 +1,6 @@
 ---
 source: crates/rd2qmd-cli/tests/integration.rs
+assertion_line: 135
 expression: output
 ---
 ---
@@ -11,7 +12,7 @@ aliases:
 
 ## Description
 
- Test file for `\dontrun`, `\donttest`, and `\dontshow` macros. 
+Test file for `\dontrun`, `\donttest`, and `\dontshow` macros.
 
 ## Examples
 

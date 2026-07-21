@@ -6,14 +6,14 @@
 //! part of the AST itself, since it comes from raw Rd header comments rather
 //! than parsed sections).
 
-use crate::RdDocument;
+use rd_ast::RdDocument;
 use serde::{Deserialize, Serialize};
 
 /// Version of the AST JSON envelope format
 ///
 /// Bump this when the envelope shape or [`RdDocument`]'s serialized form
 /// changes in a way that breaks older readers.
-pub const AST_FORMAT_VERSION: u32 = 1;
+pub const AST_FORMAT_VERSION: u32 = 2;
 
 /// Error type for AST envelope JSON I/O
 #[derive(Debug, thiserror::Error)]
@@ -79,15 +79,14 @@ impl RdAstEnvelope {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{RdNode, RdSection, SectionTag};
+    use rd_ast::{RdNode, RdTag};
 
     fn sample_document() -> RdDocument {
-        RdDocument {
-            sections: vec![RdSection {
-                tag: SectionTag::Name,
-                content: vec![RdNode::Text("foo".to_string())],
-            }],
-        }
+        RdDocument::new(vec![RdNode::tagged(
+            RdTag::Name,
+            None,
+            vec![RdNode::Text("foo".to_string())],
+        )])
     }
 
     #[test]
@@ -119,7 +118,7 @@ mod tests {
 
     #[test]
     fn test_envelope_version_mismatch() {
-        let json = r#"{"version":99,"source":null,"sourceFiles":[],"document":{"sections":[]}}"#;
+        let json = r#"{"version":99,"source":null,"sourceFiles":[],"document":{"nodes":[]}}"#;
         let err = RdAstEnvelope::from_json(json).unwrap_err();
         assert!(matches!(
             err,
@@ -133,7 +132,7 @@ mod tests {
     #[test]
     fn test_envelope_version_mismatch_beyond_u32() {
         let json =
-            r#"{"version":4294967297,"source":null,"sourceFiles":[],"document":{"sections":[]}}"#;
+            r#"{"version":4294967297,"source":null,"sourceFiles":[],"document":{"nodes":[]}}"#;
         let err = RdAstEnvelope::from_json(json).unwrap_err();
         assert!(matches!(
             err,

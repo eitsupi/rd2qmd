@@ -1,12 +1,13 @@
 ---
 source: crates/rd2qmd-cli/tests/integration.rs
+assertion_line: 82
 expression: output
 ---
 # A Simple Function
 
 ## Description
 
- This is a simple function for testing. 
+This is a simple function for testing.
 
 ## Usage
 
@@ -31,7 +32,7 @@ simple(x, y = 1)
 
 ## Value
 
- Returns the sum of `x` and `y`. 
+Returns the sum of `x` and `y`.
 
 ## Examples
 

@@ -35,8 +35,7 @@ pub enum FallbackReason {
 use rayon::prelude::*;
 use rd2qmd_core::{
     ArgumentsFormat, Frontmatter, RdAstEnvelope, RdDocument, RdMetadata, RdToMdastOptions,
-    SectionTag, WriterOptions, extract_rd_metadata, extract_text, mdast_to_qmd, parse,
-    parse_roxygen_comments, rd_to_mdast_with_options,
+    WriterOptions, extract_rd_metadata, extract_text, mdast_to_qmd, rd_to_mdast_with_options,
 };
 use serde::Serialize;
 use std::collections::HashMap;
@@ -343,19 +342,16 @@ fn extract_topic_info(
     let (doc, source_files) = load_document(file, format)?;
 
     // Extract name
-    let name = doc
-        .get_section(&SectionTag::Name)
-        .map(|s| extract_text(&s.content))
-        .unwrap_or_default();
+    let name = doc.name().map(extract_text).unwrap_or_default();
 
     // Extract title
-    let title = doc
-        .get_section(&SectionTag::Title)
-        .map(|s| extract_text(&s.content))
-        .unwrap_or_default();
+    let title = doc.title().map(extract_text).unwrap_or_default();
 
     // Extract metadata using shared function
-    let metadata = extract_rd_metadata(&doc, source_files);
+    let metadata = rd2qmd_core::RdMetadata {
+        source_files,
+        ..extract_rd_metadata(&doc)
+    };
 
     // Determine output filename
     let basename = file.file_stem().and_then(|s| s.to_str()).unwrap_or("");
@@ -508,14 +504,15 @@ fn export_single_file(
     let export = || -> std::result::Result<PathBuf, String> {
         let content = fs::read_to_string(input).map_err(|e| e.to_string())?;
 
-        let roxygen = parse_roxygen_comments(&content);
-        let doc = parse(&content).map_err(|e| format!("Parse error: {}", e))?;
+        let parsed = rd2qmd_source::parse(&content).map_err(|e| format!("Parse error: {e}"))?;
+        let doc = parsed.document().clone();
+        let source_files = extract_rd_metadata(&doc).source_files;
 
         let source = input
             .file_name()
             .and_then(|s| s.to_str())
             .map(|s| s.to_string());
-        let envelope = RdAstEnvelope::new(doc, source, roxygen.source_files);
+        let envelope = RdAstEnvelope::new(doc, source, source_files);
         let json = envelope.to_json_pretty().map_err(|e| e.to_string())?;
 
         // Determine output path
@@ -538,9 +535,8 @@ fn export_single_file(
 
 /// Check if a document has \keyword{internal}
 fn has_keyword_internal(doc: &rd2qmd_core::RdDocument) -> bool {
-    doc.get_sections(&SectionTag::Keyword)
-        .iter()
-        .any(|s| extract_text(&s.content).eq_ignore_ascii_case("internal"))
+    doc.keywords()
+        .any(|keyword| keyword.eq_ignore_ascii_case("internal"))
 }
 
 /// Convert a single Rd file
@@ -584,12 +580,8 @@ fn convert_single_file(
         let mdast = rd_to_mdast_with_options(&doc, &converter_options);
 
         // Extract title and name for frontmatter
-        let title = doc
-            .get_section(&SectionTag::Title)
-            .map(|s| extract_text(&s.content));
-        let name = doc
-            .get_section(&SectionTag::Name)
-            .map(|s| extract_text(&s.content));
+        let title = doc.title().map(extract_text);
+        let name = doc.name().map(extract_text);
 
         // Build pagetitle in pkgdown style: "<title> — <name>"
         let pagetitle = if options.pagetitle {
@@ -602,7 +594,10 @@ fn convert_single_file(
         };
 
         // Extract Rd metadata, including source files from roxygen2 comments
-        let metadata = extract_rd_metadata(&doc, source_files);
+        let metadata = rd2qmd_core::RdMetadata {
+            source_files,
+            ..extract_rd_metadata(&doc)
+        };
 
         // Build writer options
         let writer_options = WriterOptions {
@@ -690,12 +685,13 @@ fn load_document(path: &Path, format: InputFormat) -> Result<(RdDocument, Vec<St
 
     match format {
         InputFormat::Rd => {
-            let roxygen = parse_roxygen_comments(&content);
-            let doc = parse(&content).map_err(|e| PackageError::Parse {
+            let parsed = rd2qmd_source::parse(&content).map_err(|e| PackageError::Parse {
                 file: path.to_path_buf(),
                 message: e.to_string(),
             })?;
-            Ok((doc, roxygen.source_files))
+            let doc = parsed.document().clone();
+            let source_files = extract_rd_metadata(&doc).source_files;
+            Ok((doc, source_files))
         }
         InputFormat::AstJson => {
             let envelope = RdAstEnvelope::from_json(&content).map_err(|e| PackageError::Parse {
@@ -722,18 +718,16 @@ fn build_alias_index(files: &[PathBuf], format: InputFormat) -> Result<HashMap<S
 
         let (doc, _source_files) = load_document(file, format)?;
 
-        // Extract all \alias{} sections
-        let alias_sections = doc.get_sections(&SectionTag::Alias);
-        for section in alias_sections {
-            let alias = extract_text(&section.content).trim().to_string();
+        for alias in doc.aliases() {
+            let alias = alias.trim().to_string();
             if !alias.is_empty() {
                 index.insert(alias, basename.clone());
             }
         }
 
         // Also add \name{} as an alias (it's always a valid reference)
-        if let Some(name_section) = doc.get_section(&SectionTag::Name) {
-            let name = extract_text(&name_section.content).trim().to_string();
+        if let Some(name_nodes) = doc.name() {
+            let name = extract_text(name_nodes).trim().to_string();
             if !name.is_empty() {
                 index.insert(name, basename.clone());
             }
@@ -1804,9 +1798,15 @@ x <- 1
 \title{Test}
 "#;
 
-        let doc_internal = parse(rd_internal).unwrap();
-        let doc_normal = parse(rd_normal).unwrap();
-        let doc_no_keyword = parse(rd_no_keyword).unwrap();
+        let doc_internal = rd2qmd_source::parse(rd_internal)
+            .unwrap()
+            .document()
+            .clone();
+        let doc_normal = rd2qmd_source::parse(rd_normal).unwrap().document().clone();
+        let doc_no_keyword = rd2qmd_source::parse(rd_no_keyword)
+            .unwrap()
+            .document()
+            .clone();
 
         assert!(has_keyword_internal(&doc_internal));
         assert!(!has_keyword_internal(&doc_normal));

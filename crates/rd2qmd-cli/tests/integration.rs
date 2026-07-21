@@ -669,7 +669,7 @@ fn test_parse_defaults_single_file() {
     let json = fs::read_to_string(&expected_output).expect("Failed to read AST JSON");
     let _ = fs::remove_dir_all(&root);
 
-    assert!(json.contains("\"version\": 1"));
+    assert!(json.contains("\"version\": 2"));
 }
 
 /// Directory `parse` mirrors input file names with a `.json` extension

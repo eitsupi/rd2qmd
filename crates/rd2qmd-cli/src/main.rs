@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 use rd2qmd_core::{
     ArgumentsFormat, CodeExecutionOptions, FrontmatterOptions, LinkOptions, RdAstEnvelope,
-    RdConvertOptions, RdConverter, convert_rd_document, parse, parse_roxygen_comments,
+    RdConvertOptions, convert_rd_document, extract_rd_metadata,
 };
 use rd2qmd_package::{
     ExternalLinkOptions as PackageExternalLinkOptions, FallbackReason, FullConvertResult,
@@ -534,37 +534,36 @@ fn convert_single_file(
             prefer_ascii_math,
         };
 
-        convert_rd_document(&envelope.document, envelope.source_files, &options)
+        convert_rd_document(&envelope.document, &options)
     } else {
         let content = fs::read_to_string(input)
             .with_context(|| format!("Failed to read: {}", input.display()))?;
 
-        // Build converter using RdConverter builder pattern
-        let mut converter = RdConverter::new(&content)
-            .frontmatter(use_frontmatter)
-            .pagetitle(use_pagetitle)
-            .quarto_code_blocks(quarto_code_blocks)
-            .exec_dontrun(exec_dontrun)
-            .exec_donttest(exec_donttest)
-            .include_html_output(include_html_output)
-            .prefer_ascii_math(prefer_ascii_math)
-            .arguments_format(arguments_format);
-
-        if let Some(template) = unqualified_link_url {
-            converter = converter.unqualified_link_url(template);
-        }
-
-        if let Some(template) = external_link_url {
-            converter = converter.external_link_url(template);
-        }
-
-        if let Some(urls) = package_urls {
-            converter = converter.package_urls(urls);
-        }
-
-        converter
-            .convert()
-            .map_err(|e| anyhow::anyhow!("Parse error: {}", e))?
+        let parsed =
+            rd2qmd_source::parse(&content).map_err(|e| anyhow::anyhow!("Parse error: {e}"))?;
+        let doc = parsed.document();
+        let options = RdConvertOptions {
+            frontmatter: FrontmatterOptions {
+                enabled: use_frontmatter,
+                pagetitle: use_pagetitle,
+            },
+            code: CodeExecutionOptions {
+                quarto_code_blocks,
+                exec_dontrun,
+                exec_donttest,
+            },
+            links: LinkOptions {
+                internal_link_url: None,
+                unqualified_link_url: unqualified_link_url.map(str::to_owned),
+                external_link_url: external_link_url.map(str::to_owned),
+                alias_map: None,
+                package_urls,
+            },
+            arguments_format,
+            include_html_output,
+            prefer_ascii_math,
+        };
+        convert_rd_document(doc, &options)
     };
 
     if let Some(parent) = output_path.parent() {
@@ -891,8 +890,9 @@ fn parse_single_file(
     let content = fs::read_to_string(input)
         .with_context(|| format!("Failed to read: {}", input.display()))?;
 
-    let source_files = parse_roxygen_comments(&content).source_files;
-    let doc = parse(&content).map_err(|e| anyhow::anyhow!("Parse error: {}", e))?;
+    let parsed = rd2qmd_source::parse(&content).map_err(|e| anyhow::anyhow!("Parse error: {e}"))?;
+    let doc = parsed.document().clone();
+    let source_files = extract_rd_metadata(&doc).source_files;
 
     let source = input
         .file_name()

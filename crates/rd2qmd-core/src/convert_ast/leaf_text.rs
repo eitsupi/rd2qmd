@@ -36,6 +36,7 @@ impl LeafShapeError {
         &self.recovered
     }
 
+    #[cfg(test)]
     pub(crate) fn mismatch_count(&self) -> usize {
         self.mismatches.len()
     }
@@ -115,11 +116,13 @@ fn visit_leaf<F>(
 }
 
 /// Flatten prose leaves, accepting all canonical text-bearing leaf kinds.
+#[cfg(test)]
 pub(crate) fn flatten_prose_leaves(nodes: &[rd_ast::RdNode]) -> Result<String, LeafShapeError> {
     flatten(nodes, None, |_| true)
 }
 
 /// Flatten R code leaves, recovering by concatenating unexpected text or verbatim leaves.
+#[cfg(test)]
 pub(crate) fn flatten_rcode_leaves(nodes: &[rd_ast::RdNode]) -> Result<String, LeafShapeError> {
     flatten(nodes, Some(LeafKind::RCode), |kind| kind == LeafKind::RCode)
 }

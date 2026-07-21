@@ -2,34 +2,15 @@
 //!
 //! This module is intentionally not wired into the public conversion API yet;
 //! that integration is part of a later migration phase.
-//! TODO: wire this facade into `convert_rd_content`/`RdConverter::convert`
-//! once conversion itself is rewritten to consume `rd_ast::RdDocument`.
 
 use rd_ast::RdDocument;
 
-/// Parse Rd source using the recovery-first `rd-source` parser.
+#[cfg(test)]
 pub(crate) fn parse_with_rd_source(
     content: &str,
 ) -> Result<rd_source::Parsed, rd_source::ParseError> {
     rd_source::parse(content.as_bytes())
 }
-
-/// The future result shape for conversion through the new parser facade.
-///
-/// This is not wired into any public API yet; conversion remains backed by the
-/// legacy parser until the subsequent conversion migration phase.
-pub(crate) struct ConvertedRd {
-    pub markdown: String,
-    pub diagnostics: Vec<Diagnostic>,
-}
-
-// Keep the diagnostic dependency behind rd2qmd-core's facade. These aliases
-// remain crate-visible for now; public exposure will be decided when parsing
-// is wired into the conversion API.
-#[allow(unused_imports)]
-pub(crate) use rd_source::{
-    Diagnostic, DiagnosticCode, ParseError, Severity, SourcePosition, SourceSpan,
-};
 
 /// Extract owned source paths from a recognized generation header.
 pub(crate) fn extract_source_files(document: &RdDocument) -> Vec<String> {

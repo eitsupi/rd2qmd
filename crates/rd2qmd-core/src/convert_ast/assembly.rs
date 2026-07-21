@@ -92,7 +92,7 @@ mod tests {
     use rd2qmd_mdast::{WriterOptions, mdast_to_qmd};
 
     use super::convert_document;
-    use crate::{RdToMdastOptions, parse, rd_to_mdast_with_options};
+    use crate::RdToMdastOptions;
 
     fn parse_ast(source: &str) -> rd_ast::RdDocument {
         let parsed = rd_source::parse(source.as_bytes()).unwrap();
@@ -106,11 +106,6 @@ mod tests {
 
     fn render_new(source: &str, options: &RdToMdastOptions) -> String {
         let root = convert_document(&parse_ast(source), options);
-        render(&root, options)
-    }
-
-    fn render_legacy(source: &str, options: &RdToMdastOptions) -> String {
-        let root = rd_to_mdast_with_options(&parse(source).unwrap(), options);
         render(&root, options)
     }
 
@@ -170,7 +165,6 @@ mod tests {
                 "## Examples",
             ]
         );
-        assert_eq!(markdown, render_legacy(source, &options));
     }
 
     #[test]
@@ -199,7 +193,6 @@ mod tests {
             ]
         );
         assert!(markdown.find("First Custom").unwrap() < markdown.find("Second Custom").unwrap());
-        assert_eq!(markdown, render_legacy(source, &options));
     }
 
     #[test]
@@ -215,11 +208,6 @@ mod tests {
         let without_title_markdown = render_new(source, &without_title);
         assert_eq!(headings(&with_title_markdown)[0], "# Topic Title");
         assert_eq!(headings(&without_title_markdown), ["## Description"]);
-        assert_eq!(with_title_markdown, render_legacy(source, &with_title));
-        assert_eq!(
-            without_title_markdown,
-            render_legacy(source, &without_title)
-        );
     }
 
     #[test]
@@ -237,7 +225,6 @@ mod tests {
             };
             let markdown = render_new(source, &options);
 
-            assert_eq!(markdown, render_legacy(source, &options));
             assert_eq!(markdown.contains("html-only"), include_html_output);
             assert!(markdown.contains("text-always"));
             assert!(markdown.contains("html-then"));

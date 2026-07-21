@@ -13,7 +13,6 @@ mod leaf_text;
 mod roxygen;
 mod traversal;
 
-#[allow(unused_imports)]
 pub(crate) use assembly::convert_document;
 #[allow(unused_imports)]
 pub(crate) use blocks::{
@@ -31,10 +30,6 @@ pub(crate) use document::{
 pub(crate) use inline::{
     InlineConversionContext, LinkResolutionContext, convert_inline_node, convert_inline_nodes,
     extract_plain_text,
-};
-#[allow(unused_imports)]
-pub(crate) use leaf_text::{
-    LeafShapeError, flatten_prose_leaves, flatten_rcode_leaves, flatten_verbatim_leaves,
 };
 #[cfg(feature = "roxygen")]
 #[allow(unused_imports)]

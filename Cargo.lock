@@ -1200,6 +1200,7 @@ dependencies = [
  "insta",
  "rd2qmd-core",
  "rd2qmd-package",
+ "rd2qmd-source",
  "schemars",
  "serde",
  "serde_json",
@@ -1212,7 +1213,6 @@ version = "0.4.0"
 dependencies = [
  "insta",
  "rd-ast",
- "rd-parser",
  "rd-source",
  "rd2qmd-mdast",
  "serde",
@@ -1236,7 +1236,9 @@ version = "0.4.0"
 dependencies = [
  "r-description",
  "rayon",
+ "rd-ast",
  "rd2qmd-core",
+ "rd2qmd-source",
  "reqwest",
  "saphyr",
  "serde",

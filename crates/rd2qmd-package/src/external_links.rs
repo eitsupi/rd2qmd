@@ -18,6 +18,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::{FallbackReason, RdPackage};
+use rd_ast::{RdLinkDestination, RdPath, RdTag};
 use rd2qmd_core::RdNode;
 
 /// Result of resolving external package URLs
@@ -291,9 +292,7 @@ pub fn collect_external_packages(package: &RdPackage) -> HashSet<String> {
 
     for file in &package.files {
         if let Ok((doc, _)) = crate::load_document(file, package.format) {
-            for section in &doc.sections {
-                collect_packages_from_nodes(&section.content, &mut packages);
-            }
+            collect_packages_from_nodes(doc.nodes(), &mut packages);
         }
     }
 
@@ -303,94 +302,31 @@ pub fn collect_external_packages(package: &RdPackage) -> HashSet<String> {
 /// Recursively collect external package names from Rd nodes
 fn collect_packages_from_nodes(nodes: &[RdNode], packages: &mut HashSet<String>) {
     for node in nodes {
-        match node {
-            RdNode::Link {
-                package: Some(pkg),
-                text,
-                ..
-            } => {
-                // The parser splits \link[pkg:topic]{text} at parse time, so
-                // `pkg` normally has no colon; the split is kept as a guard
-                let pkg_name = pkg.split(':').next().unwrap_or(pkg);
-                packages.insert(pkg_name.to_string());
-                // Also check text content
-                if let Some(text_nodes) = text {
-                    collect_packages_from_nodes(text_nodes, packages);
-                }
-            }
-            RdNode::Link {
-                text: Some(text), ..
-            } => {
-                collect_packages_from_nodes(text, packages);
-            }
-            RdNode::LinkS4Class {
-                package: Some(pkg), ..
-            } => {
-                // Unlike \link, the parser stores the bracket arg of
-                // \linkS4class verbatim, so a "pkg:topic" form may reach us
-                // here; keep only the package part before the colon
-                let pkg_name = pkg.split(':').next().unwrap_or(pkg);
-                packages.insert(pkg_name.to_string());
-            }
-            // Recurse into container nodes with Vec<RdNode>
-            RdNode::Code(children)
-            | RdNode::Emph(children)
-            | RdNode::Strong(children)
-            | RdNode::Samp(children)
-            | RdNode::SQuote(children)
-            | RdNode::DQuote(children)
-            | RdNode::Dfn(children)
-            | RdNode::File(children)
-            | RdNode::Kbd(children)
-            | RdNode::Paragraph(children) => {
-                collect_packages_from_nodes(children, packages);
-            }
-            RdNode::Href { text, .. } => {
-                collect_packages_from_nodes(text, packages);
-            }
-            RdNode::Item { label, content } => {
-                if let Some(label_nodes) = label {
-                    collect_packages_from_nodes(label_nodes, packages);
-                }
-                collect_packages_from_nodes(content, packages);
-            }
-            RdNode::Itemize(items) | RdNode::Enumerate(items) => {
-                collect_packages_from_nodes(items, packages);
-            }
-            RdNode::Describe(items) => {
-                for item in items {
-                    collect_packages_from_nodes(&item.term, packages);
-                    collect_packages_from_nodes(&item.description, packages);
-                }
-            }
-            RdNode::Tabular { rows, .. } => {
-                for row in rows {
-                    for cell in row {
-                        collect_packages_from_nodes(cell, packages);
+        let path = RdPath::new(Vec::new());
+        if let Some(tagged) = node.as_tagged() {
+            if tagged.tag() == &RdTag::Link {
+                if let Ok(link) = tagged.inspect_link(&path) {
+                    if let RdLinkDestination::Package { package, topic } = link.destination() {
+                        packages.insert(package.split(':').next().unwrap_or(package).to_owned());
+                        if let rd_ast::RdLinkTopic::DisplayText(display) = topic {
+                            collect_packages_from_nodes(display, packages);
+                        }
                     }
+                    collect_packages_from_nodes(link.display(), packages);
                 }
+            } else if tagged.tag() == &RdTag::LinkS4Class
+                && let Some(link) = node.s4_class_link(&path)
+                && let Some(package) = link.package_text()
+            {
+                packages.insert(package.split(':').next().unwrap_or(&package).to_owned());
             }
-            RdNode::IfElse {
-                then_content,
-                else_content,
-                ..
-            } => {
-                collect_packages_from_nodes(then_content, packages);
-                collect_packages_from_nodes(else_content, packages);
-            }
-            RdNode::If { content, .. } => {
-                collect_packages_from_nodes(content, packages);
-            }
-            RdNode::Section { title, content } | RdNode::Subsection { title, content } => {
-                collect_packages_from_nodes(title, packages);
-                collect_packages_from_nodes(content, packages);
-            }
-            RdNode::Macro { args, .. } => {
-                for arg in args {
-                    collect_packages_from_nodes(arg, packages);
-                }
-            }
-            _ => {}
+            collect_packages_from_nodes(tagged.option().unwrap_or_default(), packages);
+            collect_packages_from_nodes(tagged.children(), packages);
+        } else if let Some(group) = node.as_group() {
+            collect_packages_from_nodes(group.children(), packages);
+        } else if let Some(raw) = node.as_raw() {
+            collect_packages_from_nodes(raw.option().unwrap_or_default(), packages);
+            collect_packages_from_nodes(raw.children(), packages);
         }
     }
 }
