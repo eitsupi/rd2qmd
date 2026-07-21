@@ -8,6 +8,7 @@ mod code;
 mod document;
 mod inline;
 mod leaf_text;
+mod roxygen;
 mod traversal;
 
 #[allow(unused_imports)]
@@ -30,5 +31,7 @@ pub(crate) use inline::{
 pub(crate) use leaf_text::{
     LeafShapeError, flatten_prose_leaves, flatten_rcode_leaves, flatten_verbatim_leaves,
 };
+#[allow(unused_imports)]
+pub(crate) use roxygen::{RoxygenCodeBlock, try_match_roxygen_code_block};
 #[allow(unused_imports)]
 pub(crate) use traversal::{BlockContentItem, ParagraphItem, scan_block_content};

@@ -31,6 +31,7 @@ pub(crate) fn convert_block_content(
                 convert_paragraph(items, context).into_iter().collect()
             }
             BlockContentItem::Block(node) => convert_block(node, context),
+            BlockContentItem::RoxygenCode(block) => vec![Node::code(block.language, block.code)],
         })
         .collect()
 }
@@ -870,7 +871,7 @@ fn convert_section_like_block(
     nodes
 }
 
-fn recover_verbatim(nodes: &[RdNode]) -> String {
+pub(super) fn recover_verbatim(nodes: &[RdNode]) -> String {
     flatten_verbatim_leaves(nodes).unwrap_or_else(|error| error.recovered_text().to_owned())
 }
 

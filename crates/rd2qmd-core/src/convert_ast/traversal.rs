@@ -2,6 +2,8 @@
 
 use rd_ast::RdTag;
 
+use super::roxygen::{RoxygenCodeBlock, try_match_roxygen_code_block};
+
 /// A borrowed piece of source content belonging to one paragraph.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum ParagraphItem<'a> {
@@ -14,6 +16,7 @@ pub(crate) enum ParagraphItem<'a> {
 pub(crate) enum BlockContentItem<'a> {
     Paragraph(Vec<ParagraphItem<'a>>),
     Block(&'a rd_ast::RdNode),
+    RoxygenCode(RoxygenCodeBlock),
 }
 
 /// Scan siblings into paragraphs and semantic blocks in source order.
@@ -42,7 +45,16 @@ fn scan<'a>(
     state: &mut ScanState<'a>,
     items: &mut Vec<BlockContentItem<'a>>,
 ) {
-    for node in nodes {
+    let mut cursor = 0;
+    while cursor < nodes.len() {
+        if let Some(block) = try_match_roxygen_code_block(&nodes[cursor..]) {
+            flush(state, items);
+            items.push(BlockContentItem::RoxygenCode(block));
+            cursor += 3;
+            continue;
+        }
+
+        let node = &nodes[cursor];
         match node {
             rd_ast::RdNode::Text(value) => {
                 for part in value.split_inclusive(char::is_whitespace) {
@@ -67,6 +79,7 @@ fn scan<'a>(
             }
             _ => {}
         }
+        cursor += 1;
     }
 }
 
