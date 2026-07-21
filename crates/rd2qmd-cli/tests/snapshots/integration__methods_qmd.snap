@@ -1,0 +1,123 @@
+---
+source: crates/rd2qmd-cli/tests/integration.rs
+expression: output
+---
+---
+title: "S3 and S4 Method Usage Entries"
+pagetitle: "S3 and S4 Method Usage Entries — methods"
+aliases:
+  - "methods"
+  - "print.default"
+  - "print.myclass"
+  - "show,MyClass-method"
+---
+
+## Description
+
+Demonstrates `\method`, `\S3method`, and `\S4method` usage entries, including operator generics reformatted as infix expressions.
+
+## Usage
+
+```r
+# S3 method for class 'data.frame'
+print(x, ...)
+
+# Default S3 method
+print(x, ...)
+
+# S4 method for signature 'MyClass'
+show(object)
+
+# S4 method for signature 'OldClass,NewClass'
+coerce(from, to)
+
+# S3 method for class 'myclass'
+print(x, ...)
+
+# S3 method for class 'myclass'
+e1 + e2
+
+# S3 method for class 'myclass'
+x[i, j, ..., drop = TRUE]
+
+# S3 method for class 'myclass'
+x[[i, ...]]
+
+# S3 method for class 'myclass'
+x$name
+
+# S3 method for class 'myclass'
+e1 == e2
+
+# S3 method for class 'myclass'
+lhs %>% rhs
+
+arrange(.data, ...)
+
+# S3 method for class 'data.frame'
+arrange(.data, ..., .by_group = FALSE)
+
+# Default S3 method
+arrange(.data, ...)
+
+# S3 method for class 'tbl_df'
+print(x, ..., n = NULL, width = NULL)
+
+# S3 method for class 'myclass'
+summary(object, ...)
+```
+
+## Arguments
+
+::: {.list-table header-rows=1}
+
+- - Argument
+  - Description
+
+- - `x`
+  - An object to print.
+
+- - `...`
+  - Additional arguments passed to methods.
+
+- - `object`
+  - An object to show or summarize.
+
+- - `from, to`
+  - Objects to coerce between classes.
+
+- - `e1, e2`
+  - Objects for the operator method.
+
+- - `i, j`
+  - Indices for subsetting.
+
+- - `drop`
+  - Whether to simplify the result.
+
+- - `name`
+  - The name of the element to extract.
+
+- - `lhs, rhs`
+  - Left- and right-hand side operands.
+
+- - `.data`
+  - A data frame to arrange.
+
+- - `.by_group`
+  - Whether to sort by grouping columns first.
+
+- - `n, width`
+  - Number of rows and display width.
+
+:::
+
+## Value
+
+Nothing of interest; this fixture only exercises `\usage` rendering.
+
+## Examples
+
+```{r}
+methods(class = "myclass")
+```

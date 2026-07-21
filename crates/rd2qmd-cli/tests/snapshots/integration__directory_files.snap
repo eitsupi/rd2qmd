@@ -2,9 +2,13 @@
 source: crates/rd2qmd-cli/tests/integration.rs
 expression: files
 ---
+- arguments_rich.qmd
 - conditionals.qmd
 - example_control.qmd
 - examplesif.qmd
 - formatting.qmd
+- methods.qmd
+- roxygen_code_blocks.qmd
 - simple.qmd
+- tags.qmd
 - with_links.qmd

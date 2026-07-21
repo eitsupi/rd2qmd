@@ -1,0 +1,53 @@
+---
+source: crates/rd2qmd-cli/tests/integration.rs
+expression: output
+---
+# Roxygen Fenced Code Block Conversion
+
+## Description
+
+Demonstrates roxygen2 markdown fenced code blocks converted to Quarto code fences, including a language tag, no language tag, and content that itself contains backtick runs.
+
+## Details
+
+Here is an R code block from roxygen2:
+
+```r
+x <- 1 + 2
+y <- x * 3
+print(y)
+```
+
+And some more text after the code block.
+
+Python code block:
+
+```python
+def greet(name):
+    return f"Hello, {name}!"
+
+print(greet("World"))
+```
+
+Code block without a language specifier:
+
+```
+plain text
+block without language
+```
+
+Code block whose content contains backtick runs, requiring a longer fence:
+
+````r
+# Code with backticks
+x <- "`value`"
+y <- "``nested``"
+example <- "```triple```"
+````
+
+Standalone preformatted (not from roxygen2 markdown):
+
+```
+This is a standalone preformatted block
+without the if/out wrapper.
+```

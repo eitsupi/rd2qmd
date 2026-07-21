@@ -1,0 +1,100 @@
+---
+source: crates/rd2qmd-cli/tests/integration.rs
+expression: output
+---
+---
+title: "Rich Argument Content"
+pagetitle: "Rich Argument Content — arguments_rich"
+aliases:
+  - "arguments_rich"
+---
+
+## Description
+
+This function has arguments with rich, nested Markdown-relevant content.
+
+## Usage
+
+```r
+arguments_rich(x, method, describe_arg, table_arg, pre_only, pre_with_intro,
+  backtick_code, fence_collision, cr_break, multi_paragraph,
+  itemize_multi_paragraph, ...)
+```
+
+## Arguments
+
++---------------------------+--------------------------------------------------------------+
+| Argument                  | Description                                                  |
++===========================+==============================================================+
+| `x`                       | A basic argument for comparison.                             |
++---------------------------+--------------------------------------------------------------+
+| `method`                  | The method to use, described as a nested list:               |
+|                           |                                                              |
+|                           | - `"a"`: Use method A, the default.                          |
+|                           | - `"b"`: Use method B instead.                               |
++---------------------------+--------------------------------------------------------------+
+| `describe_arg`            | The method to use, described with a definition list:         |
+|                           |                                                              |
+|                           | "a"                                                          |
+|                           | :   Use method A.                                            |
+|                           |                                                              |
+|                           | "b"                                                          |
+|                           | :   Use method B.                                            |
++---------------------------+--------------------------------------------------------------+
+| `table_arg`               | The argument. See the table:                                 |
+|                           |                                                              |
+|                           |                                                              |
++---------------------------+--------------------------------------------------------------+
+| `pre_only`                | ```                                                          |
+|                           | result <- foo(x)                                             |
+|                           | print(result)                                                |
+|                           |                                                              |
+|                           | ```                                                          |
++---------------------------+--------------------------------------------------------------+
+| `pre_with_intro`          | Example usage:                                               |
+|                           |                                                              |
+|                           | ```                                                          |
+|                           | result <- foo(x)                                             |
+|                           | print(result)                                                |
+|                           |                                                              |
+|                           | ```                                                          |
++---------------------------+--------------------------------------------------------------+
+| `backtick_code`           | Use `` `a` `` or ``` ``nested`` ``` for non-syntactic names. |
++---------------------------+--------------------------------------------------------------+
+| `fence_collision`         | Code containing a fence-like line:                           |
+|                           |                                                              |
+|                           | ````                                                         |
+|                           | ```r                                                         |
+|                           | x <- 1                                                       |
+|                           | ```                                                          |
+|                           |                                                              |
+|                           | ````                                                         |
++---------------------------+--------------------------------------------------------------+
+| `cr_break`                | First line.                                                  |
+|                           |  - hyphen.                                                   |
+|                           |  * asterisk.                                                 |
+|                           |  + plus.                                                     |
+|                           |  1. ordered period.                                          |
++---------------------------+--------------------------------------------------------------+
+| `` `a` ``                 | A non-syntactic argument name with single backticks.         |
++---------------------------+--------------------------------------------------------------+
+| ``` ``b`` ```             | A label with a double-backtick run.                          |
++---------------------------+--------------------------------------------------------------+
+| `multi_paragraph`         | First paragraph.                                             |
+|                           |                                                              |
+|                           | Second paragraph of the description.                         |
++---------------------------+--------------------------------------------------------------+
+| `itemize_multi_paragraph` | Options:                                                     |
+|                           |                                                              |
+|                           | - First paragraph.                                           |
+|                           | - Another item.                                              |
++---------------------------+--------------------------------------------------------------+
+## Value
+
+Nothing of interest.
+
+## Examples
+
+```{r}
+arguments_rich(1, "a", "a", NULL, NULL, NULL, NULL, NULL, NULL, "x", "y")
+```

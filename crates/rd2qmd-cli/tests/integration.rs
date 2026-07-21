@@ -214,6 +214,91 @@ fn test_conditionals_include_html() {
     insta::assert_snapshot!("conditionals_include_html", output);
 }
 
+/// `\method`/`\S3method`/`\S4method` usage-block parsing through the real
+/// parser: S3/S4/default method header comments, multi-signature S4
+/// signatures, a mixed usage block combining a plain signature with method
+/// variants, special class names, and operator generics (including a
+/// user-defined `%...%` infix) reformatted as natural infix expressions.
+#[test]
+fn test_methods_usage() {
+    let output = convert_fixture("methods", &[]);
+    insta::assert_snapshot!("methods_qmd", output);
+}
+
+/// Rich content nested inside `\arguments{}` item descriptions -- nested
+/// `\itemize`/`\describe`/`\tabular`, `\preformatted` (including as an
+/// item's sole content), backtick-escaping in `\code{}` and item labels,
+/// `\cr` line breaks with list-marker-lookalike continuations, and
+/// multi-paragraph descriptions -- rendered with `--arguments-format
+/// list-table` (the CLI default).
+#[test]
+fn test_arguments_rich_list_table() {
+    let output = convert_fixture("arguments_rich", &["--arguments-format", "list-table"]);
+    insta::assert_snapshot!("arguments_rich_list_table", output);
+}
+
+/// Same rich `\arguments{}` content as `test_arguments_rich_list_table`,
+/// rendered with `--arguments-format grid-table` -- previously exercised
+/// nowhere end-to-end.
+#[test]
+fn test_arguments_rich_grid_table() {
+    let output = convert_fixture("arguments_rich", &["--arguments-format", "grid-table"]);
+    insta::assert_snapshot!("arguments_rich_grid_table", output);
+}
+
+/// Same rich `\arguments{}` content, rendered with `--arguments-format list`.
+#[test]
+fn test_arguments_rich_list() {
+    let output = convert_fixture("arguments_rich", &["--arguments-format", "list"]);
+    insta::assert_snapshot!("arguments_rich_list", output);
+}
+
+/// Same rich `\arguments{}` content, rendered with `--arguments-format
+/// pipe-table`.
+#[test]
+fn test_arguments_rich_pipe_table() {
+    let output = convert_fixture("arguments_rich", &["--arguments-format", "pipe-table"]);
+    insta::assert_snapshot!("arguments_rich_pipe_table", output);
+}
+
+/// Tags with no coverage in any other fixture: `\doi`, `\linkS4class`
+/// (unqualified and qualified), `\cite`, `\abbr`, `\dontdiff` inside
+/// `\examples`, `\code{\link[=...]{...}}` (an explicit-destination link
+/// nested inside `\code`, which must preserve the link), and
+/// `\link[pkg:topic]{...}` (qualified pkg:topic packed into the bracket).
+/// The `\title` also nests `\linkS4class`/`\doi` to guard against tag
+/// markup leaking into the frontmatter `title:` value (regression: PR #49).
+#[test]
+fn test_tags() {
+    let output = convert_fixture("tags", &[]);
+    insta::assert_snapshot!("tags_qmd", output);
+}
+
+/// `\figure{file}{alt text}`, `\figure{file}` (no second argument), and
+/// `\figure{file}{options: ...}` (expert form with no `alt=` key) all
+/// appear in the `tags` fixture's `\arguments`/`\value` sections; this test
+/// exists mainly as documentation pointing at `test_tags`'s snapshot, which
+/// covers all three `\figure` forms.
+#[test]
+fn test_tags_figure_alt_text_forms() {
+    let output = convert_fixture("tags", &["--no-frontmatter"]);
+    assert!(output.contains("![alt text here](myplot.png)"));
+    assert!(output.contains("![myplot.png](myplot.png)"));
+}
+
+/// Roxygen2 fenced-code-block markup
+/// (`\if{html}{\out{<div class="sourceCode LANG">}}\preformatted{...}\if{html}{\out{</div>}}`)
+/// actually converted to Quarto code fences -- an R block, a Python block,
+/// a block with no language tag, and a block whose content contains
+/// backtick runs (verifying the fence is lengthened past any collision).
+/// The `crates/rd2qmd-source` fixture this is adapted from only checks that
+/// parsing succeeds without diagnostics; this checks the actual conversion.
+#[test]
+fn test_roxygen_code_blocks() {
+    let output = convert_fixture("roxygen_code_blocks", &["--no-frontmatter"]);
+    insta::assert_snapshot!("roxygen_code_blocks_qmd", output);
+}
+
 #[test]
 fn test_directory_conversion() {
     let fixtures = fixtures_dir();
