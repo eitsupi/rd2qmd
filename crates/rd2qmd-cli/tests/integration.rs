@@ -71,6 +71,56 @@ fn test_simple_conversion() {
 }
 
 #[test]
+fn parser_diagnostics_are_reported_for_convert_and_parse() {
+    let root = unique_temp_dir("diagnostics");
+    fs::create_dir_all(&root).unwrap();
+    let input = root.join("warning.Rd");
+    fs::write(
+        &input,
+        "\\name{warning}\n\\title{Warning}\n\\examples{\n#ifdef unix\n}\nx <- 1\n#endif\ny <- 2\n}",
+    )
+    .unwrap();
+
+    let output = root.join("warning.qmd");
+    let convert = std::process::Command::new(rd2qmd_binary())
+        .args(["convert"])
+        .arg(&input)
+        .args(["-o"])
+        .arg(&output)
+        .output()
+        .unwrap();
+    assert!(convert.status.success());
+    let convert_stderr = String::from_utf8_lossy(&convert.stderr);
+    assert!(convert_stderr.contains(&format!("{}:", input.display())));
+    assert!(convert_stderr.contains("Warning[UnexpectedClosingDelimiter]"));
+
+    let ast = root.join("warning.json");
+    let parse = std::process::Command::new(rd2qmd_binary())
+        .args(["parse"])
+        .arg(&input)
+        .args(["-o"])
+        .arg(&ast)
+        .output()
+        .unwrap();
+    assert!(parse.status.success());
+    let parse_stderr = String::from_utf8_lossy(&parse.stderr);
+    assert!(parse_stderr.contains(&format!("{}:", input.display())));
+    assert!(parse_stderr.contains("Warning[UnexpectedClosingDelimiter]"));
+
+    let quiet = std::process::Command::new(rd2qmd_binary())
+        .args(["-q", "convert"])
+        .arg(&input)
+        .args(["-o"])
+        .arg(root.join("quiet.qmd"))
+        .output()
+        .unwrap();
+    assert!(quiet.status.success());
+    assert!(!String::from_utf8_lossy(&quiet.stderr).contains("UnexpectedClosingDelimiter"));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn test_simple_to_md() {
     let output = convert_fixture("simple", &["-f", "md"]);
     insta::assert_snapshot!("simple_md", output);

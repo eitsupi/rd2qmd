@@ -65,7 +65,7 @@ pub type Result<T> = std::result::Result<T, PackageError>;
 #[derive(Debug)]
 enum ConvertError {
     /// File has `\keyword{internal}` and should be skipped
-    SkipInternal,
+    SkipInternal(Vec<rd2qmd_source::Diagnostic>),
     /// Conversion failed with an error message
     Failed(String),
 }
@@ -244,6 +244,15 @@ pub struct ConvertResult {
     pub output_files: Vec<PathBuf>,
     /// Files skipped because they have \keyword{internal}
     pub skipped_internal: Vec<PathBuf>,
+    /// Recoverable parser diagnostics, grouped by input file.
+    pub diagnostics: Vec<FileDiagnostics>,
+}
+
+/// Recoverable parser diagnostics associated with one source file.
+#[derive(Debug)]
+pub struct FileDiagnostics {
+    pub file: PathBuf,
+    pub diagnostics: Vec<rd2qmd_source::Diagnostic>,
 }
 
 /// Information about a single topic (Rd file) for index generation
@@ -284,6 +293,13 @@ pub struct TopicIndexOptions {
     pub include_internal: bool,
 }
 
+/// Result of topic index generation, including recoverable parser diagnostics.
+#[derive(Debug)]
+pub struct TopicIndexResult {
+    pub index: TopicIndex,
+    pub diagnostics: Vec<FileDiagnostics>,
+}
+
 /// Generate a topic index from a package
 ///
 /// This function parses all Rd files in the package and extracts metadata
@@ -303,11 +319,26 @@ pub fn generate_topic_index(
     package: &RdPackage,
     options: &TopicIndexOptions,
 ) -> Result<TopicIndex> {
+    Ok(generate_topic_index_with_diagnostics(package, options)?.index)
+}
+
+/// Generate a topic index and retain recoverable parser diagnostics.
+pub fn generate_topic_index_with_diagnostics(
+    package: &RdPackage,
+    options: &TopicIndexOptions,
+) -> Result<TopicIndexResult> {
     let mut topics = Vec::new();
+    let mut diagnostics = Vec::new();
 
     for file in &package.files {
-        match extract_topic_info(file, &options.output_extension, package.format) {
-            Ok(info) => {
+        match extract_topic_info_with_diagnostics(file, &options.output_extension, package.format) {
+            Ok((info, file_diagnostics)) => {
+                if !file_diagnostics.is_empty() {
+                    diagnostics.push(FileDiagnostics {
+                        file: file.clone(),
+                        diagnostics: file_diagnostics,
+                    });
+                }
                 // Skip internal topics unless include_internal is set
                 if !options.include_internal
                     && info.metadata.keywords.contains(&"internal".to_string())
@@ -330,16 +361,18 @@ pub fn generate_topic_index(
     // Sort by name for consistent output
     topics.sort_by(|a, b| a.name.cmp(&b.name));
 
-    Ok(TopicIndex { topics })
+    Ok(TopicIndexResult {
+        index: TopicIndex { topics },
+        diagnostics,
+    })
 }
 
-/// Extract topic information from a single Rd file
-fn extract_topic_info(
+fn extract_topic_info_with_diagnostics(
     file: &Path,
     output_extension: &str,
     format: InputFormat,
-) -> Result<TopicInfo> {
-    let (doc, source_files) = load_document(file, format)?;
+) -> Result<(TopicInfo, Vec<rd2qmd_source::Diagnostic>)> {
+    let (doc, source_files, diagnostics) = load_document(file, format)?;
 
     // Extract name
     let name = doc.name().map(extract_text).unwrap_or_default();
@@ -357,20 +390,23 @@ fn extract_topic_info(
     let basename = file.file_stem().and_then(|s| s.to_str()).unwrap_or("");
     let output_file = format!("{}.{}", basename, output_extension);
 
-    Ok(TopicInfo {
-        name,
-        file: output_file,
-        title,
-        metadata,
-    })
+    Ok((
+        TopicInfo {
+            name,
+            file: output_file,
+            title,
+            metadata,
+        },
+        diagnostics,
+    ))
 }
 
 /// Outcome of converting a single file
 enum ConvertOutcome {
     /// Successfully converted, contains output path
-    Success(PathBuf),
+    Success(PathBuf, PathBuf, Vec<rd2qmd_source::Diagnostic>),
     /// Skipped because the topic has \keyword{internal}
-    SkippedInternal(PathBuf),
+    SkippedInternal(PathBuf, Vec<rd2qmd_source::Diagnostic>),
     /// Failed to convert, contains input path and error message
     Failed(PathBuf, String),
 }
@@ -406,15 +442,28 @@ pub fn convert_package(
     let mut failed_files = Vec::new();
     let mut output_files = Vec::new();
     let mut skipped_internal = Vec::new();
+    let mut diagnostics = Vec::new();
 
     for result in results {
         match result {
-            ConvertOutcome::Success(output_path) => {
+            ConvertOutcome::Success(input_path, output_path, file_diagnostics) => {
                 success_count += 1;
                 output_files.push(output_path);
+                if !file_diagnostics.is_empty() {
+                    diagnostics.push(FileDiagnostics {
+                        file: input_path,
+                        diagnostics: file_diagnostics,
+                    });
+                }
             }
-            ConvertOutcome::SkippedInternal(input_path) => {
+            ConvertOutcome::SkippedInternal(input_path, file_diagnostics) => {
                 skipped_internal.push(input_path);
+                if !file_diagnostics.is_empty() {
+                    diagnostics.push(FileDiagnostics {
+                        file: skipped_internal.last().unwrap().clone(),
+                        diagnostics: file_diagnostics,
+                    });
+                }
             }
             ConvertOutcome::Failed(path, error) => {
                 failed_files.push((path, error));
@@ -427,6 +476,7 @@ pub fn convert_package(
         failed_files,
         output_files,
         skipped_internal,
+        diagnostics,
     })
 }
 
@@ -474,12 +524,19 @@ pub fn export_package_ast(
     let mut success_count = 0;
     let mut failed_files = Vec::new();
     let mut output_files = Vec::new();
+    let mut diagnostics = Vec::new();
 
-    for result in results {
+    for (file, result) in files.iter().zip(results) {
         match result {
-            Ok(output_path) => {
+            Ok((output_path, file_diagnostics)) => {
                 success_count += 1;
                 output_files.push(output_path);
+                if !file_diagnostics.is_empty() {
+                    diagnostics.push(FileDiagnostics {
+                        file: file.clone(),
+                        diagnostics: file_diagnostics,
+                    });
+                }
             }
             Err((input_path, message)) => {
                 failed_files.push((input_path, message));
@@ -492,6 +549,7 @@ pub fn export_package_ast(
         failed_files,
         output_files,
         skipped_internal: Vec::new(),
+        diagnostics,
     })
 }
 
@@ -500,12 +558,12 @@ fn export_single_file(
     input: &Path,
     root: &Path,
     output_dir: &Path,
-) -> std::result::Result<PathBuf, (PathBuf, String)> {
-    let export = || -> std::result::Result<PathBuf, String> {
+) -> std::result::Result<(PathBuf, Vec<rd2qmd_source::Diagnostic>), (PathBuf, String)> {
+    let export = || -> std::result::Result<(PathBuf, Vec<rd2qmd_source::Diagnostic>), String> {
         let content = fs::read_to_string(input).map_err(|e| e.to_string())?;
 
         let parsed = rd2qmd_source::parse(&content).map_err(|e| format!("Parse error: {e}"))?;
-        let doc = parsed.document().clone();
+        let (doc, diagnostics) = parsed.into_parts();
         let source_files = extract_rd_metadata(&doc).source_files;
 
         let source = input
@@ -527,7 +585,7 @@ fn export_single_file(
         // Write output
         fs::write(&output_path, json).map_err(|e| e.to_string())?;
 
-        Ok(output_path)
+        Ok((output_path, diagnostics))
     };
 
     export().map_err(|message| (input.to_path_buf(), message))
@@ -545,99 +603,102 @@ fn convert_single_file(
     package: &RdPackage,
     options: &PackageConvertOptions,
 ) -> ConvertOutcome {
-    let convert = || -> std::result::Result<PathBuf, ConvertError> {
-        // Read and parse the input file (Rd or AST JSON, depending on package.format)
-        let (doc, source_files) = load_document(input, package.format)
-            .map_err(|e| ConvertError::Failed(e.to_string()))?;
+    let convert =
+        || -> std::result::Result<(PathBuf, Vec<rd2qmd_source::Diagnostic>), ConvertError> {
+            // Read and parse the input file (Rd or AST JSON, depending on package.format)
+            let (doc, source_files, diagnostics) = load_document(input, package.format)
+                .map_err(|e| ConvertError::Failed(e.to_string()))?;
 
-        // Check for \keyword{internal} - skip unless include_internal is set
-        if !options.include_internal && has_keyword_internal(&doc) {
-            return Err(ConvertError::SkipInternal);
-        }
-
-        // Build converter options with alias map. Unless overridden, the
-        // internal link template is derived from the output file extension.
-        let internal_link_url = options
-            .internal_link_url
-            .clone()
-            .unwrap_or_else(|| format!("{{file}}.{}", options.output_extension));
-        let converter_options = RdToMdastOptions {
-            include_title_heading: !options.frontmatter,
-            internal_link_url: Some(internal_link_url),
-            alias_map: Some(package.alias_index.clone()),
-            unqualified_link_url: options.unqualified_link_url.clone(),
-            package_urls: options.package_urls.clone(),
-            external_link_url: options.external_link_url.clone(),
-            exec_dontrun: options.exec_dontrun,
-            exec_donttest: options.exec_donttest,
-            quarto_code_blocks: options.quarto_code_blocks,
-            arguments_format: options.arguments_format.clone(),
-            include_html_output: options.include_html_output,
-            prefer_ascii_math: options.prefer_ascii_math,
-        };
-
-        // Convert to mdast
-        let mdast = rd_to_mdast_with_options(&doc, &converter_options);
-
-        // Extract title and name for frontmatter
-        let title = doc.title().map(extract_text);
-        let name = doc.name().map(extract_text);
-
-        // Build pagetitle in pkgdown style: "<title> — <name>"
-        let pagetitle = if options.pagetitle {
-            match (&title, &name) {
-                (Some(t), Some(n)) => Some(format!("{} \u{2014} {}", t, n)),
-                _ => None,
+            // Check for \keyword{internal} - skip unless include_internal is set
+            if !options.include_internal && has_keyword_internal(&doc) {
+                return Err(ConvertError::SkipInternal(diagnostics));
             }
-        } else {
-            None
-        };
 
-        // Extract Rd metadata, including source files from roxygen2 comments
-        let metadata = rd2qmd_core::RdMetadata {
-            source_files,
-            ..extract_rd_metadata(&doc)
-        };
+            // Build converter options with alias map. Unless overridden, the
+            // internal link template is derived from the output file extension.
+            let internal_link_url = options
+                .internal_link_url
+                .clone()
+                .unwrap_or_else(|| format!("{{file}}.{}", options.output_extension));
+            let converter_options = RdToMdastOptions {
+                include_title_heading: !options.frontmatter,
+                internal_link_url: Some(internal_link_url),
+                alias_map: Some(package.alias_index.clone()),
+                unqualified_link_url: options.unqualified_link_url.clone(),
+                package_urls: options.package_urls.clone(),
+                external_link_url: options.external_link_url.clone(),
+                exec_dontrun: options.exec_dontrun,
+                exec_donttest: options.exec_donttest,
+                quarto_code_blocks: options.quarto_code_blocks,
+                arguments_format: options.arguments_format.clone(),
+                include_html_output: options.include_html_output,
+                prefer_ascii_math: options.prefer_ascii_math,
+            };
 
-        // Build writer options
-        let writer_options = WriterOptions {
-            frontmatter: if options.frontmatter {
-                Some(Frontmatter {
-                    title,
-                    pagetitle,
-                    format: None,
-                    metadata: Some(metadata),
-                })
+            // Convert to mdast
+            let mdast = rd_to_mdast_with_options(&doc, &converter_options);
+
+            // Extract title and name for frontmatter
+            let title = doc.title().map(extract_text);
+            let name = doc.name().map(extract_text);
+
+            // Build pagetitle in pkgdown style: "<title> — <name>"
+            let pagetitle = if options.pagetitle {
+                match (&title, &name) {
+                    (Some(t), Some(n)) => Some(format!("{} \u{2014} {}", t, n)),
+                    _ => None,
+                }
             } else {
                 None
-            },
-            quarto_code_blocks: options.quarto_code_blocks,
+            };
+
+            // Extract Rd metadata, including source files from roxygen2 comments
+            let metadata = rd2qmd_core::RdMetadata {
+                source_files,
+                ..extract_rd_metadata(&doc)
+            };
+
+            // Build writer options
+            let writer_options = WriterOptions {
+                frontmatter: if options.frontmatter {
+                    Some(Frontmatter {
+                        title,
+                        pagetitle,
+                        format: None,
+                        metadata: Some(metadata),
+                    })
+                } else {
+                    None
+                },
+                quarto_code_blocks: options.quarto_code_blocks,
+            };
+
+            // Convert to QMD string
+            let qmd = mdast_to_qmd(&mdast, &writer_options);
+
+            // Determine output path
+            let relative = input.strip_prefix(&package.root).unwrap_or(input);
+            let output_path = options
+                .output_dir
+                .join(relative)
+                .with_extension(&options.output_extension);
+
+            // Create parent directory if needed
+            if let Some(parent) = output_path.parent() {
+                fs::create_dir_all(parent).map_err(|e| ConvertError::Failed(e.to_string()))?;
+            }
+
+            // Write output
+            fs::write(&output_path, qmd).map_err(|e| ConvertError::Failed(e.to_string()))?;
+
+            Ok((output_path, diagnostics))
         };
 
-        // Convert to QMD string
-        let qmd = mdast_to_qmd(&mdast, &writer_options);
-
-        // Determine output path
-        let relative = input.strip_prefix(&package.root).unwrap_or(input);
-        let output_path = options
-            .output_dir
-            .join(relative)
-            .with_extension(&options.output_extension);
-
-        // Create parent directory if needed
-        if let Some(parent) = output_path.parent() {
-            fs::create_dir_all(parent).map_err(|e| ConvertError::Failed(e.to_string()))?;
-        }
-
-        // Write output
-        fs::write(&output_path, qmd).map_err(|e| ConvertError::Failed(e.to_string()))?;
-
-        Ok(output_path)
-    };
-
     match convert() {
-        Ok(path) => ConvertOutcome::Success(path),
-        Err(ConvertError::SkipInternal) => ConvertOutcome::SkippedInternal(input.to_path_buf()),
+        Ok((path, diagnostics)) => ConvertOutcome::Success(input.to_path_buf(), path, diagnostics),
+        Err(ConvertError::SkipInternal(diagnostics)) => {
+            ConvertOutcome::SkippedInternal(input.to_path_buf(), diagnostics)
+        }
         Err(ConvertError::Failed(msg)) => ConvertOutcome::Failed(input.to_path_buf(), msg),
     }
 }
@@ -680,7 +741,10 @@ fn collect_files(dir: &Path, recursive: bool, format: InputFormat) -> Result<Vec
 /// source files are extracted from roxygen2 header comments. With
 /// [`InputFormat::AstJson`], the file is decoded as an [`RdAstEnvelope`]
 /// instead, and its `source_files` field is used directly.
-fn load_document(path: &Path, format: InputFormat) -> Result<(RdDocument, Vec<String>)> {
+fn load_document(
+    path: &Path,
+    format: InputFormat,
+) -> Result<(RdDocument, Vec<String>, Vec<rd2qmd_source::Diagnostic>)> {
     let content = fs::read_to_string(path)?;
 
     match format {
@@ -689,16 +753,16 @@ fn load_document(path: &Path, format: InputFormat) -> Result<(RdDocument, Vec<St
                 file: path.to_path_buf(),
                 message: e.to_string(),
             })?;
-            let doc = parsed.document().clone();
+            let (doc, diagnostics) = parsed.into_parts();
             let source_files = extract_rd_metadata(&doc).source_files;
-            Ok((doc, source_files))
+            Ok((doc, source_files, diagnostics))
         }
         InputFormat::AstJson => {
             let envelope = RdAstEnvelope::from_json(&content).map_err(|e| PackageError::Parse {
                 file: path.to_path_buf(),
                 message: e.to_string(),
             })?;
-            Ok((envelope.document, envelope.source_files))
+            Ok((envelope.document, envelope.source_files, Vec::new()))
         }
     }
 }
@@ -716,7 +780,7 @@ fn build_alias_index(files: &[PathBuf], format: InputFormat) -> Result<HashMap<S
             .unwrap_or("")
             .to_string();
 
-        let (doc, _source_files) = load_document(file, format)?;
+        let (doc, _source_files, _diagnostics) = load_document(file, format)?;
 
         for alias in doc.aliases() {
             let alias = alias.trim().to_string();
@@ -1016,6 +1080,50 @@ An old deprecated function.
         // Both are hand-written, so no source_files
         assert!(new_topic.metadata.source_files.is_empty());
         assert!(old_topic.metadata.source_files.is_empty());
+    }
+
+    #[test]
+    fn test_package_results_retain_parser_diagnostics() {
+        let dir = tempdir().unwrap();
+        let content = "\\name{warning_topic}\n\\title{Warning topic}\n\\examples{\n#ifdef unix\n}\nx <- 1\n#endif\ny <- 2\n}";
+        let input = dir.path().join("warning_topic.Rd");
+        fs::write(&input, content).unwrap();
+
+        let package = RdPackage::from_directory(dir.path(), false).unwrap();
+        let options = PackageConvertOptions {
+            output_dir: dir.path().join("out"),
+            output_extension: "qmd".to_string(),
+            ..Default::default()
+        };
+        let conversion = convert_package(&package, &options).unwrap();
+        assert_eq!(conversion.diagnostics.len(), 1);
+        assert_eq!(conversion.diagnostics[0].file, input);
+        assert!(!conversion.diagnostics[0].diagnostics.is_empty());
+
+        let index = generate_topic_index_with_diagnostics(
+            &package,
+            &TopicIndexOptions {
+                output_extension: "qmd".to_string(),
+                include_internal: false,
+            },
+        )
+        .unwrap();
+        assert_eq!(index.diagnostics.len(), 1);
+        assert_eq!(index.diagnostics[0].file, input);
+    }
+
+    #[test]
+    fn test_export_results_retain_parser_diagnostics() {
+        let dir = tempdir().unwrap();
+        let content =
+            "\\name{warning_topic}\n\\title{Warning topic}\n\\examples{\n#ifdef unix\n}\n#endif\n}";
+        let input = dir.path().join("warning_topic.Rd");
+        fs::write(&input, content).unwrap();
+
+        let output = dir.path().join("ast");
+        let result = export_package_ast(dir.path(), false, &output, Some(1)).unwrap();
+        assert_eq!(result.diagnostics.len(), 1);
+        assert_eq!(result.diagnostics[0].file, input);
     }
 
     #[test]

@@ -291,7 +291,7 @@ pub fn collect_external_packages(package: &RdPackage) -> HashSet<String> {
     let mut packages = HashSet::new();
 
     for file in &package.files {
-        if let Ok((doc, _)) = crate::load_document(file, package.format) {
+        if let Ok((doc, _, _)) = crate::load_document(file, package.format) {
             collect_packages_from_nodes(doc.nodes(), &mut packages);
         }
     }

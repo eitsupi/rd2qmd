@@ -17,6 +17,7 @@ use rd2qmd_package::{
     ExternalLinkOptions as PackageExternalLinkOptions, FallbackReason, FullConvertResult,
     InputFormat as PackageInputFormat, PackageConvertOptions, PackageConverter, RdPackage,
     TopicIndexOptions, export_package_ast, generate_topic_index,
+    generate_topic_index_with_diagnostics,
 };
 
 /// Default URL template for qualified links (`\link[pkg]{topic}`) whose
@@ -26,6 +27,19 @@ const DEFAULT_EXTERNAL_LINK_URL: &str = "https://rdrr.io/pkg/{package}/man/{topi
 /// Default URL template for unqualified links (`\link{topic}`) that alias
 /// resolution cannot resolve
 const DEFAULT_UNQUALIFIED_LINK_URL: &str = "https://rdrr.io/r/base/{topic}.html";
+
+fn display_diagnostic(path: &Path, diagnostic: &rd2qmd_source::Diagnostic) {
+    let start = diagnostic.span().start();
+    eprintln!(
+        "{}:{}:{}: {:?}[{:?}]: {}",
+        path.display(),
+        start.line(),
+        start.column(),
+        diagnostic.severity(),
+        diagnostic.code(),
+        diagnostic.message(),
+    );
+}
 
 /// Options for external package link resolution
 #[derive(Debug, Clone)]
@@ -340,7 +354,7 @@ fn main() -> Result<()> {
     match cli.subcommand {
         Commands::Convert(args) => run_convert_command(&args, cli.verbose, cli.quiet),
         Commands::Parse(args) => run_parse_command(&args, cli.verbose, cli.quiet),
-        Commands::Index(args) => run_index_command(&args),
+        Commands::Index(args) => run_index_command(&args, cli.quiet),
         Commands::Init(args) => run_init_command(&args, cli.quiet),
     }
 }
@@ -585,6 +599,11 @@ fn convert_single_file(
 
         let parsed =
             rd2qmd_source::parse(&content).map_err(|e| anyhow::anyhow!("Parse error: {e}"))?;
+        if !quiet {
+            for diagnostic in parsed.diagnostics() {
+                display_diagnostic(input, diagnostic);
+            }
+        }
         let doc = parsed.document();
         let options = RdConvertOptions {
             frontmatter: FrontmatterOptions {
@@ -754,6 +773,14 @@ fn convert_directory(
         }
     }
 
+    if !quiet {
+        for file_diagnostics in &result.diagnostics {
+            for diagnostic in &file_diagnostics.diagnostics {
+                display_diagnostic(&file_diagnostics.file, diagnostic);
+            }
+        }
+    }
+
     // Report errors
     for (file, error) in &result.failed_files {
         eprintln!("Error converting {}: {}", file.display(), error);
@@ -888,6 +915,14 @@ fn run_parse_command(args: &ParseArgs, verbose: bool, quiet: bool) -> Result<()>
             .with_context(|| format!("Failed to scan directory: {}", input.display()))?;
 
         if !quiet {
+            for file_diagnostics in &result.diagnostics {
+                for diagnostic in &file_diagnostics.diagnostics {
+                    display_diagnostic(&file_diagnostics.file, diagnostic);
+                }
+            }
+        }
+
+        if !quiet {
             for path in &result.output_files {
                 println!("{}", path.display());
             }
@@ -935,6 +970,11 @@ fn parse_single_file(
         .with_context(|| format!("Failed to read: {}", input.display()))?;
 
     let parsed = rd2qmd_source::parse(&content).map_err(|e| anyhow::anyhow!("Parse error: {e}"))?;
+    if !quiet {
+        for diagnostic in parsed.diagnostics() {
+            display_diagnostic(input, diagnostic);
+        }
+    }
     let doc = parsed.document().clone();
     let source_files = extract_rd_metadata(&doc).source_files;
 
@@ -963,7 +1003,7 @@ fn parse_single_file(
 }
 
 /// Run the index subcommand: generate topic index JSON to stdout
-fn run_index_command(args: &IndexArgs) -> Result<()> {
+fn run_index_command(args: &IndexArgs, quiet: bool) -> Result<()> {
     if !args.input.is_dir() {
         anyhow::bail!("Input path is not a directory: {}", args.input.display());
     }
@@ -994,10 +1034,19 @@ fn run_index_command(args: &IndexArgs) -> Result<()> {
         include_internal: args.include_internal,
     };
 
-    let index = generate_topic_index(&package, &index_options)
+    let result = generate_topic_index_with_diagnostics(&package, &index_options)
         .with_context(|| "Failed to generate topic index")?;
 
-    let json = index
+    if !quiet {
+        for file_diagnostics in &result.diagnostics {
+            for diagnostic in &file_diagnostics.diagnostics {
+                display_diagnostic(&file_diagnostics.file, diagnostic);
+            }
+        }
+    }
+
+    let json = result
+        .index
         .to_json()
         .with_context(|| "Failed to serialize topic index")?;
 
