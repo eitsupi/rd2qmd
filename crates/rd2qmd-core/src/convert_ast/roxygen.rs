@@ -67,6 +67,15 @@ fn extract_language_from_div(html: &str) -> Option<Option<String>> {
         .strip_prefix(r#"<div class=""#)?
         .strip_suffix(r#"">"#)?;
 
+    // `strip_suffix` only anchors the LAST `">`, so a value containing an
+    // earlier `"` (the real attribute-value close) followed by nested
+    // markup ending in `">` would otherwise slip through with that markup
+    // folded into the "language". A genuine class value never contains
+    // quote or angle-bracket characters, so reject anything that does.
+    if class_value.contains(['"', '<', '>']) {
+        return None;
+    }
+
     let mut tokens = class_value.split_whitespace();
     match (tokens.next(), tokens.next(), tokens.next()) {
         (Some("sourceCode"), None, None) => Some(None),
@@ -141,6 +150,9 @@ mod tests {
 }\if{html}{\out{</div>}}"#
                 .to_owned(),
             r#"\if{html}{\out{<div title=' class="sourceCode r"'>}}\preformatted{code
+}\if{html}{\out{</div>}}"#
+                .to_owned(),
+            r#"\if{html}{\out{<div class="sourceCode r"><span>">}}\preformatted{code
 }\if{html}{\out{</div>}}"#
                 .to_owned(),
         ];
