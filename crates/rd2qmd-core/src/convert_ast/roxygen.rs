@@ -51,44 +51,29 @@ fn recover_out_text(nodes: &[RdNode]) -> String {
     flatten_verbatim_leaves(nodes).unwrap_or_else(|error| error.recovered_text().to_owned())
 }
 
+/// Recognizes only the exact opening-tag shape roxygen2 emits:
+/// `<div class="sourceCode LANG">`, `<div class="sourceCode">`, or the bare
+/// `<div class="r">` used for R6 method-usage docs. This deliberately does
+/// not parse general HTML — roxygen2 is the sole realistic producer of this
+/// string (it only ever reaches here as `\out{}` content immediately
+/// preceding a `\preformatted{}`/closing-`\if` pair), so matching its exact
+/// grammar closes off the whole class of nested-tag/quoted-attribute tricks
+/// a general attribute scanner would have to keep chasing. If roxygen2 ever
+/// changes its output shape, this should fall through until the new shape
+/// is explicitly supported, not be loosened to parse arbitrary HTML.
 fn extract_language_from_div(html: &str) -> Option<Option<String>> {
-    let after_tag = html.trim_start().strip_prefix("<div")?;
-    match after_tag.chars().next() {
-        Some(c) if c.is_whitespace() || c == '>' => {}
-        _ => return None,
-    }
+    let class_value = html
+        .trim()
+        .strip_prefix(r#"<div class=""#)?
+        .strip_suffix(r#"">"#)?;
 
-    let class_start = find_class_attribute(after_tag)?;
-    let after_class = &after_tag[class_start + "class=\"".len()..];
-    let class_end = after_class.find('"')?;
-    let class_value = &after_class[..class_end];
-
-    let tokens: Vec<&str> = class_value.split_whitespace().collect();
-    match tokens.as_slice() {
-        ["sourceCode"] => Some(None),
-        ["sourceCode", language] => Some(Some((*language).to_owned())),
-        ["r"] => Some(Some("r".to_owned())),
+    let mut tokens = class_value.split_whitespace();
+    match (tokens.next(), tokens.next(), tokens.next()) {
+        (Some("sourceCode"), None, None) => Some(None),
+        (Some("sourceCode"), Some(language), None) => Some(Some(language.to_owned())),
+        (Some("r"), None, None) => Some(Some("r".to_owned())),
         _ => None,
     }
-}
-
-/// Finds a genuine `class="` attribute, rejecting substring collisions such
-/// as `data-class="` by requiring the match to be preceded by whitespace
-/// (i.e. it starts a new attribute rather than continuing a longer name).
-fn find_class_attribute(html: &str) -> Option<usize> {
-    let mut search_from = 0;
-    while let Some(relative) = html[search_from..].find("class=\"") {
-        let index = search_from + relative;
-        let at_attribute_boundary = html[..index]
-            .chars()
-            .next_back()
-            .is_none_or(char::is_whitespace);
-        if at_attribute_boundary {
-            return Some(index);
-        }
-        search_from = index + 1;
-    }
-    None
 }
 
 fn is_closing_div(html: &str) -> bool {
@@ -150,6 +135,12 @@ mod tests {
 }\if{html}{\out{</div>}}"#
                 .to_owned(),
             r#"\if{html}{\out{<div data-class="sourceCode r">}}\preformatted{code
+}\if{html}{\out{</div>}}"#
+                .to_owned(),
+            r#"\if{html}{\out{<div><span class="sourceCode r">}}\preformatted{code
+}\if{html}{\out{</div>}}"#
+                .to_owned(),
+            r#"\if{html}{\out{<div title=' class="sourceCode r"'>}}\preformatted{code
 }\if{html}{\out{</div>}}"#
                 .to_owned(),
         ];
