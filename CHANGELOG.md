@@ -2,12 +2,32 @@
 
 ## [Unreleased]
 
+## [0.5.0-alpha.1] - 2026-07-21
+
+### Changed
+
+- **Breaking:** Migrate Rd parsing from the in-tree `rd-parser` crate to `rd-ast`/`rd-source` from the [r-documentation-rs](<https://github.com/eitsupi/r-documentation-rs>) (#50):
+  - `rd2qmd-core`'s public API now operates directly on `rd_ast::RdDocument` (`convert_rd_document`, `rd_to_mdast`); the previous `RdConverter`/`convert_rd_content` API and all `rd_parser` re-exports are removed.
+  - Bump the AST JSON envelope format version from 1 to 2 to match the new document shape.
+  - Remove the `lifecycle` and `roxygen` Cargo library feature flags; roxygen2 fenced-code-block detection is now always enabled.
+- Recoverable parser diagnostics are now surfaced end-to-end through the CLI, package converter, and topic index instead of being silently dropped. (#50)
+
+### Added
+
+- Add `RdConvertOptions::source_files_override` so library callers converting an externally produced `RdAstEnvelope` can preserve its authoritative `source_files` instead of having it silently re-derived from the AST. (#50)
+
 ### Fixed
 
-- Complete uniform suppression of the duplicate Rd title heading when YAML frontmatter is enabled across all output formats.
-- Preserve special-character macros, encoded text, and link/S4-class/DOI display text when extracting frontmatter metadata.
-- Enable a TLS backend for `reqwest` so external link resolution can actually fetch HTTPS `pkgdown.yml` sites instead of silently failing.
-- Escape inline code spans that start with `r` plus whitespace so Quarto's knitr engine doesn't misinterpret literal code as executable inline R.
+- Complete uniform suppression of the duplicate Rd title heading when YAML frontmatter is enabled across all output formats. (#49)
+- Preserve special-character macros, encoded text, and link/S4-class/DOI display text when extracting frontmatter metadata. (#49)
+- Enable a TLS backend for `reqwest` so external link resolution can actually fetch HTTPS `pkgdown.yml` sites instead of silently failing. (#49)
+- Escape inline code spans that start with `r` plus whitespace so Quarto's knitr engine doesn't misinterpret literal code as executable inline R. (#49)
+- Fix several conversion bugs found during the rd-parser migration review (#50):
+  - Table-cell/equation whitespace handling now collapses only line endings, preserving intentional same-line spacing and ASCII-equation layout.
+  - Link/image destinations containing whitespace, control characters, angle brackets, or parentheses are now wrapped in `<...>` for valid CommonMark; titles have line endings flattened and quotes/backslashes escaped.
+  - `\tabular`, `\describe`, and `\preformatted` content nested inside `\arguments` is no longer silently dropped under the grid-table/pipe-table formats, and a list item's later block children are no longer dropped.
+  - Pipe characters in table cells (including tables and definition lists nested inside `\arguments`) are now escaped correctly instead of being corrupted.
+  - `\method`/`\S3method`/`\S4method` appearing outside `\usage` now render as their bare generic call instead of being silently dropped.
 
 ## [0.4.0] - 2026-07-05
 

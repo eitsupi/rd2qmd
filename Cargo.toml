@@ -4,7 +4,7 @@ members = ["crates/*"]
 default-members = ["crates/rd2qmd-cli"]
 
 [workspace.package]
-version = "0.4.0"
+version = "0.5.0-alpha.1"
 edition = "2024"
 rust-version = "1.88.0"
 license = "MIT"
@@ -47,10 +47,10 @@ rd-source = "=0.0.1"
 insta = { version = "1", features = ["yaml"] }
 
 # Internal crates
-rd2qmd-mdast = { version = "0.4.0", path = "crates/rd2qmd-mdast" }
-rd2qmd-core = { version = "0.4.0", path = "crates/rd2qmd-core" }
-rd2qmd-package = { version = "0.4.0", path = "crates/rd2qmd-package" }
-rd2qmd-source = { version = "0.4.0", path = "crates/rd2qmd-source" }
+rd2qmd-mdast = { version = "0.5.0-alpha.1", path = "crates/rd2qmd-mdast" }
+rd2qmd-core = { version = "0.5.0-alpha.1", path = "crates/rd2qmd-core" }
+rd2qmd-package = { version = "0.5.0-alpha.1", path = "crates/rd2qmd-package" }
+rd2qmd-source = { version = "0.5.0-alpha.1", path = "crates/rd2qmd-source" }
 
 # The profile that 'dist' will build with
 [profile.dist]
