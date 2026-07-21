@@ -333,15 +333,67 @@ fn flatten_block_node_for_table_cell(node: &Node) -> Vec<Node> {
             let flattened = escape_unescaped_pipes(&replace_line_endings_with_space(&markdown));
             result.push(Node::Html(Html { value: flattened }));
         }
-        Node::DefinitionList(_) | Node::Math(_) | Node::Heading(_) => {
+        Node::DefinitionList(list) => {
+            // Unlike `Math`/`Heading` below, a `\describe{}` item's body is
+            // produced by `convert_block_content` (see the `RdTag::Describe`
+            // arm of `convert_block`), so it can itself contain a nested
+            // `Table` whose cells were *already* escaped once by
+            // `sanitize_table_cell_inline_nodes` inside `convert_tabular`.
+            // Serializing the whole subtree to one string and then
+            // blind-escaping it (the old approach) would double-escape
+            // those pre-escaped pipes. Recurse per child instead -- exactly
+            // like the `List` arm above -- so each nested node picks its
+            // own correct escaping rule (a nested `Table` gets parity-aware
+            // treatment via this same match, raw leaves still get blind
+            // escaping).
+            // Pair each term with its following description(s) -- mirroring
+            // `write_definition_list`'s own term/description grouping --
+            // rather than inserting a `<br>` between every adjacent child,
+            // which would split a "term: description" pair across a break.
+            let mut i = 0;
+            let mut first_entry = true;
+            while i < list.children.len() {
+                let Node::DefinitionTerm(term) = &list.children[i] else {
+                    i += 1;
+                    continue;
+                };
+                if !first_entry {
+                    result.push(Node::Html(Html {
+                        value: " <br>".to_owned(),
+                    }));
+                }
+                first_entry = false;
+                extend_table_cell_inline(&mut result, &term.children);
+                result.push(Node::text(": "));
+                i += 1;
+
+                let mut first_desc_child = true;
+                while let Some(Node::DefinitionDescription(description)) = list.children.get(i) {
+                    for desc_child in &description.children {
+                        if !first_desc_child {
+                            result.push(Node::Html(Html {
+                                value: " <br>".to_owned(),
+                            }));
+                        }
+                        first_desc_child = false;
+                        result.extend(flatten_block_node_for_table_cell(desc_child));
+                    }
+                    i += 1;
+                }
+            }
+        }
+        Node::Math(_) | Node::Heading(_) => {
             // Same graceful-degradation approach as `Table` above, but
-            // these three variants are never pre-escaped by
-            // `sanitize_table_cell_inline_nodes` before reaching here, so
-            // any backslash already present is genuine content (e.g.
-            // semantic TeX in a `\deqn`). Escape blindly, for the same
-            // reason as the `Code` arm above: this preserves a literal
-            // backslash in the rendered output instead of letting the
-            // outer pipe-table row splitter silently consume it.
+            // these two variants are never pre-escaped by
+            // `sanitize_table_cell_inline_nodes` before reaching here (a
+            // `Heading` here only ever holds a nested `\section`'s inline
+            // title text, never a nested block -- see
+            // `convert_section_like_block`), so any backslash already
+            // present is genuine content (e.g. semantic TeX in a `\deqn`).
+            // Escape blindly, for the same reason as the `Code` arm above:
+            // this preserves a literal backslash in the rendered output
+            // instead of letting the outer pipe-table row splitter silently
+            // consume it.
             let markdown = node_to_markdown_string(node);
             let flattened = replace_line_endings_with_space(&markdown).replace('|', "\\|");
             result.push(Node::Html(Html { value: flattened }));
@@ -2259,6 +2311,52 @@ mod tests {
             }
         }
         count
+    }
+
+    #[test]
+    fn pipe_table_tabular_nested_in_describe_pipe_is_not_double_escaped() {
+        // Regression test for roborev job 264: `flatten_block_node_for_table_cell`'s
+        // `DefinitionList` arm used to serialize the whole `\describe{}`
+        // subtree to one string and blind-escape it, doubling the escape on
+        // a `Table` nested inside a `\describe` item's body (already
+        // escaped once by `convert_tabular`'s cell sanitization) and
+        // corrupting the outer pipe-table row once the doubled backslash
+        // was itself consumed by CommonMark's backslash-escape processing.
+        let table = tagged(
+            RdTag::Tabular,
+            vec![group(vec![text("l")]), group(vec![text("a | b")])],
+        );
+        let describe = tagged(
+            RdTag::Describe,
+            vec![described_item(vec![text("key")], vec![table])],
+        );
+        let document = RdDocument::new(vec![tagged(
+            RdTag::Arguments,
+            vec![described_item(vec![text("describe_arg")], vec![describe])],
+        )]);
+        let arguments: Vec<_> = document.arguments().collect();
+        let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
+        let markdown = mdast_to_qmd(
+            &Root::new(converted),
+            &WriterOptions {
+                frontmatter: None,
+                quarto_code_blocks: true,
+            },
+        );
+        let row = markdown
+            .lines()
+            .find(|line| line.contains("describe_arg"))
+            .expect("expected the argument row line");
+
+        assert!(
+            row.starts_with("| `describe_arg` |"),
+            "argument-name column boundary was corrupted, got: {row:?}"
+        );
+        assert_eq!(
+            count_unescaped_pipes(row),
+            3,
+            "expected exactly 3 unescaped pipes (outer 2-column row delimiters), got: {row:?}"
+        );
     }
 
     #[test]

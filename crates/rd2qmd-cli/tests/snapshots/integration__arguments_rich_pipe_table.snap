@@ -27,7 +27,7 @@ arguments_rich(x, method, describe_arg, table_arg, pre_only, pre_with_intro,
 |:---|:---|
 | `x` | A basic argument for comparison. |
 | `method` | The method to use, described as a nested list: <br>- `"a"`: Use method A, the default. <br>- `"b"`: Use method B instead. |
-| `describe_arg` | The method to use, described with a definition list: <br>"a" :   Use method A.  "b" :   Use method B. |
+| `describe_arg` | The method to use, described with a definition list: <br>"a": Use method A. <br>"b": Use method B. |
 | `table_arg` | The argument. See the table: <br>\|   Col1  \|  Col2  \| \|:---\|:---\| \|   a  \|  1  \| \|   b  \|  2  \| |
 | `pre_only` | `result <- foo(x) print(result) ` |
 | `pre_with_intro` | Example usage: <br>`result <- foo(x) print(result) ` |
