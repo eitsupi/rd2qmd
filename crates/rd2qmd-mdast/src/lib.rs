@@ -26,7 +26,10 @@ pub use mdast::{
     Heading, Html, Image, InlineCode, InlineMath, Link, List, ListItem, Math, Node, Paragraph,
     Root, Strong, Table, TableCell, TableRow, Text,
 };
-pub use writer::{Frontmatter, RdMetadata, WriterOptions, mdast_to_qmd};
+pub use writer::{
+    Frontmatter, RdMetadata, WriterOptions, escape_link_title, format_link_destination,
+    mdast_to_qmd,
+};
 
 /// Format an inline code value as a Markdown code span, with safe backtick fencing.
 ///

@@ -55,6 +55,32 @@ pub fn mdast_to_qmd(root: &Root, options: &WriterOptions) -> String {
     writer.write_root(root)
 }
 
+/// Format a URL as a valid CommonMark link destination.
+///
+/// Line endings are flattened to spaces. Destinations containing ASCII
+/// whitespace, ASCII control characters, or angle brackets use the bracketed
+/// destination form, with angle brackets escaped inside it.
+pub fn format_link_destination(url: &str) -> String {
+    let url = replace_line_endings_with_space(url);
+    if url
+        .chars()
+        .any(|c| c.is_ascii_whitespace() || c.is_ascii_control() || matches!(c, '<' | '>'))
+    {
+        format!("<{}>", url.replace('<', "\\<").replace('>', "\\>"))
+    } else {
+        url
+    }
+}
+
+/// Escape text for a double-quoted Markdown link title.
+pub fn escape_link_title(title: &str) -> String {
+    title.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+fn replace_line_endings_with_space(value: &str) -> String {
+    value.replace("\r\n", " ").replace(['\r', '\n'], " ")
+}
+
 /// QMD writer state
 struct Writer<'a> {
     options: &'a WriterOptions,
@@ -601,10 +627,10 @@ impl<'a> Writer<'a> {
             self.write_node(child);
         }
         self.output.push_str("](");
-        self.output.push_str(&l.url);
+        self.output.push_str(&format_link_destination(&l.url));
         if let Some(title) = &l.title {
             self.output.push_str(" \"");
-            self.output.push_str(title);
+            self.output.push_str(&escape_link_title(title));
             self.output.push('"');
         }
         self.output.push(')');
@@ -614,10 +640,10 @@ impl<'a> Writer<'a> {
         self.output.push_str("![");
         self.output.push_str(&img.alt);
         self.output.push_str("](");
-        self.output.push_str(&img.url);
+        self.output.push_str(&format_link_destination(&img.url));
         if let Some(title) = &img.title {
             self.output.push_str(" \"");
-            self.output.push_str(title);
+            self.output.push_str(&escape_link_title(title));
             self.output.push('"');
         }
         self.output.push(')');
@@ -917,6 +943,57 @@ mod tests {
     }
 
     #[test]
+    fn test_link_destinations_are_commonmark_safe() {
+        let mut lf_url = String::from(r"https://example.com/a");
+        lf_url.push('\n');
+        lf_url.push('b');
+
+        let mut crlf_url = String::from(r"https://example.com/a");
+        crlf_url.push('\r');
+        crlf_url.push('\n');
+        crlf_url.push('b');
+
+        let mut tab_url = String::from(r"https://example.com/a");
+        tab_url.push('\t');
+        tab_url.push('b');
+        let tab_expected = format!(r"[Example](<https://example.com/a{}b>)", '\t');
+
+        let cases = [
+            (
+                String::from(r"https://example.com/path"),
+                String::from(r"[Example](https://example.com/path)"),
+            ),
+            (
+                String::from(r"https://example.com/a b"),
+                String::from(r"[Example](<https://example.com/a b>)"),
+            ),
+            (
+                lf_url,
+                String::from(r"[Example](<https://example.com/a b>)"),
+            ),
+            (
+                crlf_url,
+                String::from(r"[Example](<https://example.com/a b>)"),
+            ),
+            (
+                String::from(r"https://example.com/<a>"),
+                String::from(r"[Example](<https://example.com/\<a\>>)"),
+            ),
+            (tab_url, tab_expected),
+        ];
+
+        for (url, mut expected) in cases {
+            let root = Root::new(vec![Node::paragraph(vec![Node::link(
+                url,
+                vec![Node::text(r"Example")],
+            )])]);
+            let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+            expected.push('\n');
+            assert_eq!(qmd, expected);
+        }
+    }
+
+    #[test]
     fn test_link_autolink() {
         // A link whose only child is a text equal to its URL is written as
         // an autolink, but only when the URL is a valid CommonMark
@@ -941,11 +1018,14 @@ mod tests {
     fn test_link_with_title() {
         let root = Root::new(vec![Node::paragraph(vec![Node::link_with_title(
             "https://example.com",
-            "Example Site",
+            r#"Example "Site" \ docs"#,
             vec![Node::text("Example")],
         )])]);
         let qmd = mdast_to_qmd(&root, &WriterOptions::default());
-        assert!(qmd.contains("[Example](https://example.com \"Example Site\")"));
+        let mut expected =
+            String::from(r#"[Example](https://example.com "Example \"Site\" \\ docs")"#);
+        expected.push('\n');
+        assert_eq!(qmd, expected);
     }
 
     #[test]
@@ -961,12 +1041,15 @@ mod tests {
     #[test]
     fn test_image_with_title() {
         let root = Root::new(vec![Node::paragraph(vec![Node::image_with_title(
-            "image.png",
+            r"image file.png",
             "An image",
-            "Image Title",
+            r#"Image "Title" \ docs"#,
         )])]);
         let qmd = mdast_to_qmd(&root, &WriterOptions::default());
-        assert!(qmd.contains("![An image](image.png \"Image Title\")"));
+        let mut expected =
+            String::from(r#"![An image](<image file.png> "Image \"Title\" \\ docs")"#);
+        expected.push('\n');
+        assert_eq!(qmd, expected);
     }
 
     #[test]

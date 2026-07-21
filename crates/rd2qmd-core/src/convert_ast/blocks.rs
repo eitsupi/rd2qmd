@@ -462,7 +462,12 @@ fn inline_nodes_to_markdown(nodes: &[Node]) -> String {
                 result.push('[');
                 result.push_str(&inline_nodes_to_markdown(&link.children));
                 result.push_str("](");
-                result.push_str(&link.url);
+                result.push_str(&rd2qmd_mdast::format_link_destination(&link.url));
+                if let Some(title) = &link.title {
+                    result.push_str(" \"");
+                    result.push_str(&rd2qmd_mdast::escape_link_title(title));
+                    result.push('"');
+                }
                 result.push(')');
             }
             Node::InlineMath(math) => {
@@ -474,10 +479,10 @@ fn inline_nodes_to_markdown(nodes: &[Node]) -> String {
                 result.push_str("![");
                 result.push_str(&image.alt);
                 result.push_str("](");
-                result.push_str(&image.url);
+                result.push_str(&rd2qmd_mdast::format_link_destination(&image.url));
                 if let Some(title) = &image.title {
                     result.push_str(" \"");
-                    result.push_str(title);
+                    result.push_str(&rd2qmd_mdast::escape_link_title(title));
                     result.push('"');
                 }
                 result.push(')');
@@ -1347,35 +1352,67 @@ mod tests {
 
     #[test]
     fn pipe_table_sanitizer_replaces_link_title_line_endings() {
+        let mut url = String::from(r"url");
+        url.push('\n');
+        url.push_str(r"value");
+        let mut title = String::from(r"title");
+        title.push('\r');
+        title.push('\n');
+        title.push_str(r"value");
         let sanitized = sanitize_table_cell_inline_node(&Node::link_with_title(
-            "url\nvalue",
-            "title\r\nvalue",
-            vec![Node::text("link")],
+            url,
+            title,
+            vec![Node::text(r"link")],
         ));
+        let markdown = mdast_to_qmd(
+            &Root::new(vec![Node::paragraph(vec![sanitized])]),
+            &WriterOptions::default(),
+        );
 
-        assert!(matches!(
-            sanitized,
-            Node::Link(link)
-                if link.url == "url value"
-                    && link.title.as_deref() == Some("title value")
-        ));
+        let mut expected = String::from(r#"[link](<url value> "title value")"#);
+        expected.push('\n');
+        assert_eq!(markdown, expected);
     }
 
     #[test]
     fn pipe_table_sanitizer_replaces_image_field_line_endings() {
-        let sanitized = sanitize_table_cell_inline_node(&Node::image_with_title(
-            "url\rvalue",
-            "alt\nvalue",
-            "title\r\nvalue",
-        ));
+        let mut url = String::from(r"url");
+        url.push('\r');
+        url.push_str(r"value");
+        let mut alt = String::from(r"alt");
+        alt.push('\n');
+        alt.push_str(r"value");
+        let mut title = String::from(r"title");
+        title.push('\r');
+        title.push('\n');
+        title.push_str(r"value");
+        let sanitized = sanitize_table_cell_inline_node(&Node::image_with_title(url, alt, title));
+        let markdown = mdast_to_qmd(
+            &Root::new(vec![Node::paragraph(vec![sanitized])]),
+            &WriterOptions::default(),
+        );
 
-        assert!(matches!(
-            sanitized,
-            Node::Image(image)
-                if image.url == "url value"
-                    && image.alt == "alt value"
-                    && image.title.as_deref() == Some("title value")
-        ));
+        let mut expected = String::from(r#"![alt value](<url value> "title value")"#);
+        expected.push('\n');
+        assert_eq!(markdown, expected);
+    }
+
+    #[test]
+    fn legacy_table_cell_serializer_formats_link_and_image_destinations() {
+        let markdown = inline_nodes_to_markdown(&[
+            Node::link_with_title(
+                r"link url",
+                r#"link "title" \ docs"#,
+                vec![Node::text(r"link")],
+            ),
+            Node::text(r" "),
+            Node::image_with_title(r"image url", r"alt", r#"image "title" \ docs"#),
+        ]);
+
+        assert_eq!(
+            markdown,
+            r#"[link](<link url> "link \"title\" \\ docs") ![alt](<image url> "image \"title\" \\ docs")"#
+        );
     }
 
     #[test]
