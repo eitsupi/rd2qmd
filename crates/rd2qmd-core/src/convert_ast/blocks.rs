@@ -302,21 +302,48 @@ fn flatten_block_node_for_table_cell(node: &Node) -> Vec<Node> {
         Node::Code(code) => {
             // `\preformatted{}` content: pipe-table cells are single-line, so
             // render as an inline code span with line endings flattened.
-            // Pipes are escaped like every other inline-code sanitization
-            // path in this file (see `sanitize_table_cell_inline_node`):
-            // GFM table parsing splits on literal `|` even inside a code
-            // span, so an unescaped pipe here would still corrupt the row.
-            let value = escape_unescaped_pipes(&replace_line_endings_with_space(&code.value));
+            // This is raw content that was never touched by
+            // `sanitize_table_cell_inline_nodes`, so any backslash already
+            // present is genuine data (e.g. a literal `\|` in a regex or
+            // path), not pre-existing table escaping. Escape blindly:
+            // Pandoc's pipe-table row splitter consumes exactly one escaping
+            // backslash per `\|` before the code span is even parsed, so a
+            // *single* pre-existing backslash would be silently swallowed,
+            // dropping it from the displayed code. Adding one more backslash
+            // (`\|` -> `\\|`) makes the row splitter treat the pipe as
+            // literal *and* leaves one literal backslash behind in the
+            // rendered code -- verified empirically against Pandoc 3.7.
+            let value = replace_line_endings_with_space(&code.value).replace('|', "\\|");
             result.push(Node::inline_code(value));
         }
-        Node::Table(_) | Node::DefinitionList(_) | Node::Math(_) | Node::Heading(_) => {
-            // Structurally complex block content that cannot become simple
-            // inline nodes. Serialize through the real writer, then flatten
-            // the resulting markdown string to pipe-table-cell-safe form:
-            // this degrades gracefully (content is present, if not
-            // beautifully formatted) rather than vanishing.
+        Node::Table(_) => {
+            // Structurally complex block content that cannot become a
+            // simple inline node. Serialize through the real writer, then
+            // flatten to pipe-table-cell-safe text: this degrades
+            // gracefully (content is present, if not beautifully formatted)
+            // rather than vanishing. Unlike `Code`/`DefinitionList`/`Math`
+            // below, a nested table's cell content has *already* been
+            // escaped once by `sanitize_table_cell_inline_nodes` inside
+            // `convert_tabular` -- so this arm must use the parity-aware
+            // `escape_unescaped_pipes` (not a blind replace) to add
+            // protective escaping only to the table's own fresh delimiter
+            // pipes, without doubling the pre-existing escape and flipping
+            // it back to "unescaped" from the outer row-splitter's view.
             let markdown = node_to_markdown_string(node);
             let flattened = escape_unescaped_pipes(&replace_line_endings_with_space(&markdown));
+            result.push(Node::Html(Html { value: flattened }));
+        }
+        Node::DefinitionList(_) | Node::Math(_) | Node::Heading(_) => {
+            // Same graceful-degradation approach as `Table` above, but
+            // these three variants are never pre-escaped by
+            // `sanitize_table_cell_inline_nodes` before reaching here, so
+            // any backslash already present is genuine content (e.g.
+            // semantic TeX in a `\deqn`). Escape blindly, for the same
+            // reason as the `Code` arm above: this preserves a literal
+            // backslash in the rendered output instead of letting the
+            // outer pipe-table row splitter silently consume it.
+            let markdown = node_to_markdown_string(node);
+            let flattened = replace_line_endings_with_space(&markdown).replace('|', "\\|");
             result.push(Node::Html(Html { value: flattened }));
         }
         // `convert_block_content` (whose output, directly or via a
@@ -2232,6 +2259,60 @@ mod tests {
             }
         }
         count
+    }
+
+    #[test]
+    fn pipe_table_preformatted_pipe_preserves_backslash() {
+        // Regression test for roborev job 263: unlike a nested `\tabular`
+        // (already escaped once by `sanitize_table_cell_inline_nodes`),
+        // `\preformatted{}` content is raw and never pre-escaped, so a
+        // literal `\|` in the source is genuine data (e.g. a regex or file
+        // path) that must survive intact -- not table-generated escaping to
+        // be left alone. Verified empirically against Pandoc 3.7 that a
+        // *blind* re-escape (`\|` -> `\\|`) is what's required here: the
+        // pipe-table row splitter consumes exactly one backslash per `\|`
+        // before the code span is parsed, so anything less loses the
+        // original backslash from the rendered code.
+        let preformatted = tagged(RdTag::Preformatted, vec![text(r"a\|b")]);
+        let document = argument_document_with_description(vec![preformatted]);
+        let arguments: Vec<_> = document.arguments().collect();
+        let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
+        let markdown = mdast_to_qmd(
+            &Root::new(converted),
+            &WriterOptions {
+                frontmatter: None,
+                quarto_code_blocks: true,
+            },
+        );
+
+        assert!(
+            markdown.contains(r"`a\\|b`"),
+            "expected the literal backslash to survive in the rendered code span, got: {markdown:?}"
+        );
+    }
+
+    #[test]
+    fn pipe_table_math_pipe_preserves_backslash() {
+        // Regression test for roborev job 263: a `\deqn` block equation's
+        // LaTeX source is also never pre-escaped, so a literal `\|` (e.g.
+        // semantic TeX) must be preserved the same way as preformatted
+        // content, not treated as already-escaped table syntax.
+        let deqn = equation(r"a\|b", None);
+        let document = argument_document_with_description(vec![deqn]);
+        let arguments: Vec<_> = document.arguments().collect();
+        let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
+        let markdown = mdast_to_qmd(
+            &Root::new(converted),
+            &WriterOptions {
+                frontmatter: None,
+                quarto_code_blocks: true,
+            },
+        );
+
+        assert!(
+            markdown.contains(r"a\\|b"),
+            "expected the literal backslash to survive in the rendered math, got: {markdown:?}"
+        );
     }
 
     #[test]
