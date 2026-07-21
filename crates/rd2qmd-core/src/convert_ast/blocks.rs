@@ -108,13 +108,10 @@ fn convert_arguments_pipe(
     let mut rows = vec![header_row];
 
     for argument in arguments {
-        let term_text = argument_name(argument, context)
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ")
-            .replace('|', "\\|");
+        let term_text =
+            replace_line_endings_with_space(&argument_name(argument, context)).replace('|', "\\|");
         rows.push(Node::table_row(vec![
-            Node::table_cell(vec![Node::inline_code(term_text)]),
+            Node::table_cell(vec![Node::inline_code(term_text.trim())]),
             Node::table_cell(flatten_for_table_cell(argument.description, context)),
         ]));
     }
@@ -319,48 +316,34 @@ fn sanitize_table_cell_inline_nodes(nodes: &[Node]) -> Vec<Node> {
 fn sanitize_table_cell_inline_node(node: &Node) -> Node {
     let mut node = node.clone();
     match &mut node {
-        Node::Text(text) => text.value = text.value.replace('|', "\\|"),
-        Node::InlineCode(code) => {
-            code.value = code
-                .value
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ")
-                .replace('|', "\\|");
+        Node::Text(text) => {
+            text.value = replace_line_endings_with_space(&text.value).replace('|', "\\|");
         }
-        // \deqn reached through the inline path (e.g. a plain \tabular cell,
-        // or a conditional branch) always arrives as InlineMath now (see
-        // inline.rs), which can still carry raw newlines from multiline
-        // LaTeX; collapse it to one line same as the Math case below.
-        // Accepted limitation: this collapse is not TeX-comment-aware, so a `%` line
-        // comment can swallow later `\deqn` content; handling `\%` needs TeX-aware
-        // stripping for this narrow `\deqn`-in-`\tabular` case.
+        Node::InlineCode(code) => {
+            code.value = replace_line_endings_with_space(&code.value).replace('|', "\\|");
+        }
+        // Accepted limitation: flattening LaTeX line endings is not TeX-comment-aware.
+        // An unescaped `%` may therefore comment out content that originally followed
+        // on a later line; `\%` is a literal percent. Preserving TeX tokenization while
+        // producing a single-line pipe-table cell would require TeX-aware parsing.
         Node::InlineMath(math) => {
-            math.value = math
-                .value
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ")
-                .replace('|', "\\|");
+            math.value = replace_line_endings_with_space(&math.value).replace('|', "\\|");
         }
         Node::Math(math) => {
             return Node::InlineMath(rd2qmd_mdast::InlineMath {
-                value: math
-                    .value
-                    .split_whitespace()
-                    .collect::<Vec<_>>()
-                    .join(" ")
-                    .replace('|', "\\|"),
+                value: replace_line_endings_with_space(&math.value).replace('|', "\\|"),
             });
         }
         Node::Image(image) => {
-            image.url = image.url.replace('|', "\\|");
-            image.alt = image.alt.replace('|', "\\|");
+            image.url = replace_line_endings_with_space(&image.url).replace('|', "\\|");
+            image.alt = replace_line_endings_with_space(&image.alt).replace('|', "\\|");
             if let Some(title) = &mut image.title {
-                *title = title.replace('|', "\\|");
+                *title = replace_line_endings_with_space(title).replace('|', "\\|");
             }
         }
-        Node::Html(html) => html.value = html.value.replace('|', "\\|"),
+        Node::Html(html) => {
+            html.value = replace_line_endings_with_space(&html.value).replace('|', "\\|");
+        }
         Node::Break => {
             return Node::Html(Html {
                 value: "<br>".to_owned(),
@@ -373,7 +356,10 @@ fn sanitize_table_cell_inline_node(node: &Node) -> Node {
             strong.children = sanitize_table_cell_inline_nodes(&strong.children);
         }
         Node::Link(link) => {
-            link.url = link.url.replace('|', "\\|");
+            link.url = replace_line_endings_with_space(&link.url).replace('|', "\\|");
+            if let Some(title) = &mut link.title {
+                *title = replace_line_endings_with_space(title).replace('|', "\\|");
+            }
             link.children = sanitize_table_cell_inline_nodes(&link.children);
         }
         _ => {}
@@ -908,6 +894,14 @@ pub(super) fn recover_verbatim(nodes: &[RdNode]) -> String {
     flatten_verbatim_leaves(nodes).unwrap_or_else(|error| error.recovered_text().to_owned())
 }
 
+/// Replace line endings with a single space, leaving every other byte of
+/// whitespace (including same-line runs of spaces/tabs) untouched. Used
+/// wherever text must become single-line-safe (e.g. for a pipe-table row)
+/// without corrupting other meaningful whitespace, such as intentional code-alignment spacing or ASCII-equation layout.
+pub(super) fn replace_line_endings_with_space(value: &str) -> String {
+    value.replace("\r\n", " ").replace(['\r', '\n'], " ")
+}
+
 fn equation_text(nodes: &[RdNode], context: &InlineConversionContext<'_>) -> String {
     inline::extract_plain_text(&inline::convert_inline_nodes(nodes, context))
 }
@@ -1312,9 +1306,76 @@ mod tests {
         );
         let row = markdown
             .lines()
-            .find(|line| line.contains("x^2 + y^2"))
+            .find(|line| line.contains("x^2"))
             .expect("expected equation table row");
-        assert_eq!(row, "| `x^2 + y^2` |");
+        assert_eq!(row, "| `x^2 +  y^2` |");
+    }
+
+    #[test]
+    fn pipe_table_sanitizer_replaces_only_line_endings() {
+        let sanitized = sanitize_table_cell_inline_node(&Node::inline_code("a  b\tc\r\nd\re\n f"));
+        assert!(matches!(
+            sanitized,
+            Node::InlineCode(code) if code.value == "a  b\tc d e  f"
+        ));
+    }
+
+    #[test]
+    fn converts_multiline_out_in_tabular_cell_to_one_pipe_table_row() {
+        let table = tagged(
+            RdTag::Tabular,
+            vec![
+                group(vec![text("l")]),
+                group(vec![tagged(RdTag::Out, vec![text("first\nsecond")])]),
+            ],
+        );
+
+        let converted = convert_block_content(&[table], &context(false));
+        let markdown = mdast_to_qmd(
+            &Root::new(converted),
+            &WriterOptions {
+                frontmatter: None,
+                quarto_code_blocks: true,
+            },
+        );
+        let rows: Vec<_> = markdown
+            .lines()
+            .filter(|line| line.starts_with('|'))
+            .collect();
+        assert_eq!(rows, ["| first second |", "|:---|"]);
+    }
+
+    #[test]
+    fn pipe_table_sanitizer_replaces_link_title_line_endings() {
+        let sanitized = sanitize_table_cell_inline_node(&Node::link_with_title(
+            "url\nvalue",
+            "title\r\nvalue",
+            vec![Node::text("link")],
+        ));
+
+        assert!(matches!(
+            sanitized,
+            Node::Link(link)
+                if link.url == "url value"
+                    && link.title.as_deref() == Some("title value")
+        ));
+    }
+
+    #[test]
+    fn pipe_table_sanitizer_replaces_image_field_line_endings() {
+        let sanitized = sanitize_table_cell_inline_node(&Node::image_with_title(
+            "url\rvalue",
+            "alt\nvalue",
+            "title\r\nvalue",
+        ));
+
+        assert!(matches!(
+            sanitized,
+            Node::Image(image)
+                if image.url == "url value"
+                    && image.alt == "alt value"
+                    && image.title.as_deref() == Some("title value")
+        ));
     }
 
     #[test]
@@ -1612,10 +1673,10 @@ mod tests {
     }
 
     #[test]
-    fn pipe_table_sanitizer_collapses_multiline_inline_code() {
+    fn pipe_table_sanitizer_replaces_inline_code_line_endings() {
         let sanitized = sanitize_table_cell_inline_node(&Node::inline_code("first\n second"));
 
-        assert!(matches!(sanitized, Node::InlineCode(code) if code.value == "first second"));
+        assert!(matches!(sanitized, Node::InlineCode(code) if code.value == "first  second"));
     }
 
     #[test]

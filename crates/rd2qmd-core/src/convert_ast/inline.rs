@@ -26,8 +26,14 @@ pub(crate) struct InlineConversionContext<'a> {
     pub(crate) prefer_ascii_math: bool,
 }
 
+/// Replace equation line endings for inline-only output.
+///
+/// Accepted limitation: flattening LaTeX line endings is not TeX-comment-aware.
+/// An unescaped `%` may therefore comment out content that originally followed
+/// on a later line; `\%` is a literal percent. Preserving TeX tokenization while
+/// producing single-line output would require TeX-aware parsing.
 fn single_line_equation_text(value: &str) -> String {
-    value.split_whitespace().collect::<Vec<_>>().join(" ")
+    super::blocks::replace_line_endings_with_space(value)
 }
 
 /// Convert the inline nodes currently supported by the AST migration.
@@ -74,7 +80,7 @@ pub(crate) fn convert_inline_node(
             {
                 let ascii = super::blocks::recover_verbatim(ascii);
                 let ascii = single_line_equation_text(&ascii);
-                if !ascii.is_empty() {
+                if !ascii.trim().is_empty() {
                     return Node::inline_code(ascii);
                 }
             }
@@ -886,7 +892,7 @@ mod tests {
         };
 
         assert!(!code.value.contains('\n'));
-        assert_eq!(render(vec![Node::paragraph(vec![node])]), "`x^2 + y^2`\n");
+        assert_eq!(render(vec![Node::paragraph(vec![node])]), "`x^2 +  y^2`\n");
     }
 
     #[test]
@@ -905,7 +911,7 @@ mod tests {
         };
 
         assert!(!math.value.contains('\n'));
-        assert_eq!(render(vec![Node::paragraph(vec![node])]), "$x^2 + y^2$\n");
+        assert_eq!(render(vec![Node::paragraph(vec![node])]), "$x^2 +  y^2$\n");
     }
 
     #[test]
