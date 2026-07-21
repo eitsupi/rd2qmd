@@ -63,7 +63,7 @@ fn convert_arguments_pipe(
     let mut rows = vec![header_row];
 
     for argument in arguments {
-        let term_text = argument_name(argument, context);
+        let term_text = argument_name(argument, context).replace('|', "\\|");
         rows.push(Node::table_row(vec![
             Node::table_cell(vec![Node::inline_code(term_text.trim())]),
             Node::table_cell(flatten_for_table_cell(argument.description, context)),
@@ -252,6 +252,7 @@ fn sanitize_table_cell_inline_node(node: &Node) -> Node {
         Node::InlineCode(code) => code.value = code.value.replace('|', "\\|"),
         Node::InlineMath(math) => math.value = math.value.replace('|', "\\|"),
         Node::Image(image) => {
+            image.url = image.url.replace('|', "\\|");
             image.alt = image.alt.replace('|', "\\|");
             if let Some(title) = &mut image.title {
                 *title = title.replace('|', "\\|");
@@ -753,6 +754,7 @@ mod tests {
 
     use super::{
         BlockConversionContext, convert_arguments, convert_block_content, inline_nodes_to_markdown,
+        sanitize_table_cell_inline_node,
     };
     use crate::ArgumentsFormat;
     use crate::convert_ast::inline::LinkResolutionContext;
@@ -1141,6 +1143,40 @@ mod tests {
                 .children
                 .iter()
                 .any(|node| matches!(node, Node::InlineCode(code) if code.value == "a\\|b"))
+        );
+    }
+
+    #[test]
+    fn pipe_table_escapes_literal_pipes_in_argument_names() {
+        let document = RdDocument::new(vec![tagged(
+            RdTag::Arguments,
+            vec![described_item(vec![text("a|b")], vec![text("description")])],
+        )]);
+        let arguments: Vec<_> = document.arguments().collect();
+        let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
+
+        let [Node::Table(table)] = converted.as_slice() else {
+            panic!("expected one table")
+        };
+        let Node::TableRow(row) = &table.children[1] else {
+            panic!("expected argument row")
+        };
+        let Node::TableCell(argument) = &row.children[0] else {
+            panic!("expected argument cell")
+        };
+
+        assert!(
+            matches!(argument.children.as_slice(), [Node::InlineCode(code)] if code.value == "a\\|b")
+        );
+        assert_eq!(inline_nodes_to_markdown(&argument.children), "`a\\|b`");
+    }
+
+    #[test]
+    fn pipe_table_sanitizer_escapes_literal_pipes_in_image_urls() {
+        let sanitized = sanitize_table_cell_inline_node(&Node::image("path|name.png", "alt"));
+
+        assert!(
+            matches!(sanitized, Node::Image(image) if image.url == "path\\|name.png" && image.alt == "alt")
         );
     }
 
