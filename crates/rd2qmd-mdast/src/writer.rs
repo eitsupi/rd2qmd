@@ -78,6 +78,7 @@ pub fn format_link_destination(url: &str) -> String {
 
 /// Escape text for a double-quoted Markdown link title.
 pub fn escape_link_title(title: &str) -> String {
+    let title = replace_line_endings_with_space(title);
     title.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
@@ -1032,9 +1033,12 @@ mod tests {
 
     #[test]
     fn test_link_with_title() {
+        let mut title = String::from(r#"Example "Site""#);
+        title.push('\n');
+        title.push_str(r"\ docs");
         let root = Root::new(vec![Node::paragraph(vec![Node::link_with_title(
             "https://example.com",
-            r#"Example "Site" \ docs"#,
+            title,
             vec![Node::text("Example")],
         )])]);
         let qmd = mdast_to_qmd(&root, &WriterOptions::default());
@@ -1056,10 +1060,14 @@ mod tests {
 
     #[test]
     fn test_image_with_title() {
+        let mut title = String::from(r#"Image "Title""#);
+        title.push('\r');
+        title.push('\n');
+        title.push_str(r"\ docs");
         let root = Root::new(vec![Node::paragraph(vec![Node::image_with_title(
             r"image file.png",
             "An image",
-            r#"Image "Title" \ docs"#,
+            title,
         )])]);
         let qmd = mdast_to_qmd(&root, &WriterOptions::default());
         let mut expected =
