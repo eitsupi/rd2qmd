@@ -1,9 +1,0 @@
----
-source: crates/rd2qmd-core/src/lib.rs
-expression: result
----
-# User
-
-## Description
-
-See [`helper`](utils.qmd).
