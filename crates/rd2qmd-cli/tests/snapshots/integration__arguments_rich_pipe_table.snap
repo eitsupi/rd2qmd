@@ -27,17 +27,17 @@ arguments_rich(x, method, describe_arg, table_arg, pre_only, pre_with_intro,
 |:---|:---|
 | `x` | A basic argument for comparison. |
 | `method` | The method to use, described as a nested list: <br>- `"a"`: Use method A, the default. <br>- `"b"`: Use method B instead. |
-| `describe_arg` | The method to use, described with a definition list: <br> |
-| `table_arg` | The argument. See the table: <br> |
-| `pre_only` |  |
-| `pre_with_intro` | Example usage: <br> |
+| `describe_arg` | The method to use, described with a definition list: <br>"a" :   Use method A.  "b" :   Use method B. |
+| `table_arg` | The argument. See the table: <br>\|   Col1  \|  Col2  \| \|:---\|:---\| \|   a  \|  1  \| \|   b  \|  2  \| |
+| `pre_only` | `result <- foo(x) print(result) ` |
+| `pre_with_intro` | Example usage: <br>`result <- foo(x) print(result) ` |
 | `backtick_code` | Use `` `a` `` or ``` ``nested`` ``` for non-syntactic names. |
-| `fence_collision` | Code containing a fence-like line: <br> |
+| `fence_collision` | Code containing a fence-like line: <br>```` ```r x <- 1 ```  ```` |
 | `cr_break` | First line.<br> - hyphen.<br> * asterisk.<br> + plus.<br> 1. ordered period. |
 | `` `a` `` | A non-syntactic argument name with single backticks. |
 | ``` ``b`` ``` | A label with a double-backtick run. |
 | `multi_paragraph` | First paragraph. <br>Second paragraph of the description. |
-| `itemize_multi_paragraph` | Options: <br>- First paragraph. <br>- Another item. |
+| `itemize_multi_paragraph` | Options: <br>- First paragraph. <br>Second paragraph of this item. <br>- Another item. |
 
 ## Value
 

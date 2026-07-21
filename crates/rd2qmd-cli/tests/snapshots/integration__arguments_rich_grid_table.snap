@@ -43,7 +43,10 @@ arguments_rich(x, method, describe_arg, table_arg, pre_only, pre_with_intro,
 +---------------------------+--------------------------------------------------------------+
 | `table_arg`               | The argument. See the table:                                 |
 |                           |                                                              |
-|                           |                                                              |
+|                           | |   Col1  |  Col2  |                                         |
+|                           | |:---|:---|                                                  |
+|                           | |   a  |  1  |                                               |
+|                           | |   b  |  2  |                                               |
 +---------------------------+--------------------------------------------------------------+
 | `pre_only`                | ```                                                          |
 |                           | result <- foo(x)                                             |
@@ -71,10 +74,10 @@ arguments_rich(x, method, describe_arg, table_arg, pre_only, pre_with_intro,
 |                           | ````                                                         |
 +---------------------------+--------------------------------------------------------------+
 | `cr_break`                | First line.                                                  |
-|                           |  - hyphen.                                                   |
-|                           |  * asterisk.                                                 |
-|                           |  + plus.                                                     |
-|                           |  1. ordered period.                                          |
+|                           | \- hyphen.                                                   |
+|                           | \* asterisk.                                                 |
+|                           | \+ plus.                                                     |
+|                           | 1\. ordered period.                                          |
 +---------------------------+--------------------------------------------------------------+
 | `` `a` ``                 | A non-syntactic argument name with single backticks.         |
 +---------------------------+--------------------------------------------------------------+
@@ -87,8 +90,11 @@ arguments_rich(x, method, describe_arg, table_arg, pre_only, pre_with_intro,
 | `itemize_multi_paragraph` | Options:                                                     |
 |                           |                                                              |
 |                           | - First paragraph.                                           |
+|                           |                                                              |
+|                           | Second paragraph of this item.                               |
 |                           | - Another item.                                              |
 +---------------------------+--------------------------------------------------------------+
+
 ## Value
 
 Nothing of interest.

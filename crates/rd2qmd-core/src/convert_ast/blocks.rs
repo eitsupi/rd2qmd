@@ -255,38 +255,101 @@ fn flatten_for_table_cell(content: &[RdNode], context: &BlockConversionContext<'
                 value: " <br>".to_owned(),
             }));
         }
+        result.extend(flatten_block_node_for_table_cell(node));
+    }
 
-        match node {
-            Node::Paragraph(paragraph) => {
-                extend_table_cell_inline(&mut result, &paragraph.children);
-            }
-            Node::List(list) => {
-                for (j, item) in list.children.iter().enumerate() {
-                    if j > 0 {
-                        result.push(Node::Html(Html {
-                            value: " <br>".to_owned(),
-                        }));
-                    }
-                    if let Node::ListItem(item) = item {
-                        let marker = if list.ordered {
-                            format!("{}. ", j + 1)
-                        } else {
-                            "- ".to_owned()
-                        };
-                        result.push(Node::text(marker));
-                        for child in &item.children {
-                            if let Node::Paragraph(paragraph) = child {
-                                extend_table_cell_inline(&mut result, &paragraph.children);
-                                break;
-                            }
+    result
+}
+
+/// Flatten one block node -- either a top-level node produced by
+/// `convert_block_content`, or a child of a `ListItem` produced by the same
+/// function's list-handling arm -- into inline nodes safe to embed directly
+/// as a GFM pipe-table cell's children. Shared between the top level of
+/// [`flatten_for_table_cell`] and its own `Node::List` arm so a list item's
+/// non-paragraph child (e.g. a nested `\describe{}` or `\preformatted{}`)
+/// gets exactly the same treatment as a top-level block of that shape.
+fn flatten_block_node_for_table_cell(node: &Node) -> Vec<Node> {
+    let mut result = Vec::new();
+    match node {
+        Node::Paragraph(paragraph) => {
+            extend_table_cell_inline(&mut result, &paragraph.children);
+        }
+        Node::List(list) => {
+            for (j, item) in list.children.iter().enumerate() {
+                if j > 0 {
+                    result.push(Node::Html(Html {
+                        value: " <br>".to_owned(),
+                    }));
+                }
+                if let Node::ListItem(item) = item {
+                    let marker = if list.ordered {
+                        format!("{}. ", j + 1)
+                    } else {
+                        "- ".to_owned()
+                    };
+                    result.push(Node::text(marker));
+                    for (k, child) in item.children.iter().enumerate() {
+                        if k > 0 {
+                            result.push(Node::Html(Html {
+                                value: " <br>".to_owned(),
+                            }));
                         }
+                        result.extend(flatten_block_node_for_table_cell(child));
                     }
                 }
             }
-            _ => {}
+        }
+        Node::Code(code) => {
+            // `\preformatted{}` content: pipe-table cells are single-line, so
+            // render as an inline code span with line endings flattened.
+            // Pipes are escaped like every other inline-code sanitization
+            // path in this file (see `sanitize_table_cell_inline_node`):
+            // GFM table parsing splits on literal `|` even inside a code
+            // span, so an unescaped pipe here would still corrupt the row.
+            let value = replace_line_endings_with_space(&code.value).replace('|', "\\|");
+            result.push(Node::inline_code(value));
+        }
+        Node::Table(_) | Node::DefinitionList(_) | Node::Math(_) | Node::Heading(_) => {
+            // Structurally complex block content that cannot become simple
+            // inline nodes. Serialize through the real writer, then flatten
+            // the resulting markdown string to pipe-table-cell-safe form:
+            // this degrades gracefully (content is present, if not
+            // beautifully formatted) rather than vanishing.
+            let markdown = node_to_markdown_string(node);
+            let flattened = replace_line_endings_with_space(&markdown).replace('|', "\\|");
+            result.push(Node::Html(Html { value: flattened }));
+        }
+        // `convert_block_content` (whose output, directly or via a
+        // `ListItem`'s children, is the only input this helper ever sees)
+        // cannot produce any of these variants at this position: its
+        // producers are limited to `convert_paragraph` (Paragraph),
+        // `convert_block`'s match arms (List, DefinitionList, Code, Math,
+        // Table, and Heading via nested `\section`/`\subsection`), and the
+        // roxygen code-block path (Code). Keep this arm exhaustive (no
+        // wildcard) so a newly added `Node` variant fails to compile here
+        // instead of silently vanishing.
+        Node::ThematicBreak
+        | Node::Blockquote(_)
+        | Node::ListItem(_)
+        | Node::TableRow(_)
+        | Node::TableCell(_)
+        | Node::DefinitionTerm(_)
+        | Node::DefinitionDescription(_)
+        | Node::Text(_)
+        | Node::Emphasis(_)
+        | Node::Strong(_)
+        | Node::InlineCode(_)
+        | Node::Break
+        | Node::Link(_)
+        | Node::Image(_)
+        | Node::InlineMath(_)
+        | Node::Html(_) => {
+            debug_assert!(
+                false,
+                "convert_block_content cannot produce {node:?} as a top-level block node or list-item child"
+            );
         }
     }
-
     result
 }
 
@@ -387,7 +450,8 @@ fn nodes_to_markdown(nodes: &[Node]) -> String {
 
         match node {
             Node::Paragraph(paragraph) => {
-                result.push_str(&inline_nodes_to_markdown(&paragraph.children));
+                let text = inline_nodes_to_markdown(&paragraph.children);
+                result.push_str(&indent_cell_continuation(&text, ""));
             }
             Node::List(list) => {
                 if i > 0 && !result.ends_with("\n\n") {
@@ -404,10 +468,16 @@ fn nodes_to_markdown(nodes: &[Node]) -> String {
                             "- ".to_owned()
                         };
                         result.push_str(&marker);
-                        for child in &item.children {
-                            if let Node::Paragraph(paragraph) = child {
-                                result.push_str(&inline_nodes_to_markdown(&paragraph.children));
-                                break;
+                        for (k, child) in item.children.iter().enumerate() {
+                            if k > 0 {
+                                result.push_str("\n\n");
+                            }
+                            match child {
+                                Node::Paragraph(paragraph) => {
+                                    let text = inline_nodes_to_markdown(&paragraph.children);
+                                    result.push_str(&indent_cell_continuation(&text, ""));
+                                }
+                                other => result.push_str(&node_to_markdown_string(other)),
                             }
                         }
                     }
@@ -424,13 +494,38 @@ fn nodes_to_markdown(nodes: &[Node]) -> String {
                 result.push('\n');
                 result.push_str(&fence);
             }
-            Node::Math(_) | Node::DefinitionList(_) => {
+            Node::Math(_) | Node::DefinitionList(_) | Node::Table(_) | Node::Heading(_) => {
                 result.push_str(&node_to_markdown_string(node));
             }
-            _ => {
-                if let Some(text) = node_to_text(node) {
-                    result.push_str(&text);
-                }
+            // `convert_block_content` (this function's only caller-of-callers,
+            // via `convert_to_markdown_text`) cannot produce any of these
+            // variants as a top-level block node or list-item child: its
+            // producers are limited to `convert_paragraph` (Paragraph),
+            // `convert_block`'s match arms (List, DefinitionList, Code, Math,
+            // Table, and Heading via nested `\section`/`\subsection`), and the
+            // roxygen code-block path (Code). Keep this arm exhaustive (no
+            // wildcard) so a newly added `Node` variant fails to compile here
+            // instead of silently vanishing.
+            Node::ThematicBreak
+            | Node::Blockquote(_)
+            | Node::ListItem(_)
+            | Node::TableRow(_)
+            | Node::TableCell(_)
+            | Node::DefinitionTerm(_)
+            | Node::DefinitionDescription(_)
+            | Node::Text(_)
+            | Node::Emphasis(_)
+            | Node::Strong(_)
+            | Node::InlineCode(_)
+            | Node::Break
+            | Node::Link(_)
+            | Node::Image(_)
+            | Node::InlineMath(_)
+            | Node::Html(_) => {
+                debug_assert!(
+                    false,
+                    "convert_block_content cannot produce {node:?} as a top-level block node"
+                );
             }
         }
     }
@@ -1884,5 +1979,154 @@ mod tests {
     #[test]
     fn empty_arguments_return_no_nodes() {
         assert!(convert_arguments(&[], ArgumentsFormat::PipeTable, &context(false)).is_empty());
+    }
+
+    #[test]
+    fn pipe_table_preserves_describe_tabular_and_preformatted_content() {
+        // Regression test for Bug E: these three block shapes used to be
+        // silently discarded by `flatten_for_table_cell`'s catch-all arm.
+        let describe = tagged(
+            RdTag::Describe,
+            vec![described_item(
+                vec![text("nested term")],
+                vec![text("nested description")],
+            )],
+        );
+        let table = tagged(
+            RdTag::Tabular,
+            vec![group(vec![text("l")]), group(vec![text("table cell text")])],
+        );
+        let preformatted = tagged(RdTag::Preformatted, vec![text("preformatted text")]);
+        let document = argument_document_with_description(vec![describe, table, preformatted]);
+        let arguments: Vec<_> = document.arguments().collect();
+        let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
+        let markdown = mdast_to_qmd(
+            &Root::new(converted),
+            &WriterOptions {
+                frontmatter: None,
+                quarto_code_blocks: true,
+            },
+        );
+        let row = markdown
+            .lines()
+            .find(|line| line.contains("value"))
+            .expect("expected the argument row line");
+
+        assert!(
+            row.contains("nested term"),
+            "describe term missing, got: {row:?}"
+        );
+        assert!(
+            row.contains("nested description"),
+            "describe description missing, got: {row:?}"
+        );
+        assert!(
+            row.contains("table cell text"),
+            "tabular content missing, got: {row:?}"
+        );
+        assert!(
+            row.contains("preformatted text"),
+            "preformatted content missing, got: {row:?}"
+        );
+    }
+
+    #[test]
+    fn pipe_table_preserves_both_paragraphs_of_a_multi_paragraph_list_item() {
+        // Regression test for Bug B (pipe-table location): only the first
+        // paragraph of a multi-paragraph `\itemize` item used to survive.
+        let list = delimited_list(
+            RdTag::Itemize,
+            vec![vec![text("first paragraph\n\nsecond paragraph")]],
+        );
+        let document = argument_document_with_description(vec![list]);
+        let arguments: Vec<_> = document.arguments().collect();
+        let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
+        let markdown = mdast_to_qmd(
+            &Root::new(converted),
+            &WriterOptions {
+                frontmatter: None,
+                quarto_code_blocks: true,
+            },
+        );
+        let row = markdown
+            .lines()
+            .find(|line| line.contains("value"))
+            .expect("expected the argument row line");
+
+        assert!(row.contains("first paragraph"), "got: {row:?}");
+        assert!(row.contains("second paragraph"), "got: {row:?}");
+    }
+
+    #[test]
+    fn grid_table_preserves_tabular_content() {
+        // Regression test for Bug A: `Node::Table` used to be silently
+        // discarded by `nodes_to_markdown`'s catch-all arm.
+        let table = tagged(
+            RdTag::Tabular,
+            vec![group(vec![text("l")]), group(vec![text("table cell text")])],
+        );
+        let document = argument_document_with_description(vec![table]);
+        let arguments: Vec<_> = document.arguments().collect();
+        let converted = convert_arguments(&arguments, ArgumentsFormat::GridTable, &context(false));
+        let table_text = html_value(&converted);
+
+        assert!(
+            table_text.contains("table cell text"),
+            "got: {table_text:?}"
+        );
+    }
+
+    #[test]
+    fn grid_table_preserves_both_paragraphs_of_a_multi_paragraph_list_item() {
+        // Regression test for Bug B (grid-table location): only the first
+        // paragraph of a multi-paragraph `\itemize` item used to survive.
+        let list = delimited_list(
+            RdTag::Itemize,
+            vec![vec![text("first paragraph\n\nsecond paragraph")]],
+        );
+        let document = argument_document_with_description(vec![list]);
+        let arguments: Vec<_> = document.arguments().collect();
+        let converted = convert_arguments(&arguments, ArgumentsFormat::GridTable, &context(false));
+        let table_text = html_value(&converted);
+
+        assert!(
+            table_text.contains("first paragraph"),
+            "got: {table_text:?}"
+        );
+        assert!(
+            table_text.contains("second paragraph"),
+            "got: {table_text:?}"
+        );
+    }
+
+    #[test]
+    fn grid_table_escapes_list_marker_lookalikes_after_cr_break() {
+        // Regression test for Bug C: `\cr`-separated continuation lines that
+        // start with a Markdown list-marker-lookalike must be escaped so
+        // Pandoc doesn't reparse them as a nested list inside the grid-table
+        // cell.
+        let description = vec![
+            text("First line."),
+            tagged(RdTag::Cr, vec![]),
+            text(" - hyphen."),
+            tagged(RdTag::Cr, vec![]),
+            text(" * asterisk."),
+            tagged(RdTag::Cr, vec![]),
+            text(" + plus."),
+            tagged(RdTag::Cr, vec![]),
+            text(" 1. ordered period."),
+        ];
+        let document = argument_document_with_description(description);
+        let arguments: Vec<_> = document.arguments().collect();
+        let converted = convert_arguments(&arguments, ArgumentsFormat::GridTable, &context(false));
+        let table_text = html_value(&converted);
+
+        assert!(table_text.contains(r"\- hyphen."), "got: {table_text:?}");
+        assert!(table_text.contains(r"\* asterisk."), "got: {table_text:?}");
+        assert!(table_text.contains(r"\+ plus."), "got: {table_text:?}");
+        assert!(
+            table_text.contains(r"1\. ordered period."),
+            "got: {table_text:?}"
+        );
     }
 }

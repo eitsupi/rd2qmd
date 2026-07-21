@@ -203,7 +203,12 @@ impl<'a> Writer<'a> {
             Node::Image(img) => self.write_image(img),
             Node::Math(m) => self.write_math(m),
             Node::InlineMath(m) => self.write_inline_math(m),
-            Node::Html(h) => self.output.push_str(&h.value),
+            Node::Html(h) => {
+                self.output.push_str(&h.value);
+                if !h.value.is_empty() {
+                    self.at_line_start = h.value.ends_with('\n');
+                }
+            }
         }
     }
 
@@ -1381,6 +1386,25 @@ mod tests {
         let root = Root::new(vec![Node::html("<div>Raw HTML</div>")]);
         let qmd = mdast_to_qmd(&root, &WriterOptions::default());
         assert!(qmd.contains("<div>Raw HTML</div>"));
+    }
+
+    #[test]
+    fn test_html_not_ending_in_newline_gets_blank_line_before_next_block() {
+        // A raw HTML value that doesn't end in `\n` (e.g. a `tabled`-built
+        // grid table) must still leave a full blank line before the next
+        // top-level block, not just a single `\n`. Regression test for a bug
+        // where `write_node`'s `Node::Html` arm left `self.at_line_start`
+        // stale, so `ensure_blank_line` (which trusts that flag) between
+        // root children only emitted one newline instead of two.
+        let root = Root::new(vec![
+            Node::html("<div>no trailing newline</div>"),
+            Node::heading(2, vec![Node::text("Value")]),
+        ]);
+        let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+        assert!(
+            qmd.contains("<div>no trailing newline</div>\n\n## Value"),
+            "expected a blank line between HTML content and the next heading; got: {qmd:?}"
+        );
     }
 
     #[test]
