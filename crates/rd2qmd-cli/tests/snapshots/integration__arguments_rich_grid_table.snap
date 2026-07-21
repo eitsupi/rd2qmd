@@ -91,7 +91,7 @@ arguments_rich(x, method, describe_arg, table_arg, pre_only, pre_with_intro,
 |                           |                                                              |
 |                           | - First paragraph.                                           |
 |                           |                                                              |
-|                           | Second paragraph of this item.                               |
+|                           |   Second paragraph of this item.                             |
 |                           | - Another item.                                              |
 +---------------------------+--------------------------------------------------------------+
 

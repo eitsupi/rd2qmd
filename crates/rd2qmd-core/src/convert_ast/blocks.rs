@@ -306,7 +306,7 @@ fn flatten_block_node_for_table_cell(node: &Node) -> Vec<Node> {
             // path in this file (see `sanitize_table_cell_inline_node`):
             // GFM table parsing splits on literal `|` even inside a code
             // span, so an unescaped pipe here would still corrupt the row.
-            let value = replace_line_endings_with_space(&code.value).replace('|', "\\|");
+            let value = escape_unescaped_pipes(&replace_line_endings_with_space(&code.value));
             result.push(Node::inline_code(value));
         }
         Node::Table(_) | Node::DefinitionList(_) | Node::Math(_) | Node::Heading(_) => {
@@ -316,7 +316,7 @@ fn flatten_block_node_for_table_cell(node: &Node) -> Vec<Node> {
             // this degrades gracefully (content is present, if not
             // beautifully formatted) rather than vanishing.
             let markdown = node_to_markdown_string(node);
-            let flattened = replace_line_endings_with_space(&markdown).replace('|', "\\|");
+            let flattened = escape_unescaped_pipes(&replace_line_endings_with_space(&markdown));
             result.push(Node::Html(Html { value: flattened }));
         }
         // `convert_block_content` (whose output, directly or via a
@@ -467,17 +467,31 @@ fn nodes_to_markdown(nodes: &[Node]) -> String {
                         } else {
                             "- ".to_owned()
                         };
+                        let continuation = " ".repeat(marker.len());
                         result.push_str(&marker);
                         for (k, child) in item.children.iter().enumerate() {
                             if k > 0 {
                                 result.push_str("\n\n");
+                                result.push_str(&continuation);
                             }
                             match child {
                                 Node::Paragraph(paragraph) => {
                                     let text = inline_nodes_to_markdown(&paragraph.children);
-                                    result.push_str(&indent_cell_continuation(&text, ""));
+                                    result
+                                        .push_str(&indent_cell_continuation(&text, &continuation));
                                 }
-                                other => result.push_str(&node_to_markdown_string(other)),
+                                other => {
+                                    let text = node_to_markdown_string(other);
+                                    for (i, line) in text.split('\n').enumerate() {
+                                        if i > 0 {
+                                            result.push('\n');
+                                            if !line.is_empty() {
+                                                result.push_str(&continuation);
+                                            }
+                                        }
+                                        result.push_str(line);
+                                    }
+                                }
                             }
                         }
                     }
@@ -1002,6 +1016,32 @@ pub(super) fn replace_line_endings_with_space(value: &str) -> String {
     value.replace("\r\n", " ").replace(['\r', '\n'], " ")
 }
 
+/// Escape every `|` in `value` that is not already escaped by an
+/// immediately preceding odd-length run of backslashes. Used when
+/// flattening already-serialized Markdown (which may already contain
+/// correctly-escaped pipes from its own nested table-cell construction)
+/// into an outer pipe-table cell, so a pipe that's already escaped once
+/// doesn't get escaped a second time and re-exposed as an unescaped `|`
+/// once the outer escaping backslash is itself consumed by CommonMark's
+/// backslash-escape processing.
+fn escape_unescaped_pipes(value: &str) -> String {
+    let mut result = String::with_capacity(value.len());
+    let mut backslash_run = 0usize;
+    for ch in value.chars() {
+        if ch == '|' {
+            if backslash_run.is_multiple_of(2) {
+                result.push('\\');
+            }
+            result.push('|');
+            backslash_run = 0;
+        } else {
+            backslash_run = if ch == '\\' { backslash_run + 1 } else { 0 };
+            result.push(ch);
+        }
+    }
+    result
+}
+
 fn equation_text(nodes: &[RdNode], context: &InlineConversionContext<'_>) -> String {
     inline::extract_plain_text(&inline::convert_inline_nodes(nodes, context))
 }
@@ -1015,7 +1055,7 @@ mod tests {
 
     use super::{
         BlockConversionContext, convert_arguments, convert_block_content, convert_custom_section,
-        inline_nodes_to_markdown, sanitize_table_cell_inline_node,
+        convert_to_markdown_text, inline_nodes_to_markdown, sanitize_table_cell_inline_node,
     };
     use crate::ArgumentsFormat;
     use crate::convert_ast::document::build_custom_sections;
@@ -2097,6 +2137,101 @@ mod tests {
             table_text.contains("second paragraph"),
             "got: {table_text:?}"
         );
+    }
+
+    #[test]
+    fn grid_table_list_item_second_paragraph_is_indented_under_marker() {
+        // Regression test for Bug 1: a list item's continuation content
+        // (here, a second paragraph) must be indented under the marker
+        // column, or a grid-table cell's block-level Markdown parser stops
+        // treating it as part of the same list item.
+        let list = delimited_list(
+            RdTag::Itemize,
+            vec![vec![text("first paragraph\n\nsecond paragraph")]],
+        );
+        let markdown = convert_to_markdown_text(&[list], &context(false));
+
+        assert_eq!(markdown, "- first paragraph\n\n  second paragraph");
+    }
+
+    #[test]
+    fn grid_table_list_item_cr_break_in_first_paragraph_is_indented_under_marker() {
+        // Regression test for the latent bug Bug 1's fix also closes: a
+        // `\cr`-induced line break *within the first paragraph* of a list
+        // item must also be indented under the marker, not just subsequent
+        // sibling blocks.
+        let list = delimited_list(
+            RdTag::Itemize,
+            vec![vec![
+                text("first line"),
+                tagged(RdTag::Cr, vec![]),
+                text("second line"),
+            ]],
+        );
+        let markdown = convert_to_markdown_text(&[list], &context(false));
+
+        assert_eq!(markdown, "- first line  \n  second line");
+    }
+
+    #[test]
+    fn pipe_table_nested_tabular_pipe_is_not_double_escaped() {
+        // Regression test for Bug 2: `flatten_block_node_for_table_cell`'s
+        // blind `.replace('|', "\\|")` used to re-escape a `|` that
+        // `convert_tabular`'s cell sanitization had already escaped once,
+        // corrupting the outer pipe-table row once the doubled backslash
+        // was itself consumed by CommonMark's backslash-escape processing.
+        let table = tagged(
+            RdTag::Tabular,
+            vec![group(vec![text("l")]), group(vec![text("a | b")])],
+        );
+        let document = RdDocument::new(vec![tagged(
+            RdTag::Arguments,
+            vec![described_item(vec![text("table_arg")], vec![table])],
+        )]);
+        let arguments: Vec<_> = document.arguments().collect();
+        let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
+        let markdown = mdast_to_qmd(
+            &Root::new(converted),
+            &WriterOptions {
+                frontmatter: None,
+                quarto_code_blocks: true,
+            },
+        );
+        let row = markdown
+            .lines()
+            .find(|line| line.contains("table_arg"))
+            .expect("expected the argument row line");
+
+        assert!(
+            row.starts_with("| `table_arg` |"),
+            "argument-name column boundary was corrupted, got: {row:?}"
+        );
+        assert_eq!(
+            count_unescaped_pipes(row),
+            3,
+            "expected exactly 3 unescaped pipes (outer 2-column row delimiters), got: {row:?}"
+        );
+    }
+
+    /// Count `|` characters in `line` that are not already escaped by an
+    /// odd-length run of preceding backslashes -- i.e. the delimiters a
+    /// GFM pipe-table parser would actually split columns on.
+    fn count_unescaped_pipes(line: &str) -> usize {
+        let mut count = 0;
+        let mut backslash_run = 0usize;
+        for character in line.chars() {
+            if character == '|' {
+                if backslash_run.is_multiple_of(2) {
+                    count += 1;
+                }
+                backslash_run = 0;
+            } else if character == '\\' {
+                backslash_run += 1;
+            } else {
+                backslash_run = 0;
+            }
+        }
+        count
     }
 
     #[test]
