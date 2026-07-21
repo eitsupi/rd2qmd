@@ -1173,16 +1173,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rd-parser"
-version = "0.4.0"
-dependencies = [
- "insta",
- "serde",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
 name = "rd-source"
 version = "0.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

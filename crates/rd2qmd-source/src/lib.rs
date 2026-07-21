@@ -211,7 +211,7 @@ mod tests {
     fn existing_fixtures_parse_without_diagnostics() {
         for name in ["basic.Rd", "sections.Rd", "markdown_codeblock.Rd"] {
             let content = std::fs::read_to_string(format!(
-                "{}/../rd-parser/tests/fixtures/{name}",
+                "{}/tests/fixtures/{name}",
                 env!("CARGO_MANIFEST_DIR")
             ))
             .unwrap();
