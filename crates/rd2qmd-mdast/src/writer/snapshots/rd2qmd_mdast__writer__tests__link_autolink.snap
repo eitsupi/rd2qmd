@@ -1,5 +1,5 @@
 ---
-source: crates/rd2qmd-mdast/src/writer.rs
+source: crates/rd2qmd-mdast/src/writer/tests.rs
 expression: qmd
 ---
 <https://example.com>
