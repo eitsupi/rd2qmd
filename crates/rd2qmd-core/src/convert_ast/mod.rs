@@ -3,6 +3,7 @@
 //! This module coexists with the legacy convert implementation while conversion
 //! is migrated in small, independently testable steps.
 
+mod assembly;
 mod blocks;
 mod code;
 mod document;
@@ -12,6 +13,8 @@ mod leaf_text;
 mod roxygen;
 mod traversal;
 
+#[allow(unused_imports)]
+pub(crate) use assembly::convert_document;
 #[allow(unused_imports)]
 pub(crate) use blocks::{
     BlockConversionContext, convert_arguments, convert_block_content, convert_custom_section,
