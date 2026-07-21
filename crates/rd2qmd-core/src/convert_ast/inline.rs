@@ -160,6 +160,14 @@ pub(crate) fn convert_inline_node(
                 vec![Node::text(format!("doi:{id}"))],
             ))
         }
+        // \method/\S3method/\S4method are normally consumed by the \usage
+        // block scanner (code.rs), which renders them as a header comment
+        // plus the generic call. Outside \usage -- unusual but valid Rd --
+        // this mirrors the legacy converter's prose fallback: just the bare
+        // generic name as a call, e.g. `print()`.
+        RdTag::Method | RdTag::S3Method | RdTag::S4Method => node
+            .method(&base_path)
+            .map(|method| Node::text(format!("{}()", method.generic()))),
         _ => None,
     }
 }
@@ -1258,6 +1266,27 @@ mod tests {
         for malformed in malformed_dois {
             assert_eq!(convert_inline_node(&malformed), None);
         }
+    }
+
+    fn method(tag: RdTag, generic: &str, qualifier: &str) -> RdNode {
+        tagged(
+            tag,
+            vec![group(vec![text(generic)]), group(vec![text(qualifier)])],
+        )
+    }
+
+    #[test]
+    fn converts_inline_method_macros_outside_usage_to_bare_generic_call() {
+        for tag in [RdTag::Method, RdTag::S3Method, RdTag::S4Method] {
+            let node = method(tag, "print", "widget");
+            assert_eq!(convert_inline_node(&node), Some(Node::text(r"print()")));
+        }
+    }
+
+    #[test]
+    fn malformed_inline_method_macro_is_dropped_not_panicked() {
+        let malformed = tagged(RdTag::Method, vec![text("print")]);
+        assert_eq!(convert_inline_node(&malformed), None);
     }
 
     #[test]
