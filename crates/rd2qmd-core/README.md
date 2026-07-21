@@ -4,41 +4,27 @@ Core library for converting Rd files to Quarto Markdown.
 
 ## Overview
 
-`rd2qmd-core` provides a complete pipeline for converting individual R documentation (Rd) files to Quarto Markdown (QMD). It handles Rd parsing, AST transformation, and Markdown output generation.
+`rd2qmd-core` converts an already-parsed `rd_ast::RdDocument` to Quarto Markdown (QMD). It handles AST transformation and Markdown output generation; parsing Rd source text is the responsibility of the `rd2qmd-source` crate (or any other `rd_ast::RdDocument` producer).
 
 This crate is designed to be used as a library by higher-level tools (CLI, R package, etc.).
 
 ## API Levels
 
-This crate offers three levels of API for different use cases:
+This crate offers two levels of API for different use cases:
 
-### High-level: `RdConverter` builder (recommended)
+### Mid-level: `convert_rd_document` function
 
-Fluent builder API for converting Rd content to Quarto Markdown in one step.
-
-```rust
-use rd2qmd_core::RdConverter;
-
-let qmd = RdConverter::new(r#"\name{foo}\title{Foo}\description{A function.}"#)
-    .frontmatter(true)
-    .pagetitle(true)
-    .quarto_code_blocks(true)
-    .convert()
-    .unwrap();
-```
-
-### Mid-level: `convert_rd_content` function
-
-Function-style API when you have a pre-configured `RdConvertOptions` struct. Useful when options are loaded from configuration files.
+The main entry point for single-document conversion, given a pre-configured `RdConvertOptions` struct.
 
 ```rust
-use rd2qmd_core::{convert_rd_content, RdConvertOptions};
+use rd2qmd_core::{convert_rd_document, RdConvertOptions};
 
+let doc = rd2qmd_source::parse(r#"\name{foo}\title{Foo}\description{A function.}"#)
+    .unwrap()
+    .document()
+    .clone();
 let options = RdConvertOptions::default();
-let qmd = convert_rd_content(
-    r#"\name{foo}\title{Foo}\description{A function.}"#,
-    &options,
-).unwrap();
+let qmd = convert_rd_document(&doc, &options);
 ```
 
 ### Low-level: `rd_to_mdast` / `rd_to_mdast_with_options`
@@ -48,25 +34,23 @@ Use this when you need to manipulate the AST before rendering, or integrate with
 other Markdown processing pipelines.
 
 ```rust
-use rd2qmd_core::{parse, rd_to_mdast, mdast_to_qmd, WriterOptions};
+use rd2qmd_core::{rd_to_mdast, mdast_to_qmd, WriterOptions};
 
-let doc = parse(r#"\name{foo}\title{Foo}\description{A function.}"#).unwrap();
+let doc = rd2qmd_source::parse(r#"\name{foo}\title{Foo}\description{A function.}"#)
+    .unwrap()
+    .document()
+    .clone();
 let mdast = rd_to_mdast(&doc);
 // ... manipulate mdast if needed ...
 let qmd = mdast_to_qmd(&mdast, &WriterOptions::default());
 ```
 
-## Features
-
-- `lifecycle` - Enable lifecycle stage extraction from Rd documents
-- `roxygen` - Enable source file extraction from roxygen2 comments and roxygen2 markdown code block handling
-
 ## Dependencies
 
 This crate builds on:
 
-- [`rd-parser`](https://crates.io/crates/rd-parser) - Rd file parsing
-- [`mdast-rd2qmd`](https://crates.io/crates/mdast-rd2qmd) - mdast types and Quarto Markdown writer
+- [`rd-ast`](https://crates.io/crates/rd-ast) - the canonical, producer-neutral Rd document representation
+- [`rd2qmd-mdast`](https://crates.io/crates/rd2qmd-mdast) - mdast types and Quarto Markdown writer
 
 ## License
 

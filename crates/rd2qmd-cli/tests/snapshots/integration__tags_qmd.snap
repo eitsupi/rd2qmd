@@ -1,0 +1,49 @@
+---
+source: crates/rd2qmd-cli/tests/integration.rs
+expression: output
+---
+---
+title: "See Foo and doi:10.1234/xyz for details"
+pagetitle: "See Foo and doi:10.1234/xyz for details — tags"
+aliases:
+  - "tags"
+---
+
+## Description
+
+This function demonstrates tags that have no coverage in any other fixture.
+
+See the paper at [doi:10.1234/example](https://doi.org/10.1234/example) for background.
+
+See [`MyClass-class`](https://rdrr.io/r/base/MyClass-class.html) for the unqualified form and [`methods::envRefClass-class`](https://rdrr.io/pkg/methods/man/envRefClass-class.html) for the qualified form.
+
+As _R Core Team (2024)_ explains, the HTML format is common.
+
+Use [`tags()`](https://rdrr.io/r/base/tags.html) to call this function again, or see [`a qualified pkg:topic link`](https://rdrr.io/pkg/somepkg/man/sometopic.html).
+
+## Arguments
+
+::: {.list-table header-rows=1}
+
+- - Argument
+  - Description
+
+- - `x`
+  - A figure to display: ![alt text here](myplot.png).
+
+:::
+
+## Value
+
+See ![myplot.png](myplot.png) (no alt) and ![myplot.png](myplot.png) (expert form, no alt key).
+
+## Examples
+
+```{r}
+x <- 1
+
+# Output varies - don't diff
+print(Sys.time())
+
+y <- 2
+```

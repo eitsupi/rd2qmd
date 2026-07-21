@@ -1,5 +1,6 @@
 ---
 source: crates/rd2qmd-cli/tests/integration.rs
+assertion_line: 129
 expression: output
 ---
 ---
@@ -11,7 +12,7 @@ aliases:
 
 ## Description
 
- This demonstrates _emphasis_, **strong text**, and `inline code`. It also has a [hyperlink](https://example.com) and email: [test@example.com](mailto:test@example.com). 
+This demonstrates _emphasis_, **strong text**, and `inline code`. It also has a [hyperlink](https://example.com) and email: [test@example.com](mailto:test@example.com).
 
 ## Usage
 
@@ -21,16 +22,16 @@ formatting()
 
 ## Details
 
- Here is a bullet list: 
+Here is a bullet list:
 
-- First item 
+- First item
 - Second item with `code`
-- Third item 
+- Third item
 
-And a numbered list: 
+And a numbered list:
 
-1. Step one 
-2. Step two 
+1. Step one
+2. Step two
 
 ## Examples
 

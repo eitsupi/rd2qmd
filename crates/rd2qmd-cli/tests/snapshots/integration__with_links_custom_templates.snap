@@ -1,5 +1,6 @@
 ---
 source: crates/rd2qmd-cli/tests/integration.rs
+assertion_line: 123
 expression: output
 ---
 ---
@@ -11,7 +12,7 @@ aliases:
 
 ## Description
 
- This function demonstrates various link types. See [`simple`](x-r-help:simple) for a simpler example. Also see [`stats::lm`](x-r-help:stats/lm) for linear models. 
+This function demonstrates various link types. See [`simple`](x-r-help:simple) for a simpler example. Also see [`stats::lm`](x-r-help:stats/lm) for linear models.
 
 ## Usage
 

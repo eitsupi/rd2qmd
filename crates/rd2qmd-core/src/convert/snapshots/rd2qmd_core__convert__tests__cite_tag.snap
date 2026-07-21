@@ -1,9 +1,0 @@
----
-source: crates/rd2qmd-core/src/convert/tests.rs
-expression: qmd
----
-# Cite Test
-
-## Description
-
- See _R Core Team (2024)_ for details.

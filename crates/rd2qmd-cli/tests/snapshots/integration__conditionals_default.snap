@@ -1,12 +1,13 @@
 ---
 source: crates/rd2qmd-cli/tests/integration.rs
+assertion_line: 154
 expression: output
 ---
 # Conditional Examples
 
 ## Description
 
- Lifecycle badge: [![[Stable]](lifecycle-stable.svg)](https://lifecycle.r-lib.org/articles/stages.html)
+Lifecycle badge: [![[Stable]](lifecycle-stable.svg)](https://lifecycle.r-lib.org/articles/stages.html)
 
 Conditional content for different output formats.
 
@@ -16,7 +17,7 @@ Text only: This appears in plain text output.
 
 ## Details
 
- Example with asciicast output (cli-style): 
+Example with asciicast output (cli-style):
 
 ```r
 example_function("hello")

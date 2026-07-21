@@ -1,0 +1,16 @@
+[package]
+name = "rd2qmd-source"
+description = "Shared Rd source parsing facade for rd2qmd"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+keywords.workspace = true
+categories = ["parser-implementations", "text-processing"]
+
+[dependencies]
+rd-ast.workspace = true
+rd-source.workspace = true

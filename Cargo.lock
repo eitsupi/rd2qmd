@@ -1164,13 +1164,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "rd-parser"
-version = "0.4.0"
+name = "rd-ast"
+version = "0.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aaa5a549cda19d85723d7f7e2f4713224daa6b6aada7f9d0359a7006bdb0daaa"
 dependencies = [
- "insta",
  "serde",
- "serde_json",
- "thiserror",
+]
+
+[[package]]
+name = "rd-source"
+version = "0.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a6f4eead470493d660bf3c23f6e6bb9d15e433b8f944f8cb2989897bf7f7e109"
+dependencies = [
+ "rd-ast",
 ]
 
 [[package]]
@@ -1182,6 +1190,7 @@ dependencies = [
  "insta",
  "rd2qmd-core",
  "rd2qmd-package",
+ "rd2qmd-source",
  "schemars",
  "serde",
  "serde_json",
@@ -1193,7 +1202,7 @@ name = "rd2qmd-core"
 version = "0.4.0"
 dependencies = [
  "insta",
- "rd-parser",
+ "rd-ast",
  "rd2qmd-mdast",
  "serde",
  "serde_json",
@@ -1216,7 +1225,9 @@ version = "0.4.0"
 dependencies = [
  "r-description",
  "rayon",
+ "rd-ast",
  "rd2qmd-core",
+ "rd2qmd-source",
  "reqwest",
  "saphyr",
  "serde",
@@ -1224,6 +1235,14 @@ dependencies = [
  "tempfile",
  "thiserror",
  "url",
+]
+
+[[package]]
+name = "rd2qmd-source"
+version = "0.4.0"
+dependencies = [
+ "rd-ast",
+ "rd-source",
 ]
 
 [[package]]

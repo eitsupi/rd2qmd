@@ -71,6 +71,56 @@ fn test_simple_conversion() {
 }
 
 #[test]
+fn parser_diagnostics_are_reported_for_convert_and_parse() {
+    let root = unique_temp_dir("diagnostics");
+    fs::create_dir_all(&root).unwrap();
+    let input = root.join("warning.Rd");
+    fs::write(
+        &input,
+        "\\name{warning}\n\\title{Warning}\n\\examples{\n#ifdef unix\n}\nx <- 1\n#endif\ny <- 2\n}",
+    )
+    .unwrap();
+
+    let output = root.join("warning.qmd");
+    let convert = std::process::Command::new(rd2qmd_binary())
+        .args(["convert"])
+        .arg(&input)
+        .args(["-o"])
+        .arg(&output)
+        .output()
+        .unwrap();
+    assert!(convert.status.success());
+    let convert_stderr = String::from_utf8_lossy(&convert.stderr);
+    assert!(convert_stderr.contains(&format!("{}:", input.display())));
+    assert!(convert_stderr.contains("Warning[UnexpectedClosingDelimiter]"));
+
+    let ast = root.join("warning.json");
+    let parse = std::process::Command::new(rd2qmd_binary())
+        .args(["parse"])
+        .arg(&input)
+        .args(["-o"])
+        .arg(&ast)
+        .output()
+        .unwrap();
+    assert!(parse.status.success());
+    let parse_stderr = String::from_utf8_lossy(&parse.stderr);
+    assert!(parse_stderr.contains(&format!("{}:", input.display())));
+    assert!(parse_stderr.contains("Warning[UnexpectedClosingDelimiter]"));
+
+    let quiet = std::process::Command::new(rd2qmd_binary())
+        .args(["-q", "convert"])
+        .arg(&input)
+        .args(["-o"])
+        .arg(root.join("quiet.qmd"))
+        .output()
+        .unwrap();
+    assert!(quiet.status.success());
+    assert!(!String::from_utf8_lossy(&quiet.stderr).contains("UnexpectedClosingDelimiter"));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn test_simple_to_md() {
     let output = convert_fixture("simple", &["-f", "md"]);
     insta::assert_snapshot!("simple_md", output);
@@ -162,6 +212,91 @@ fn test_conditionals_include_html() {
         &["--no-frontmatter", "--include-html-output"],
     );
     insta::assert_snapshot!("conditionals_include_html", output);
+}
+
+/// `\method`/`\S3method`/`\S4method` usage-block parsing through the real
+/// parser: S3/S4/default method header comments, multi-signature S4
+/// signatures, a mixed usage block combining a plain signature with method
+/// variants, special class names, and operator generics (including a
+/// user-defined `%...%` infix) reformatted as natural infix expressions.
+#[test]
+fn test_methods_usage() {
+    let output = convert_fixture("methods", &[]);
+    insta::assert_snapshot!("methods_qmd", output);
+}
+
+/// Rich content nested inside `\arguments{}` item descriptions -- nested
+/// `\itemize`/`\describe`/`\tabular`, `\preformatted` (including as an
+/// item's sole content), backtick-escaping in `\code{}` and item labels,
+/// `\cr` line breaks with list-marker-lookalike continuations, and
+/// multi-paragraph descriptions -- rendered with `--arguments-format
+/// list-table` (the CLI default).
+#[test]
+fn test_arguments_rich_list_table() {
+    let output = convert_fixture("arguments_rich", &["--arguments-format", "list-table"]);
+    insta::assert_snapshot!("arguments_rich_list_table", output);
+}
+
+/// Same rich `\arguments{}` content as `test_arguments_rich_list_table`,
+/// rendered with `--arguments-format grid-table` -- previously exercised
+/// nowhere end-to-end.
+#[test]
+fn test_arguments_rich_grid_table() {
+    let output = convert_fixture("arguments_rich", &["--arguments-format", "grid-table"]);
+    insta::assert_snapshot!("arguments_rich_grid_table", output);
+}
+
+/// Same rich `\arguments{}` content, rendered with `--arguments-format list`.
+#[test]
+fn test_arguments_rich_list() {
+    let output = convert_fixture("arguments_rich", &["--arguments-format", "list"]);
+    insta::assert_snapshot!("arguments_rich_list", output);
+}
+
+/// Same rich `\arguments{}` content, rendered with `--arguments-format
+/// pipe-table`.
+#[test]
+fn test_arguments_rich_pipe_table() {
+    let output = convert_fixture("arguments_rich", &["--arguments-format", "pipe-table"]);
+    insta::assert_snapshot!("arguments_rich_pipe_table", output);
+}
+
+/// Tags with no coverage in any other fixture: `\doi`, `\linkS4class`
+/// (unqualified and qualified), `\cite`, `\abbr`, `\dontdiff` inside
+/// `\examples`, `\code{\link[=...]{...}}` (an explicit-destination link
+/// nested inside `\code`, which must preserve the link), and
+/// `\link[pkg:topic]{...}` (qualified pkg:topic packed into the bracket).
+/// The `\title` also nests `\linkS4class`/`\doi` to guard against tag
+/// markup leaking into the frontmatter `title:` value (regression: PR #49).
+#[test]
+fn test_tags() {
+    let output = convert_fixture("tags", &[]);
+    insta::assert_snapshot!("tags_qmd", output);
+}
+
+/// `\figure{file}{alt text}`, `\figure{file}` (no second argument), and
+/// `\figure{file}{options: ...}` (expert form with no `alt=` key) all
+/// appear in the `tags` fixture's `\arguments`/`\value` sections; this test
+/// exists mainly as documentation pointing at `test_tags`'s snapshot, which
+/// covers all three `\figure` forms.
+#[test]
+fn test_tags_figure_alt_text_forms() {
+    let output = convert_fixture("tags", &["--no-frontmatter"]);
+    assert!(output.contains("![alt text here](myplot.png)"));
+    assert!(output.contains("![myplot.png](myplot.png)"));
+}
+
+/// Roxygen2 fenced-code-block markup
+/// (`\if{html}{\out{<div class="sourceCode LANG">}}\preformatted{...}\if{html}{\out{</div>}}`)
+/// actually converted to Quarto code fences -- an R block, a Python block,
+/// a block with no language tag, and a block whose content contains
+/// backtick runs (verifying the fence is lengthened past any collision).
+/// The `crates/rd2qmd-source` fixture this is adapted from only checks that
+/// parsing succeeds without diagnostics; this checks the actual conversion.
+#[test]
+fn test_roxygen_code_blocks() {
+    let output = convert_fixture("roxygen_code_blocks", &["--no-frontmatter"]);
+    insta::assert_snapshot!("roxygen_code_blocks_qmd", output);
 }
 
 #[test]
@@ -554,6 +689,73 @@ fn test_parse_convert_roundtrip_preserves_source_files() {
     assert!(qmd.contains("R/roundtrip.R"));
 }
 
+/// An envelope's own `sourceFiles` field is authoritative and must survive
+/// `convert --input-format ast` even when it disagrees with (here: is present
+/// despite the absence of) a roxygen2 generation-header comment in the
+/// document itself -- regression test for roborev job 239 finding 2, where
+/// `envelope.source_files` was silently dropped in favor of AST-derived
+/// extraction alone.
+#[test]
+fn test_convert_ast_prefers_envelope_source_files_over_ast_derived() {
+    let root = unique_temp_dir("envelope_source_files");
+    fs::create_dir_all(&root).expect("Failed to create temp dir");
+
+    fs::write(
+        root.join("no_header.Rd"),
+        "\\name{no_header}\n\
+         \\alias{no_header}\n\
+         \\title{No Header}\n\
+         \\description{\nNo roxygen2 generation-header comment here.\n}\n",
+    )
+    .expect("Failed to write Rd fixture");
+
+    let json_path = root.join("no_header.json");
+    let status = Command::new(rd2qmd_binary())
+        .arg("parse")
+        .arg(root.join("no_header.Rd"))
+        .arg("-o")
+        .arg(&json_path)
+        .status()
+        .expect("Failed to run rd2qmd parse");
+    assert!(
+        status.success(),
+        "rd2qmd parse failed with status: {status}"
+    );
+
+    let json = fs::read_to_string(&json_path).expect("Failed to read AST JSON");
+    assert!(
+        json.contains("\"sourceFiles\": []"),
+        "expected no AST-derived source files without a generation header, got: {json}"
+    );
+    let json = json.replacen(
+        "\"sourceFiles\": []",
+        "\"sourceFiles\": [\"R/explicit-only.R\"]",
+        1,
+    );
+    fs::write(&json_path, json).expect("Failed to rewrite envelope JSON");
+
+    let qmd_path = root.join("no_header.qmd");
+    let status = Command::new(rd2qmd_binary())
+        .arg("convert")
+        .arg(&json_path)
+        .arg("--input-format")
+        .arg("ast")
+        .arg("-o")
+        .arg(&qmd_path)
+        .status()
+        .expect("Failed to run rd2qmd convert");
+    assert!(
+        status.success(),
+        "rd2qmd convert --input-format ast failed with status: {status}"
+    );
+
+    let qmd = fs::read_to_string(&qmd_path).expect("Failed to read output file");
+    let _ = fs::remove_dir_all(&root);
+
+    assert!(qmd.contains("source-files:"));
+    assert!(qmd.contains("R/explicit-only.R"));
+}
+
 /// A hand-written envelope with a mismatched `version` field fails
 /// `convert --input-format ast` with a non-zero exit and a message
 /// mentioning the version
@@ -669,7 +871,7 @@ fn test_parse_defaults_single_file() {
     let json = fs::read_to_string(&expected_output).expect("Failed to read AST JSON");
     let _ = fs::remove_dir_all(&root);
 
-    assert!(json.contains("\"version\": 1"));
+    assert!(json.contains("\"version\": 2"));
 }
 
 /// Directory `parse` mirrors input file names with a `.json` extension
