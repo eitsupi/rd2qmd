@@ -9,8 +9,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use rd2qmd_core::{
-    ArgumentsFormat, CodeExecutionOptions, FrontmatterOptions, LinkOptions, RdAstEnvelope,
-    RdConvertOptions, convert_rd_document, extract_rd_metadata,
+    ArgumentsFormat, CodeExecutionOptions, Frontmatter, FrontmatterOptions, LinkOptions,
+    RdAstEnvelope, RdConvertOptions, RdMetadata, RdToMdastOptions, WriterOptions,
+    convert_rd_document, extract_rd_metadata, extract_text, mdast_to_qmd, rd_to_mdast_with_options,
 };
 use rd2qmd_package::{
     ExternalLinkOptions as PackageExternalLinkOptions, FallbackReason, FullConvertResult,
@@ -534,7 +535,50 @@ fn convert_single_file(
             prefer_ascii_math,
         };
 
-        convert_rd_document(&envelope.document, &options)
+        // Not `convert_rd_document`: the envelope's own `source_files` (set
+        // explicitly by whatever produced this AST JSON) is authoritative and
+        // may not match what AST-embedded generation-header extraction would
+        // derive from `envelope.document` alone, so it must override the
+        // document-derived metadata rather than be discarded.
+        let converter_options = RdToMdastOptions {
+            include_title_heading: !options.frontmatter.enabled,
+            internal_link_url: options.links.internal_link_url.clone(),
+            alias_map: options.links.alias_map.clone(),
+            unqualified_link_url: options.links.unqualified_link_url.clone(),
+            package_urls: options.links.package_urls.clone(),
+            external_link_url: options.links.external_link_url.clone(),
+            exec_dontrun: options.code.exec_dontrun,
+            exec_donttest: options.code.exec_donttest,
+            quarto_code_blocks: options.code.quarto_code_blocks,
+            arguments_format: options.arguments_format.clone(),
+            include_html_output: options.include_html_output,
+            prefer_ascii_math: options.prefer_ascii_math,
+        };
+        let mdast = rd_to_mdast_with_options(&envelope.document, &converter_options);
+        let title = envelope.document.title().map(extract_text);
+        let name = envelope.document.name().map(extract_text);
+        let pagetitle = options
+            .frontmatter
+            .pagetitle
+            .then(|| match (&title, &name) {
+                (Some(title), Some(name)) => format!("{title} — {name}"),
+                _ => String::new(),
+            })
+            .filter(|value| !value.is_empty());
+        let metadata = RdMetadata {
+            source_files: envelope.source_files.clone(),
+            ..extract_rd_metadata(&envelope.document)
+        };
+        let writer_options = WriterOptions {
+            frontmatter: options.frontmatter.enabled.then_some(Frontmatter {
+                title,
+                pagetitle,
+                format: None,
+                metadata: Some(metadata),
+            }),
+            quarto_code_blocks: options.code.quarto_code_blocks,
+        };
+        mdast_to_qmd(&mdast, &writer_options)
     } else {
         let content = fs::read_to_string(input)
             .with_context(|| format!("Failed to read: {}", input.display()))?;

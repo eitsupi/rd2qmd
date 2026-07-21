@@ -554,6 +554,73 @@ fn test_parse_convert_roundtrip_preserves_source_files() {
     assert!(qmd.contains("R/roundtrip.R"));
 }
 
+/// An envelope's own `sourceFiles` field is authoritative and must survive
+/// `convert --input-format ast` even when it disagrees with (here: is present
+/// despite the absence of) a roxygen2 generation-header comment in the
+/// document itself -- regression test for roborev job 239 finding 2, where
+/// `envelope.source_files` was silently dropped in favor of AST-derived
+/// extraction alone.
+#[test]
+fn test_convert_ast_prefers_envelope_source_files_over_ast_derived() {
+    let root = unique_temp_dir("envelope_source_files");
+    fs::create_dir_all(&root).expect("Failed to create temp dir");
+
+    fs::write(
+        root.join("no_header.Rd"),
+        "\\name{no_header}\n\
+         \\alias{no_header}\n\
+         \\title{No Header}\n\
+         \\description{\nNo roxygen2 generation-header comment here.\n}\n",
+    )
+    .expect("Failed to write Rd fixture");
+
+    let json_path = root.join("no_header.json");
+    let status = Command::new(rd2qmd_binary())
+        .arg("parse")
+        .arg(root.join("no_header.Rd"))
+        .arg("-o")
+        .arg(&json_path)
+        .status()
+        .expect("Failed to run rd2qmd parse");
+    assert!(
+        status.success(),
+        "rd2qmd parse failed with status: {status}"
+    );
+
+    let json = fs::read_to_string(&json_path).expect("Failed to read AST JSON");
+    assert!(
+        json.contains("\"sourceFiles\": []"),
+        "expected no AST-derived source files without a generation header, got: {json}"
+    );
+    let json = json.replacen(
+        "\"sourceFiles\": []",
+        "\"sourceFiles\": [\"R/explicit-only.R\"]",
+        1,
+    );
+    fs::write(&json_path, json).expect("Failed to rewrite envelope JSON");
+
+    let qmd_path = root.join("no_header.qmd");
+    let status = Command::new(rd2qmd_binary())
+        .arg("convert")
+        .arg(&json_path)
+        .arg("--input-format")
+        .arg("ast")
+        .arg("-o")
+        .arg(&qmd_path)
+        .status()
+        .expect("Failed to run rd2qmd convert");
+    assert!(
+        status.success(),
+        "rd2qmd convert --input-format ast failed with status: {status}"
+    );
+
+    let qmd = fs::read_to_string(&qmd_path).expect("Failed to read output file");
+    let _ = fs::remove_dir_all(&root);
+
+    assert!(qmd.contains("source-files:"));
+    assert!(qmd.contains("R/explicit-only.R"));
+}
+
 /// A hand-written envelope with a mismatched `version` field fails
 /// `convert --input-format ast` with a non-zero exit and a message
 /// mentioning the version

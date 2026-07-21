@@ -71,30 +71,29 @@ pub fn extract_text(nodes: &[RdNode]) -> String {
                 RdNode::Tagged(tagged) => {
                     if tagged.tag() == &rd_ast::RdTag::Link {
                         if let Ok(link) = tagged.inspect_link(&path) {
+                            // Mirrors convert_ast::inline::convert_link's display
+                            // logic: `\link[pkg]{topic}` (no explicit override)
+                            // shows "pkg::topic", but every other form (bare
+                            // `\link{topic}`, `\link[=dest]{label}`,
+                            // `\link[pkg:topic]{label}`) shows the tag's
+                            // children (`display()`) verbatim.
                             match link.destination() {
-                                rd_ast::RdLinkDestination::DisplayText { nodes } => {
-                                    visit(nodes, out)
-                                }
-                                rd_ast::RdLinkDestination::Explicit { topic } => {
-                                    out.push_str(topic)
-                                }
-                                rd_ast::RdLinkDestination::Package { package, topic } => {
-                                    match topic {
-                                        rd_ast::RdLinkTopic::Explicit(topic) => {
-                                            out.push_str(package);
-                                            out.push_str("::");
-                                            out.push_str(topic);
-                                        }
-                                        rd_ast::RdLinkTopic::DisplayText(nodes) => {
-                                            out.push_str(package);
-                                            out.push_str("::");
-                                            visit(nodes, out)
-                                        }
-                                        _ => {}
-                                    }
+                                rd_ast::RdLinkDestination::Package {
+                                    package,
+                                    topic: rd_ast::RdLinkTopic::DisplayText(nodes),
+                                } => {
+                                    out.push_str(package);
+                                    out.push_str("::");
+                                    visit(nodes, out);
                                 }
                                 _ => visit(link.display(), out),
                             }
+                        } else {
+                            visit(tagged.children(), out);
+                        }
+                    } else if tagged.tag() == &rd_ast::RdTag::Href {
+                        if let Ok(href) = tagged.inspect_href(&path) {
+                            visit(href.display(), out)
                         } else {
                             visit(tagged.children(), out);
                         }
@@ -221,6 +220,23 @@ mod tests {
             extract_text(description),
             "Use foo() and bar. pkg::topic plain pkg::Class doi:10.1000/xyz."
         );
+    }
+
+    #[test]
+    fn extract_text_uses_display_label_for_explicit_link_destinations() {
+        let doc = parse(
+            r#"\description{See \link[=dest]{explicit label} and \link[pkg:topic]{qualified label}.}"#,
+        );
+        assert_eq!(
+            extract_text(doc.description().unwrap()),
+            "See explicit label and qualified label."
+        );
+    }
+
+    #[test]
+    fn extract_text_uses_href_display_not_url() {
+        let doc = parse(r#"\description{Visit \href{https://example.com}{the site}.}"#);
+        assert_eq!(extract_text(doc.description().unwrap()), "Visit the site.");
     }
 
     #[test]
