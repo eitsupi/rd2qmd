@@ -121,6 +121,7 @@ pub fn parse(content: &str) -> Result<ParsedRd, ParseFailure> {
 #[cfg(test)]
 mod tests {
     use super::{DiagnosticCode, ParseFailure, Severity, SourceParseError, parse};
+    use rd_ast::{RdNode, RdTag};
 
     #[test]
     fn valid_source_returns_document_without_diagnostics() {
@@ -164,5 +165,58 @@ mod tests {
             diagnostics[0].code(),
             &DiagnosticCode::UnexpectedClosingDelimiter
         );
+    }
+
+    #[test]
+    fn unknown_tag_wrapper_preserves_nested_paragraph_shape() {
+        let parsed = rd_source::parse(b"\\madeUpTag{first\n\nsecond}").unwrap();
+        assert_eq!(
+            parsed.document().nodes(),
+            &[RdNode::tagged(
+                RdTag::Unknown(r"\madeUpTag".into()),
+                None,
+                vec![
+                    RdNode::Text("first\n".into()),
+                    RdNode::Text("\n".into()),
+                    RdNode::Text("second".into()),
+                ],
+            )]
+        );
+        assert_eq!(parsed.diagnostics().len(), 1);
+        assert_eq!(parsed.diagnostics()[0].severity(), &Severity::Error);
+        assert_eq!(parsed.diagnostics()[0].code(), &DiagnosticCode::UnknownTag);
+    }
+
+    #[test]
+    fn unknown_tag_wrapper_preserves_nested_itemize_shape() {
+        let parsed = rd_source::parse(b"\\madeUpTag{\\itemize{\\item a}}").unwrap();
+        assert_eq!(
+            parsed.document().nodes(),
+            &[RdNode::tagged(
+                RdTag::Unknown(r"\madeUpTag".into()),
+                None,
+                vec![RdNode::tagged(
+                    RdTag::Itemize,
+                    None,
+                    vec![
+                        RdNode::tagged(RdTag::Item, None, vec![]),
+                        RdNode::Text(" a".into()),
+                    ],
+                )],
+            )]
+        );
+    }
+
+    #[test]
+    fn existing_fixtures_parse_without_diagnostics() {
+        for name in ["basic.Rd", "sections.Rd", "markdown_codeblock.Rd"] {
+            let content = std::fs::read_to_string(format!(
+                "{}/../rd-parser/tests/fixtures/{name}",
+                env!("CARGO_MANIFEST_DIR")
+            ))
+            .unwrap();
+            let parsed = parse(&content).unwrap();
+            assert!(parsed.diagnostics().is_empty(), "fixture {name}");
+        }
     }
 }

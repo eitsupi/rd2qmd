@@ -89,23 +89,40 @@ fn convert_fixed_section(
 
 #[cfg(test)]
 mod tests {
+    use rd_ast::{RdDocument, RdNode, RdTag};
     use rd2qmd_mdast::{WriterOptions, mdast_to_qmd};
 
     use super::convert_document;
     use crate::RdToMdastOptions;
 
-    fn parse_ast(source: &str) -> rd_ast::RdDocument {
-        let parsed = rd_source::parse(source.as_bytes()).unwrap();
-        assert!(
-            parsed.diagnostics().is_empty(),
-            "unexpected parse diagnostics: {:?}",
-            parsed.diagnostics()
-        );
-        parsed.document().clone()
+    fn section(tag: RdTag, text: &str) -> RdNode {
+        RdNode::tagged(tag, None, vec![RdNode::Text(text.to_owned())])
     }
 
-    fn render_new(source: &str, options: &RdToMdastOptions) -> String {
-        let root = convert_document(&parse_ast(source), options);
+    fn custom(title: &str, body: &str) -> RdNode {
+        RdNode::tagged(
+            RdTag::Section,
+            None,
+            vec![
+                RdNode::group(vec![RdNode::Text(title.to_owned())]),
+                RdNode::group(vec![RdNode::Text(body.to_owned())]),
+            ],
+        )
+    }
+
+    fn argument(name: &str, body: &str) -> RdNode {
+        RdNode::tagged(
+            RdTag::Item,
+            None,
+            vec![
+                RdNode::group(vec![RdNode::Text(name.to_owned())]),
+                RdNode::group(vec![RdNode::Text(body.to_owned())]),
+            ],
+        )
+    }
+
+    fn render_new(document: &RdDocument, options: &RdToMdastOptions) -> String {
+        let root = convert_document(document, options);
         render(&root, options)
     }
 
@@ -128,24 +145,28 @@ mod tests {
 
     #[test]
     fn renders_every_fixed_section_in_legacy_order() {
-        let source = r#"
-\name{topic}
-\title{Topic Title}
-\examples{topic(1)}
-\author{Author body.}
-\seealso{See also body.}
-\references{References body.}
-\note{Note body.}
-\source{Source body.}
-\format{Format body.}
-\details{Details body.}
-\value{Value body.}
-\arguments{\item{x}{Argument body.}}
-\usage{topic(x)}
-\description{Description body.}
-"#;
+        let document = RdDocument::new(vec![
+            section(RdTag::Name, "topic"),
+            section(RdTag::Title, "Topic Title"),
+            section(RdTag::Examples, "topic(1)"),
+            section(RdTag::Author, "Author body."),
+            section(RdTag::SeeAlso, "See also body."),
+            section(RdTag::References, "References body."),
+            section(RdTag::Note, "Note body."),
+            section(RdTag::Source, "Source body."),
+            section(RdTag::Format, "Format body."),
+            section(RdTag::Details, "Details body."),
+            section(RdTag::Value, "Value body."),
+            RdNode::tagged(
+                RdTag::Arguments,
+                None,
+                vec![argument("x", "Argument body.")],
+            ),
+            RdNode::tagged(RdTag::Usage, None, vec![RdNode::RCode("topic(x)".into())]),
+            section(RdTag::Description, "Description body."),
+        ]);
         let options = RdToMdastOptions::default();
-        let markdown = render_new(source, &options);
+        let markdown = render_new(&document, &options);
 
         assert_eq!(
             headings(&markdown),
@@ -169,17 +190,17 @@ mod tests {
 
     #[test]
     fn moves_interleaved_custom_sections_after_fixed_sections_and_before_examples() {
-        let source = r#"
-\name{topic}
-\title{Topic Title}
-\section{First Custom}{First custom body.}
-\examples{topic()}
-\details{Details body.}
-\section{Second Custom}{Second custom body.}
-\description{Description body.}
-"#;
+        let document = RdDocument::new(vec![
+            section(RdTag::Name, "topic"),
+            section(RdTag::Title, "Topic Title"),
+            custom("First Custom", "First custom body."),
+            section(RdTag::Examples, "topic()"),
+            section(RdTag::Details, "Details body."),
+            custom("Second Custom", "Second custom body."),
+            section(RdTag::Description, "Description body."),
+        ]);
         let options = RdToMdastOptions::default();
-        let markdown = render_new(source, &options);
+        let markdown = render_new(&document, &options);
 
         assert_eq!(
             headings(&markdown),
@@ -197,33 +218,55 @@ mod tests {
 
     #[test]
     fn title_heading_respects_include_title_heading() {
-        let source = r#"\name{topic}\title{Topic Title}\description{Body.}"#;
+        let document = RdDocument::new(vec![
+            section(RdTag::Name, "topic"),
+            section(RdTag::Title, "Topic Title"),
+            section(RdTag::Description, "Body."),
+        ]);
         let with_title = RdToMdastOptions::default();
         let without_title = RdToMdastOptions {
             include_title_heading: false,
             ..RdToMdastOptions::default()
         };
 
-        let with_title_markdown = render_new(source, &with_title);
-        let without_title_markdown = render_new(source, &without_title);
+        let with_title_markdown = render_new(&document, &with_title);
+        let without_title_markdown = render_new(&document, &without_title);
         assert_eq!(headings(&with_title_markdown)[0], "# Topic Title");
         assert_eq!(headings(&without_title_markdown), ["## Description"]);
     }
 
     #[test]
     fn conditional_rendering_matches_legacy_for_html_output_option() {
-        let source = r#"
-\name{topic}
-\title{Conditional rendering}
-\description{\if{html}{html-only}\if{text}{text-always}\ifelse{html}{html-then}{html-else}}
-"#;
+        let conditional = |tag: RdTag, format: &str, then_text: &str, else_text: Option<&str>| {
+            let mut children = vec![
+                RdNode::group(vec![RdNode::Text(format.into())]),
+                RdNode::group(vec![RdNode::Text(then_text.into())]),
+            ];
+            if let Some(else_text) = else_text {
+                children.push(RdNode::group(vec![RdNode::Text(else_text.into())]));
+            }
+            RdNode::tagged(tag, None, children)
+        };
+        let document = RdDocument::new(vec![
+            section(RdTag::Name, "topic"),
+            section(RdTag::Title, "Conditional rendering"),
+            RdNode::tagged(
+                RdTag::Description,
+                None,
+                vec![
+                    conditional(RdTag::If, "html", "html-only", None),
+                    conditional(RdTag::If, "text", "text-always", None),
+                    conditional(RdTag::IfElse, "html", "html-then", Some("html-else")),
+                ],
+            ),
+        ]);
 
         for include_html_output in [false, true] {
             let options = RdToMdastOptions {
                 include_html_output,
                 ..RdToMdastOptions::default()
             };
-            let markdown = render_new(source, &options);
+            let markdown = render_new(&document, &options);
 
             assert_eq!(markdown.contains("html-only"), include_html_output);
             assert!(markdown.contains("text-always"));

@@ -135,45 +135,23 @@ pub(crate) fn flatten_verbatim_leaves(nodes: &[rd_ast::RdNode]) -> Result<String
 #[cfg(test)]
 mod tests {
     use super::{flatten_prose_leaves, flatten_rcode_leaves};
+    use rd_ast::RdNode;
 
     #[test]
     fn prose_flattens_mixed_leaves_and_skips_comments() {
-        let prose = rd_source::parse(b"before% hidden\n").unwrap();
-        let rcode = rd_source::parse(b"\\usage{f(x)}").unwrap();
-        let verbatim = rd_source::parse(b"\\preformatted{literal}").unwrap();
-        let mut nodes = prose.document().nodes().to_vec();
-        nodes.extend(
-            rcode.document().nodes()[0]
-                .as_tagged()
-                .unwrap()
-                .children()
-                .iter()
-                .cloned(),
-        );
-        nodes.extend(
-            verbatim.document().nodes()[0]
-                .as_tagged()
-                .unwrap()
-                .children()
-                .iter()
-                .cloned(),
-        );
+        let nodes = vec![
+            RdNode::Text("before".into()),
+            RdNode::Comment("% hidden".into()),
+            RdNode::Text("\n".into()),
+            RdNode::RCode("f(x)".into()),
+            RdNode::Verb("literal".into()),
+        ];
         assert_eq!(flatten_prose_leaves(&nodes).unwrap(), "before\nf(x)literal");
     }
 
     #[test]
     fn rcode_shape_mismatch_recovers_concatenated_text() {
-        let text = rd_source::parse(b"text").unwrap();
-        let code = rd_source::parse(b"\\usage{code}").unwrap();
-        let mut nodes = text.document().nodes().to_vec();
-        nodes.extend(
-            code.document().nodes()[0]
-                .as_tagged()
-                .unwrap()
-                .children()
-                .iter()
-                .cloned(),
-        );
+        let nodes = vec![RdNode::Text("text".into()), RdNode::RCode("code".into())];
         let error = flatten_rcode_leaves(&nodes).unwrap_err();
         assert_eq!(error.recovered_text(), "textcode");
         assert_eq!(error.mismatch_count(), 1);

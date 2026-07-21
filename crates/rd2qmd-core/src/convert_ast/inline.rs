@@ -474,24 +474,23 @@ mod tests {
         RdNode::Raw(producer::raw_node(None, None, nodes, None, vec![]))
     }
 
-    fn convert_parsed(source: &[u8]) -> Vec<Node> {
-        let parsed = rd_source::parse(source).unwrap();
-        convert_block_content(
-            parsed.document().nodes(),
-            &BlockConversionContext {
-                inline: InlineConversionContext::default(),
-                prefer_ascii_math: false,
-                enclosing_heading_depth: 2,
-            },
-        )
-    }
-
     fn render(nodes: Vec<Node>) -> String {
         mdast_to_qmd(
             &Root::new(nodes),
             &WriterOptions {
                 frontmatter: None,
                 quarto_code_blocks: false,
+            },
+        )
+    }
+
+    fn convert_paragraph(nodes: &[RdNode]) -> Vec<Node> {
+        convert_block_content(
+            nodes,
+            &BlockConversionContext {
+                inline: InlineConversionContext::default(),
+                prefer_ascii_math: false,
+                enclosing_heading_depth: 2,
             },
         )
     }
@@ -576,14 +575,20 @@ mod tests {
 
     #[test]
     fn parsed_unknown_macro_preserves_its_children() {
-        let converted = convert_parsed(br"\madeUpTag{some text}");
+        let converted = convert_paragraph(&[tagged(
+            RdTag::Unknown(r"\madeUpTag".into()),
+            vec![text("some text")],
+        )]);
 
         assert_eq!(render(converted), "some text\n");
     }
 
     #[test]
     fn parsed_sexpr_renders_source_as_inline_code() {
-        let converted = convert_parsed(br"\Sexpr{sum(1:10)}");
+        let converted = convert_paragraph(&[tagged(
+            RdTag::Sexpr,
+            vec![RdNode::RCode("sum(1:10)".into())],
+        )]);
 
         assert_eq!(render(converted), "`sum(1:10)`\n");
     }

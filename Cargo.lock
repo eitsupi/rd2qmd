@@ -1213,7 +1213,6 @@ version = "0.4.0"
 dependencies = [
  "insta",
  "rd-ast",
- "rd-source",
  "rd2qmd-mdast",
  "serde",
  "serde_json",

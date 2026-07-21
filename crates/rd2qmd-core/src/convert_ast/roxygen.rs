@@ -91,24 +91,47 @@ fn is_closing_div(html: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use rd_ast::{RdNode, RdTag};
     use rd2qmd_mdast::{Node, Root, WriterOptions, mdast_to_qmd};
 
     use super::try_match_roxygen_code_block;
     use crate::convert_ast::blocks::{BlockConversionContext, convert_block_content};
     use crate::convert_ast::inline::InlineConversionContext;
 
-    fn match_snippet(source: &str) -> Option<super::RoxygenCodeBlock> {
-        let parsed = rd_source::parse(source.as_bytes()).unwrap();
-        try_match_roxygen_code_block(parsed.document().nodes())
+    fn conditional(format: &str, body: RdNode) -> RdNode {
+        RdNode::tagged(
+            RdTag::If,
+            None,
+            vec![
+                RdNode::group(vec![RdNode::Text(format.into())]),
+                RdNode::group(vec![body]),
+            ],
+        )
     }
 
-    fn snippet(format: &str, class: &str, code: &str, closing: bool) -> String {
-        let mut source =
-            format!(r#"\if{{{format}}}{{\out{{<div class="{class}">}}}}\preformatted{{{code}}}"#);
+    fn snippet(format: &str, class: &str, code: &str, closing: bool) -> Vec<RdNode> {
+        let mut nodes = vec![
+            conditional(
+                format,
+                RdNode::tagged(
+                    RdTag::Out,
+                    None,
+                    vec![RdNode::Verb(format!(r#"<div class="{class}">"#))],
+                ),
+            ),
+            RdNode::tagged(RdTag::Preformatted, None, vec![RdNode::Verb(code.into())]),
+        ];
         if closing {
-            source.push_str(r#"\if{html}{\out{</div>}}"#);
+            nodes.push(conditional(
+                "html",
+                RdNode::tagged(RdTag::Out, None, vec![RdNode::Verb("</div>".into())]),
+            ));
         }
-        source
+        nodes
+    }
+
+    fn match_snippet(nodes: &[RdNode]) -> Option<super::RoxygenCodeBlock> {
+        try_match_roxygen_code_block(nodes)
     }
 
     #[test]
@@ -121,7 +144,8 @@ mod tests {
             ("sourceCode yaml", "key: value", Some("yaml")),
             ("sourceCode sql", "SELECT 1", Some("sql")),
         ] {
-            let block = match_snippet(&snippet("html", class, code, true))
+            let nodes = snippet("html", class, code, true);
+            let block = match_snippet(&nodes)
                 .unwrap_or_else(|| panic!("expected class {class:?} to match"));
             assert_eq!(block.language.as_deref(), expected_language);
             assert_eq!(block.code, code);
@@ -130,50 +154,52 @@ mod tests {
 
     #[test]
     fn rejects_non_roxygen_shapes_without_partial_matches() {
-        let cases = [
+        let mut cases = vec![
             snippet("latex", "sourceCode r", "code", true),
-            r#"\preformatted{code}"#.to_owned(),
+            vec![RdNode::tagged(
+                RdTag::Preformatted,
+                None,
+                vec![RdNode::Verb("code".into())],
+            )],
             snippet("html", "sourceCode r", "code", false),
             snippet("html", "someOtherClass", "code", true),
             snippet("html", "sourceCodeExtra", "code", true),
             snippet("html", "rSuffix", "code", true),
-            r#"\if{html}{\out{<span class="sourceCode r">}}\preformatted{code
-}\if{html}{\out{</div>}}"#
-                .to_owned(),
-            r#"\if{html}{\out{<diverse class="sourceCode r">}}\preformatted{code
-}\if{html}{\out{</div>}}"#
-                .to_owned(),
-            r#"\if{html}{\out{<div data-class="sourceCode r">}}\preformatted{code
-}\if{html}{\out{</div>}}"#
-                .to_owned(),
-            r#"\if{html}{\out{<div><span class="sourceCode r">}}\preformatted{code
-}\if{html}{\out{</div>}}"#
-                .to_owned(),
-            r#"\if{html}{\out{<div title=' class="sourceCode r"'>}}\preformatted{code
-}\if{html}{\out{</div>}}"#
-                .to_owned(),
-            r#"\if{html}{\out{<div class="sourceCode r"><span>">}}\preformatted{code
-}\if{html}{\out{</div>}}"#
-                .to_owned(),
         ];
+        for html in [
+            r#"<span class="sourceCode r">"#,
+            r#"<diverse class="sourceCode r">"#,
+            r#"<div data-class="sourceCode r">"#,
+            r#"<div><span class="sourceCode r">"#,
+            r#"<div title=' class="sourceCode r"'>"#,
+            r#"<div class="sourceCode r"><span>">"#,
+        ] {
+            cases.push(vec![
+                conditional(
+                    "html",
+                    RdNode::tagged(RdTag::Out, None, vec![RdNode::Verb(html.into())]),
+                ),
+                RdNode::tagged(RdTag::Preformatted, None, vec![RdNode::Verb("code".into())]),
+                conditional(
+                    "html",
+                    RdNode::tagged(RdTag::Out, None, vec![RdNode::Verb("</div>".into())]),
+                ),
+            ]);
+        }
 
-        for source in cases {
+        for nodes in cases {
             assert!(
-                match_snippet(&source).is_none(),
-                "unexpected match for {source:?}"
+                match_snippet(&nodes).is_none(),
+                "unexpected match for {nodes:?}"
             );
         }
     }
 
     #[test]
     fn parsed_roxygen_block_renders_as_fenced_code() {
-        let parsed = rd_source::parse(
-            br#"\if{html}{\out{<div class="sourceCode r">}}\preformatted{x <- 1 + 2
-}\if{html}{\out{</div>}}"#,
-        )
-        .unwrap();
+        let nodes = snippet("html", "sourceCode r", "x <- 1 + 2\n", true);
         let converted = convert_block_content(
-            parsed.document().nodes(),
+            &nodes,
             &BlockConversionContext {
                 inline: InlineConversionContext::default(),
                 prefer_ascii_math: false,
@@ -199,13 +225,9 @@ mod tests {
 
     #[test]
     fn parsed_wrong_format_falls_through_existing_conversion() {
-        let parsed = rd_source::parse(
-            br#"\if{latex}{\out{<div class="sourceCode r">}}\preformatted{x <- 1 + 2
-}\if{html}{\out{</div>}}"#,
-        )
-        .unwrap();
+        let nodes = snippet("latex", "sourceCode r", "x <- 1 + 2\n", true);
         let converted = convert_block_content(
-            parsed.document().nodes(),
+            &nodes,
             &BlockConversionContext {
                 inline: InlineConversionContext::default(),
                 prefer_ascii_math: false,

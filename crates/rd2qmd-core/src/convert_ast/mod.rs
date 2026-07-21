@@ -1,7 +1,4 @@
-//! Foundational traversal helpers for the rd_ast conversion migration.
-//!
-//! This module coexists with the legacy convert implementation while conversion
-//! is migrated in small, independently testable steps.
+//! Converts a canonical `rd_ast::RdDocument` to a Quarto-flavored mdast tree.
 
 mod assembly;
 mod blocks;

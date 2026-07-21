@@ -25,4 +25,3 @@ thiserror.workspace = true
 
 [dev-dependencies]
 insta.workspace = true
-rd-source.workspace = true

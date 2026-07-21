@@ -165,8 +165,8 @@ mod tests {
 
     #[test]
     fn finds_two_paragraphs() {
-        let parsed = rd_source::parse(b"first\n\nsecond").unwrap();
-        let items = scan_block_content(parsed.document().nodes());
+        let nodes = vec![RdNode::Text("first\n\nsecond".into())];
+        let items = scan_block_content(&nodes);
         let [
             BlockContentItem::Paragraph(first),
             BlockContentItem::Paragraph(second),
@@ -180,8 +180,12 @@ mod tests {
 
     #[test]
     fn comments_do_not_break_blank_line_detection() {
-        let parsed = rd_source::parse(b"first\n% comment\n\nsecond").unwrap();
-        let items = scan_block_content(parsed.document().nodes());
+        let nodes = vec![
+            RdNode::Text("first\n".into()),
+            RdNode::Comment("% comment".into()),
+            RdNode::Text("\nsecond".into()),
+        ];
+        let items = scan_block_content(&nodes);
         let [
             BlockContentItem::Paragraph(first),
             BlockContentItem::Paragraph(second),
@@ -195,8 +199,8 @@ mod tests {
 
     #[test]
     fn whitespace_only_input_has_no_paragraphs() {
-        let parsed = rd_source::parse(b" \n\n\t").unwrap();
-        assert!(scan_block_content(parsed.document().nodes()).is_empty());
+        let nodes = vec![RdNode::Text(" \n\n\t".into())];
+        assert!(scan_block_content(&nodes).is_empty());
     }
 
     #[test]
@@ -257,8 +261,12 @@ mod tests {
 
     #[test]
     fn unknown_tag_wrapper_does_not_merge_blank_line_separated_paragraphs() {
-        let parsed = rd_source::parse(b"\\madeUpTag{first\n\nsecond}").unwrap();
-        let items = scan_block_content(parsed.document().nodes());
+        let nodes = vec![RdNode::tagged(
+            RdTag::Unknown(r"\madeUpTag".into()),
+            None,
+            vec![RdNode::Text("first\n\nsecond".into())],
+        )];
+        let items = scan_block_content(&nodes);
         let [
             BlockContentItem::Paragraph(first),
             BlockContentItem::Paragraph(second),
@@ -272,8 +280,20 @@ mod tests {
 
     #[test]
     fn unknown_tag_wrapper_exposes_nested_block_content() {
-        let parsed = rd_source::parse(b"\\madeUpTag{\\itemize{\\item a}}").unwrap();
-        let items = scan_block_content(parsed.document().nodes());
+        let nodes = vec![RdNode::tagged(
+            RdTag::Unknown(r"\madeUpTag".into()),
+            None,
+            vec![RdNode::tagged(
+                RdTag::Itemize,
+                None,
+                vec![RdNode::tagged(
+                    RdTag::Item,
+                    None,
+                    vec![RdNode::Text("a".into())],
+                )],
+            )],
+        )];
+        let items = scan_block_content(&nodes);
         let [BlockContentItem::Block(block)] = items.as_slice() else {
             panic!("expected the nested itemize to surface as a block, got {items:?}");
         };

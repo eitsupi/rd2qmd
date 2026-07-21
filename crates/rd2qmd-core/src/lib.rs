@@ -203,18 +203,55 @@ pub fn rd_to_mdast_with_options(
 mod tests {
     use super::*;
 
-    fn parse(source: &str) -> RdDocument {
-        rd_source::parse(source.as_bytes())
-            .unwrap()
-            .document()
-            .clone()
+    fn tagged(tag: rd_ast::RdTag, option: Option<&str>, children: Vec<RdNode>) -> RdNode {
+        RdNode::tagged(
+            tag,
+            option.map(|value| vec![RdNode::Text(value.to_owned())]),
+            children,
+        )
+    }
+
+    fn description(children: Vec<RdNode>) -> RdDocument {
+        RdDocument::new(vec![tagged(rd_ast::RdTag::Description, None, children)])
     }
 
     #[test]
     fn extract_text_preserves_legacy_inline_fallbacks() {
-        let doc = parse(
-            r#"\description{Use \code{foo()} and \emph{bar}. \link[pkg]{topic} \link{plain} \linkS4class[pkg]{Class} \doi{10.1000/xyz}.}"#,
-        );
+        let doc = description(vec![
+            RdNode::Text("Use ".into()),
+            tagged(
+                rd_ast::RdTag::Code,
+                None,
+                vec![RdNode::Text("foo()".into())],
+            ),
+            RdNode::Text(" and ".into()),
+            tagged(rd_ast::RdTag::Emph, None, vec![RdNode::Text("bar".into())]),
+            RdNode::Text(". ".into()),
+            tagged(
+                rd_ast::RdTag::Link,
+                Some("pkg"),
+                vec![RdNode::Text("topic".into())],
+            ),
+            RdNode::Text(" ".into()),
+            tagged(
+                rd_ast::RdTag::Link,
+                None,
+                vec![RdNode::Text("plain".into())],
+            ),
+            RdNode::Text(" ".into()),
+            tagged(
+                rd_ast::RdTag::LinkS4Class,
+                Some("pkg"),
+                vec![RdNode::Text("Class".into())],
+            ),
+            RdNode::Text(" ".into()),
+            tagged(
+                rd_ast::RdTag::Doi,
+                None,
+                vec![RdNode::Text("10.1000/xyz".into())],
+            ),
+            RdNode::Text(".".into()),
+        ]);
         let description = doc.description().unwrap();
         assert_eq!(
             extract_text(description),
@@ -224,9 +261,21 @@ mod tests {
 
     #[test]
     fn extract_text_uses_display_label_for_explicit_link_destinations() {
-        let doc = parse(
-            r#"\description{See \link[=dest]{explicit label} and \link[pkg:topic]{qualified label}.}"#,
-        );
+        let doc = description(vec![
+            RdNode::Text("See ".into()),
+            tagged(
+                rd_ast::RdTag::Link,
+                Some("=dest"),
+                vec![RdNode::Text("explicit label".into())],
+            ),
+            RdNode::Text(" and ".into()),
+            tagged(
+                rd_ast::RdTag::Link,
+                Some("pkg:topic"),
+                vec![RdNode::Text("qualified label".into())],
+            ),
+            RdNode::Text(".".into()),
+        ]);
         assert_eq!(
             extract_text(doc.description().unwrap()),
             "See explicit label and qualified label."
@@ -235,13 +284,37 @@ mod tests {
 
     #[test]
     fn extract_text_uses_href_display_not_url() {
-        let doc = parse(r#"\description{Visit \href{https://example.com}{the site}.}"#);
+        let doc = description(vec![
+            RdNode::Text("Visit ".into()),
+            RdNode::tagged(
+                rd_ast::RdTag::Href,
+                None,
+                vec![
+                    RdNode::group(vec![RdNode::Text("https://example.com".into())]),
+                    RdNode::group(vec![RdNode::Text("the site".into())]),
+                ],
+            ),
+            RdNode::Text(".".into()),
+        ]);
         assert_eq!(extract_text(doc.description().unwrap()), "Visit the site.");
     }
 
     #[test]
     fn extract_text_handles_encoded_fallback_and_special_r() {
-        let doc = parse(r#"\description{Using \enc{café}{latin1} and \R.}"#);
+        let doc = description(vec![
+            RdNode::Text("Using ".into()),
+            RdNode::tagged(
+                rd_ast::RdTag::Enc,
+                None,
+                vec![
+                    RdNode::group(vec![RdNode::Text("café".into())]),
+                    RdNode::group(vec![RdNode::Text("latin1".into())]),
+                ],
+            ),
+            RdNode::Text(" and ".into()),
+            tagged(rd_ast::RdTag::R, None, vec![]),
+            RdNode::Text(".".into()),
+        ]);
         assert_eq!(
             extract_text(doc.description().unwrap()),
             "Using café and R."
