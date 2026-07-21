@@ -249,6 +249,15 @@ fn sanitize_table_cell_inline_node(node: &Node) -> Node {
     let mut node = node.clone();
     match &mut node {
         Node::Text(text) => text.value = text.value.replace('|', "\\|"),
+        Node::InlineCode(code) => code.value = code.value.replace('|', "\\|"),
+        Node::InlineMath(math) => math.value = math.value.replace('|', "\\|"),
+        Node::Image(image) => {
+            image.alt = image.alt.replace('|', "\\|");
+            if let Some(title) = &mut image.title {
+                *title = title.replace('|', "\\|");
+            }
+        }
+        Node::Html(html) => html.value = html.value.replace('|', "\\|"),
         Node::Break => {
             return Node::Html(Html {
                 value: "<br>".to_owned(),
@@ -269,6 +278,7 @@ fn sanitize_table_cell_inline_node(node: &Node) -> Node {
                 .collect();
         }
         Node::Link(link) => {
+            link.url = link.url.replace('|', "\\|");
             link.children = link
                 .children
                 .iter()
@@ -736,6 +746,8 @@ fn equation_text(nodes: &[RdNode], links: &LinkResolutionContext<'_>) -> String 
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use rd_ast::{RdDocument, RdNode, RdTag};
     use rd2qmd_mdast::Node;
 
@@ -766,6 +778,10 @@ mod tests {
 
     fn tagged(tag: RdTag, children: Vec<RdNode>) -> RdNode {
         RdNode::tagged(tag, None, children)
+    }
+
+    fn tagged_with_option(tag: RdTag, option: &str, children: Vec<RdNode>) -> RdNode {
+        RdNode::tagged(tag, Some(vec![text(option)]), children)
     }
 
     fn item_marker() -> RdNode {
@@ -1099,6 +1115,75 @@ mod tests {
         );
         assert!(description.children.iter().all(|node| {
             !matches!(node, Node::Text(text) if text.value.contains('|') && !text.value.contains("\\|"))
+        }));
+    }
+
+    #[test]
+    fn pipe_table_escapes_literal_pipes_in_inline_code() {
+        let document =
+            argument_document_with_description(vec![tagged(RdTag::Code, vec![text("a|b")])]);
+        let arguments: Vec<_> = document.arguments().collect();
+        let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
+
+        let [Node::Table(table)] = converted.as_slice() else {
+            panic!("expected one table")
+        };
+        let Node::TableRow(row) = &table.children[1] else {
+            panic!("expected argument row")
+        };
+        let Node::TableCell(description) = &row.children[1] else {
+            panic!("expected description cell")
+        };
+
+        assert_eq!(inline_nodes_to_markdown(&description.children), "`a\\|b`");
+        assert!(
+            description
+                .children
+                .iter()
+                .any(|node| matches!(node, Node::InlineCode(code) if code.value == "a\\|b"))
+        );
+    }
+
+    #[test]
+    fn pipe_table_escapes_literal_pipes_in_resolved_links() {
+        let document = argument_document_with_description(vec![tagged_with_option(
+            RdTag::Link,
+            "=alias",
+            vec![text("a|b")],
+        )]);
+        let arguments: Vec<_> = document.arguments().collect();
+        let alias_map = HashMap::from([("alias".to_owned(), "target|variant".to_owned())]);
+        let context = BlockConversionContext {
+            links: LinkResolutionContext {
+                internal_link_url: Some("{file}.qmd#{topic}"),
+                alias_map: Some(&alias_map),
+                ..LinkResolutionContext::default()
+            },
+            prefer_ascii_math: false,
+        };
+        let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context);
+
+        let [Node::Table(table)] = converted.as_slice() else {
+            panic!("expected one table")
+        };
+        let Node::TableRow(row) = &table.children[1] else {
+            panic!("expected argument row")
+        };
+        let Node::TableCell(description) = &row.children[1] else {
+            panic!("expected description cell")
+        };
+
+        assert_eq!(
+            inline_nodes_to_markdown(&description.children),
+            "[`a\\|b`](target\\|variant.qmd#alias)"
+        );
+        assert!(description.children.iter().any(|node| {
+            matches!(
+                node,
+                Node::Link(link)
+                    if link.url == "target\\|variant.qmd#alias"
+                        && matches!(link.children.as_slice(), [Node::InlineCode(code)] if code.value == "a\\|b")
+            )
         }));
     }
 
