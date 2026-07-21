@@ -26,6 +26,10 @@ pub(crate) struct InlineConversionContext<'a> {
     pub(crate) prefer_ascii_math: bool,
 }
 
+fn single_line_equation_text(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 /// Convert the inline nodes currently supported by the AST migration.
 pub(crate) fn convert_inline_node(
     node: &RdNode,
@@ -69,11 +73,13 @@ pub(crate) fn convert_inline_node(
                 && let Some(ascii) = equation.ascii()
             {
                 let ascii = super::blocks::recover_verbatim(ascii);
-                if !ascii.trim().is_empty() {
+                let ascii = single_line_equation_text(&ascii);
+                if !ascii.is_empty() {
                     return Node::inline_code(ascii);
                 }
             }
-            Node::inline_math(prose_text(equation.latex(), context))
+            let latex = prose_text(equation.latex(), context);
+            Node::inline_math(single_line_equation_text(&latex))
         }),
         RdTag::If | RdTag::IfElse => {
             let conditional = node.inspect_conditional(&base_path).ok().flatten()?;
@@ -859,6 +865,47 @@ mod tests {
             Some(Node::inline_math("y^2")),
             "blank ascii text falls back to latex"
         );
+    }
+
+    #[test]
+    fn inline_equation_collapses_multiline_ascii_for_real_writer() {
+        let equation = tagged(
+            RdTag::Eqn,
+            vec![
+                group(vec![text("x^2 + y^2")]),
+                group(vec![text("x^2 +\n y^2")]),
+            ],
+        );
+        let context = InlineConversionContext {
+            prefer_ascii_math: true,
+            ..InlineConversionContext::default()
+        };
+        let node = convert_inline_node_with_context(&equation, &context).unwrap();
+        let Node::InlineCode(code) = &node else {
+            panic!("expected inline code")
+        };
+
+        assert!(!code.value.contains('\n'));
+        assert_eq!(render(vec![Node::paragraph(vec![node])]), "`x^2 + y^2`\n");
+    }
+
+    #[test]
+    fn inline_equation_collapses_multiline_verb_latex_for_real_writer() {
+        let equation = tagged(
+            RdTag::Eqn,
+            vec![
+                group(vec![verb("x^2 +\n y^2")]),
+                group(vec![text("x squared plus y squared")]),
+            ],
+        );
+        let node = convert_inline_node_with_context(&equation, &InlineConversionContext::default())
+            .unwrap();
+        let Node::InlineMath(math) = &node else {
+            panic!("expected inline math")
+        };
+
+        assert!(!math.value.contains('\n'));
+        assert_eq!(render(vec![Node::paragraph(vec![node])]), "$x^2 + y^2$\n");
     }
 
     #[test]

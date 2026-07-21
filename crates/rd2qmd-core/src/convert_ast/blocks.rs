@@ -108,9 +108,13 @@ fn convert_arguments_pipe(
     let mut rows = vec![header_row];
 
     for argument in arguments {
-        let term_text = argument_name(argument, context).replace('|', "\\|");
+        let term_text = argument_name(argument, context)
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .replace('|', "\\|");
         rows.push(Node::table_row(vec![
-            Node::table_cell(vec![Node::inline_code(term_text.trim())]),
+            Node::table_cell(vec![Node::inline_code(term_text)]),
             Node::table_cell(flatten_for_table_cell(argument.description, context)),
         ]));
     }
@@ -316,7 +320,14 @@ fn sanitize_table_cell_inline_node(node: &Node) -> Node {
     let mut node = node.clone();
     match &mut node {
         Node::Text(text) => text.value = text.value.replace('|', "\\|"),
-        Node::InlineCode(code) => code.value = code.value.replace('|', "\\|"),
+        Node::InlineCode(code) => {
+            code.value = code
+                .value
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .replace('|', "\\|");
+        }
         // \deqn reached through the inline path (e.g. a plain \tabular cell,
         // or a conditional branch) always arrives as InlineMath now (see
         // inline.rs), which can still carry raw newlines from multiline
@@ -1280,6 +1291,33 @@ mod tests {
     }
 
     #[test]
+    fn converts_tabular_multiline_ascii_equation_to_single_line_inline_code() {
+        let table = tagged(
+            RdTag::Tabular,
+            vec![
+                group(vec![text("l")]),
+                group(vec![equation("x^2 + y^2", Some("x^2 +\n y^2"))]),
+            ],
+        );
+
+        let mut table_context = context(true);
+        table_context.inline.prefer_ascii_math = true;
+        let converted = convert_block_content(&[table], &table_context);
+        let markdown = mdast_to_qmd(
+            &Root::new(converted),
+            &WriterOptions {
+                frontmatter: None,
+                quarto_code_blocks: true,
+            },
+        );
+        let row = markdown
+            .lines()
+            .find(|line| line.contains("x^2 + y^2"))
+            .expect("expected equation table row");
+        assert_eq!(row, "| `x^2 + y^2` |");
+    }
+
+    #[test]
     fn converts_section_like_block_outside_section_tree() {
         let subsection = section_like(
             RdTag::Subsection,
@@ -1571,6 +1609,39 @@ mod tests {
         assert!(
             matches!(sanitized, Node::Image(image) if image.url == "path\\|name.png" && image.alt == "alt")
         );
+    }
+
+    #[test]
+    fn pipe_table_sanitizer_collapses_multiline_inline_code() {
+        let sanitized = sanitize_table_cell_inline_node(&Node::inline_code("first\n second"));
+
+        assert!(matches!(sanitized, Node::InlineCode(code) if code.value == "first second"));
+    }
+
+    #[test]
+    fn pipe_table_collapses_multiline_argument_names_through_real_writer() {
+        let document = RdDocument::new(vec![tagged(
+            RdTag::Arguments,
+            vec![described_item(
+                vec![text("alpha\n beta")],
+                vec![text("description")],
+            )],
+        )]);
+        let arguments: Vec<_> = document.arguments().collect();
+        let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
+        let markdown = mdast_to_qmd(
+            &Root::new(converted),
+            &WriterOptions {
+                frontmatter: None,
+                quarto_code_blocks: true,
+            },
+        );
+
+        let row = markdown
+            .lines()
+            .find(|line| line.contains("description"))
+            .expect("expected argument row");
+        assert_eq!(row, "| `alpha beta` | description |");
     }
 
     #[test]
