@@ -73,6 +73,9 @@ fn scan<'a>(
             rd_ast::RdNode::Comment(_) => {}
             rd_ast::RdNode::Group(group) => scan(group.children(), state, items),
             rd_ast::RdNode::Raw(raw) => scan(raw.children(), state, items),
+            rd_ast::RdNode::Tagged(tagged) if matches!(tagged.tag(), RdTag::Unknown(_)) => {
+                scan(tagged.children(), state, items)
+            }
             rd_ast::RdNode::Tagged(_) if is_block_level(node) => {
                 flush(state, items);
                 items.push(BlockContentItem::Block(node));
@@ -250,6 +253,31 @@ mod tests {
                 && std::ptr::eq(*block, &nodes[1])
                 && paragraph_text(after) == "after"
         ));
+    }
+
+    #[test]
+    fn unknown_tag_wrapper_does_not_merge_blank_line_separated_paragraphs() {
+        let parsed = rd_source::parse(b"\\madeUpTag{first\n\nsecond}").unwrap();
+        let items = scan_block_content(parsed.document().nodes());
+        let [
+            BlockContentItem::Paragraph(first),
+            BlockContentItem::Paragraph(second),
+        ] = items.as_slice()
+        else {
+            panic!("expected two paragraphs, got {items:?}");
+        };
+        assert_eq!(paragraph_text(first), "first");
+        assert_eq!(paragraph_text(second), "second");
+    }
+
+    #[test]
+    fn unknown_tag_wrapper_exposes_nested_block_content() {
+        let parsed = rd_source::parse(b"\\madeUpTag{\\itemize{\\item a}}").unwrap();
+        let items = scan_block_content(parsed.document().nodes());
+        let [BlockContentItem::Block(block)] = items.as_slice() else {
+            panic!("expected the nested itemize to surface as a block, got {items:?}");
+        };
+        assert_eq!(block.as_tagged().unwrap().tag(), &RdTag::Itemize);
     }
 
     #[test]

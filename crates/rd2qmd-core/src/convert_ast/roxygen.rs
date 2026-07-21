@@ -53,8 +53,13 @@ fn recover_out_text(nodes: &[RdNode]) -> String {
 
 fn extract_language_from_div(html: &str) -> Option<Option<String>> {
     let after_tag = html.trim_start().strip_prefix("<div")?;
-    let class_start = after_tag.find("class=\"")?;
-    let after_class = &after_tag[class_start + 7..];
+    match after_tag.chars().next() {
+        Some(c) if c.is_whitespace() || c == '>' => {}
+        _ => return None,
+    }
+
+    let class_start = find_class_attribute(after_tag)?;
+    let after_class = &after_tag[class_start + "class=\"".len()..];
     let class_end = after_class.find('"')?;
     let class_value = &after_class[..class_end];
 
@@ -65,6 +70,25 @@ fn extract_language_from_div(html: &str) -> Option<Option<String>> {
         ["r"] => Some(Some("r".to_owned())),
         _ => None,
     }
+}
+
+/// Finds a genuine `class="` attribute, rejecting substring collisions such
+/// as `data-class="` by requiring the match to be preceded by whitespace
+/// (i.e. it starts a new attribute rather than continuing a longer name).
+fn find_class_attribute(html: &str) -> Option<usize> {
+    let mut search_from = 0;
+    while let Some(relative) = html[search_from..].find("class=\"") {
+        let index = search_from + relative;
+        let at_attribute_boundary = html[..index]
+            .chars()
+            .next_back()
+            .is_none_or(char::is_whitespace);
+        if at_attribute_boundary {
+            return Some(index);
+        }
+        search_from = index + 1;
+    }
+    None
 }
 
 fn is_closing_div(html: &str) -> bool {
@@ -120,6 +144,12 @@ mod tests {
             snippet("html", "sourceCodeExtra", "code", true),
             snippet("html", "rSuffix", "code", true),
             r#"\if{html}{\out{<span class="sourceCode r">}}\preformatted{code
+}\if{html}{\out{</div>}}"#
+                .to_owned(),
+            r#"\if{html}{\out{<diverse class="sourceCode r">}}\preformatted{code
+}\if{html}{\out{</div>}}"#
+                .to_owned(),
+            r#"\if{html}{\out{<div data-class="sourceCode r">}}\preformatted{code
 }\if{html}{\out{</div>}}"#
                 .to_owned(),
         ];
