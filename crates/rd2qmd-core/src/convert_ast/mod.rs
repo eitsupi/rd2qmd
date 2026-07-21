@@ -29,7 +29,8 @@ pub(crate) use document::{
 };
 #[allow(unused_imports)]
 pub(crate) use inline::{
-    LinkResolutionContext, convert_inline_node, convert_inline_nodes, extract_plain_text,
+    InlineConversionContext, LinkResolutionContext, convert_inline_node, convert_inline_nodes,
+    extract_plain_text,
 };
 #[allow(unused_imports)]
 pub(crate) use leaf_text::{

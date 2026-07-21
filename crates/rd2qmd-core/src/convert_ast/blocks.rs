@@ -6,7 +6,7 @@ use tabled::settings::Style;
 use tabled::settings::style::HorizontalLine;
 
 use super::{
-    inline::{self, LinkResolutionContext},
+    inline::{self, InlineConversionContext},
     leaf_text::flatten_verbatim_leaves,
     traversal::{BlockContentItem, ParagraphItem, scan_block_content},
 };
@@ -14,7 +14,7 @@ use super::{
 /// Borrowed configuration used while converting general block content.
 #[derive(Clone, Copy)]
 pub(crate) struct BlockConversionContext<'a> {
-    pub(crate) links: LinkResolutionContext<'a>,
+    pub(crate) inline: InlineConversionContext<'a>,
     pub(crate) prefer_ascii_math: bool,
     pub(crate) enclosing_heading_depth: u8,
 }
@@ -45,7 +45,7 @@ pub(crate) fn convert_custom_section(
     let depth = (2usize + section.nesting).min(6) as u8;
     let mut nodes = vec![Node::heading(
         depth,
-        inline::convert_inline_nodes(section.title, &context.links),
+        inline::convert_inline_nodes(section.title, &context.inline),
     )];
     nodes.extend(convert_custom_section_body(section, context, depth));
     nodes
@@ -237,7 +237,10 @@ fn convert_arguments_list(
 }
 
 fn argument_name(argument: &RdArgument<'_>, context: &BlockConversionContext<'_>) -> String {
-    inline::extract_plain_text(&inline::convert_inline_nodes(argument.name, &context.links))
+    inline::extract_plain_text(&inline::convert_inline_nodes(
+        argument.name,
+        &context.inline,
+    ))
 }
 
 /// Flatten block content to inline nodes for GFM table cells.
@@ -721,7 +724,7 @@ fn convert_paragraph(
         .flat_map(|item| match item {
             ParagraphItem::Text(text) => vec![inline::convert_text(text)],
             ParagraphItem::Node(node) => {
-                inline::convert_inline_nodes(std::slice::from_ref(node), &context.links)
+                inline::convert_inline_nodes(std::slice::from_ref(node), &context.inline)
             }
         })
         .collect();
@@ -776,7 +779,7 @@ fn convert_block(node: &RdNode, context: &BlockConversionContext<'_>) -> Vec<Nod
                 };
                 children.push(Node::definition_term(inline::convert_inline_nodes(
                     item.label(),
-                    &context.links,
+                    &context.inline,
                 )));
                 // Unlike the legacy inline-only description, preserve arbitrary
                 // block children such as multiple paragraphs and nested lists.
@@ -800,7 +803,7 @@ fn convert_block(node: &RdNode, context: &BlockConversionContext<'_>) -> Vec<Nod
                     return vec![Node::code(None, ascii)];
                 }
             }
-            vec![Node::math(equation_text(equation.latex(), &context.links))]
+            vec![Node::math(equation_text(equation.latex(), &context.inline))]
         }
         RdTag::Tabular => convert_tabular(tagged, context).into_iter().collect(),
         RdTag::Section | RdTag::Subsection => convert_section_like_block(tagged, context),
@@ -835,7 +838,7 @@ fn convert_tabular(
                 .cells()
                 .iter()
                 .map(|cell| {
-                    let children = inline::convert_inline_nodes(cell.nodes(), &context.links)
+                    let children = inline::convert_inline_nodes(cell.nodes(), &context.inline)
                         .iter()
                         .map(sanitize_table_cell_inline_node)
                         .collect();
@@ -864,7 +867,7 @@ fn convert_section_like_block(
     let depth = context.enclosing_heading_depth.saturating_add(1).min(6);
     let mut nodes = vec![Node::heading(
         depth,
-        inline::convert_inline_nodes(title.children(), &context.links),
+        inline::convert_inline_nodes(title.children(), &context.inline),
     )];
     let child_context = BlockConversionContext {
         enclosing_heading_depth: depth,
@@ -878,8 +881,8 @@ pub(super) fn recover_verbatim(nodes: &[RdNode]) -> String {
     flatten_verbatim_leaves(nodes).unwrap_or_else(|error| error.recovered_text().to_owned())
 }
 
-fn equation_text(nodes: &[RdNode], links: &LinkResolutionContext<'_>) -> String {
-    inline::extract_plain_text(&inline::convert_inline_nodes(nodes, links))
+fn equation_text(nodes: &[RdNode], context: &InlineConversionContext<'_>) -> String {
+    inline::extract_plain_text(&inline::convert_inline_nodes(nodes, context))
 }
 
 #[cfg(test)]
@@ -895,11 +898,11 @@ mod tests {
     };
     use crate::ArgumentsFormat;
     use crate::convert_ast::document::build_custom_sections;
-    use crate::convert_ast::inline::LinkResolutionContext;
+    use crate::convert_ast::inline::{InlineConversionContext, LinkResolutionContext};
 
     fn context(prefer_ascii_math: bool) -> BlockConversionContext<'static> {
         BlockConversionContext {
-            links: LinkResolutionContext::default(),
+            inline: InlineConversionContext::default(),
             prefer_ascii_math,
             enclosing_heading_depth: 2,
         }
@@ -1491,10 +1494,13 @@ mod tests {
         let arguments: Vec<_> = document.arguments().collect();
         let alias_map = HashMap::from([("alias".to_owned(), "target|variant".to_owned())]);
         let context = BlockConversionContext {
-            links: LinkResolutionContext {
-                internal_link_url: Some("{file}.qmd#{topic}"),
-                alias_map: Some(&alias_map),
-                ..LinkResolutionContext::default()
+            inline: InlineConversionContext {
+                links: LinkResolutionContext {
+                    internal_link_url: Some("{file}.qmd#{topic}"),
+                    alias_map: Some(&alias_map),
+                    ..LinkResolutionContext::default()
+                },
+                include_html_output: false,
             },
             prefer_ascii_math: false,
             enclosing_heading_depth: 2,

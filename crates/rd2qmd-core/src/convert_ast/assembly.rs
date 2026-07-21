@@ -4,8 +4,9 @@ use rd2qmd_mdast::{Node, Root};
 
 use super::{
     BlockConversionContext, DocumentSection, ExampleOptions, FixedSection, FixedSectionBody,
-    FixedSectionKind, LinkResolutionContext, build_document_structure, convert_arguments,
-    convert_block_content, convert_custom_section, convert_examples, convert_usage,
+    FixedSectionKind, InlineConversionContext, LinkResolutionContext, build_document_structure,
+    convert_arguments, convert_block_content, convert_custom_section, convert_examples,
+    convert_usage,
 };
 
 /// Convert one rd-ast document into a complete mdast root.
@@ -39,12 +40,15 @@ pub(crate) fn convert_document(
 
 fn block_context<'a>(options: &'a crate::RdToMdastOptions) -> BlockConversionContext<'a> {
     BlockConversionContext {
-        links: LinkResolutionContext {
-            internal_link_url: options.internal_link_url.as_deref(),
-            unqualified_link_url: options.unqualified_link_url.as_deref(),
-            external_link_url: options.external_link_url.as_deref(),
-            alias_map: options.alias_map.as_ref(),
-            package_urls: options.package_urls.as_ref(),
+        inline: InlineConversionContext {
+            links: LinkResolutionContext {
+                internal_link_url: options.internal_link_url.as_deref(),
+                unqualified_link_url: options.unqualified_link_url.as_deref(),
+                external_link_url: options.external_link_url.as_deref(),
+                alias_map: options.alias_map.as_ref(),
+                package_urls: options.package_urls.as_ref(),
+            },
+            include_html_output: options.include_html_output,
         },
         prefer_ascii_math: options.prefer_ascii_math,
         enclosing_heading_depth: 2,
@@ -216,5 +220,28 @@ mod tests {
             without_title_markdown,
             render_legacy(source, &without_title)
         );
+    }
+
+    #[test]
+    fn conditional_rendering_matches_legacy_for_html_output_option() {
+        let source = r#"
+\name{topic}
+\title{Conditional rendering}
+\description{\if{html}{html-only}\if{text}{text-always}\ifelse{html}{html-then}{html-else}}
+"#;
+
+        for include_html_output in [false, true] {
+            let options = RdToMdastOptions {
+                include_html_output,
+                ..RdToMdastOptions::default()
+            };
+            let markdown = render_new(source, &options);
+
+            assert_eq!(markdown, render_legacy(source, &options));
+            assert_eq!(markdown.contains("html-only"), include_html_output);
+            assert!(markdown.contains("text-always"));
+            assert!(markdown.contains("html-then"));
+            assert!(!markdown.contains("html-else"));
+        }
     }
 }

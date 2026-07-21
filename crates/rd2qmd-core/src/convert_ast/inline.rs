@@ -3,7 +3,8 @@
 use std::collections::HashMap;
 
 use rd_ast::{
-    RdEquationDisplay, RdInlineSpanKind, RdLinkDestination, RdLinkTopic, RdNode, RdPath, RdTag,
+    RdConditionalKind, RdEquationDisplay, RdInlineSpanKind, RdLinkDestination, RdLinkTopic, RdNode,
+    RdPath, RdTag,
 };
 use rd2qmd_mdast::{Html, Image, Node};
 
@@ -19,10 +20,16 @@ pub(crate) struct LinkResolutionContext<'a> {
     pub(crate) package_urls: Option<&'a HashMap<String, String>>,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct InlineConversionContext<'a> {
+    pub(crate) links: LinkResolutionContext<'a>,
+    pub(crate) include_html_output: bool,
+}
+
 /// Convert the inline nodes currently supported by the AST migration.
 pub(crate) fn convert_inline_node(
     node: &RdNode,
-    context: &LinkResolutionContext<'_>,
+    context: &InlineConversionContext<'_>,
 ) -> Option<Node> {
     match node {
         RdNode::Text(text) => return Some(Node::text(normalize_whitespace(text))),
@@ -55,6 +62,33 @@ pub(crate) fn convert_inline_node(
                 _ => unreachable!("all equation display kinds are handled"),
             }
         }),
+        RdTag::If | RdTag::IfElse => {
+            let conditional = node.inspect_conditional(&base_path).ok().flatten()?;
+            let format = conditional.format();
+
+            let branch = match conditional.kind() {
+                RdConditionalKind::If => {
+                    let include =
+                        format == "text" || (format == "html" && context.include_html_output);
+
+                    if !include {
+                        return None;
+                    }
+
+                    conditional.then_branch()
+                }
+                RdConditionalKind::IfElse => {
+                    if format == "html" || format == "text" {
+                        conditional.then_branch()
+                    } else {
+                        conditional.else_branch()?
+                    }
+                }
+                _ => unreachable!("all conditional kinds are handled"),
+            };
+
+            collapse_inline_nodes(convert_inline_nodes(branch, context))
+        }
         RdTag::Figure => node.figure(&base_path).map(|figure| {
             let file = figure.file();
             let alt = figure
@@ -85,7 +119,7 @@ pub(crate) fn convert_inline_node(
             .inspect_link(&base_path)
             .ok()
             .and_then(|link| convert_link(&link, context)),
-        RdTag::LinkS4Class => convert_s4_class_link(node, &base_path, context),
+        RdTag::LinkS4Class => convert_s4_class_link(node, &base_path, &context.links),
         RdTag::Sexpr => tagged
             .inspect_sexpr(&base_path)
             .ok()
@@ -113,7 +147,7 @@ pub(super) fn convert_text(text: &str) -> Node {
 /// Convert all supported inline nodes, skipping out-of-scope nodes.
 pub(crate) fn convert_inline_nodes(
     nodes: &[RdNode],
-    context: &LinkResolutionContext<'_>,
+    context: &InlineConversionContext<'_>,
 ) -> Vec<Node> {
     let mut converted = Vec::new();
     for node in nodes {
@@ -176,7 +210,7 @@ pub(crate) fn extract_plain_text(nodes: &[Node]) -> String {
 fn convert_inline_span(
     kind: RdInlineSpanKind,
     body: &[RdNode],
-    context: &LinkResolutionContext<'_>,
+    context: &InlineConversionContext<'_>,
 ) -> Option<Node> {
     let node = match kind {
         RdInlineSpanKind::Emph | RdInlineSpanKind::Dfn => {
@@ -224,27 +258,31 @@ fn convert_inline_span(
     Some(node)
 }
 
-fn prose_text(nodes: &[RdNode], context: &LinkResolutionContext<'_>) -> String {
+fn prose_text(nodes: &[RdNode], context: &InlineConversionContext<'_>) -> String {
     extract_plain_text(&convert_inline_nodes(nodes, context))
 }
 
-fn convert_link(link: &rd_ast::RdLink<'_>, context: &LinkResolutionContext<'_>) -> Option<Node> {
+fn convert_link(link: &rd_ast::RdLink<'_>, context: &InlineConversionContext<'_>) -> Option<Node> {
     match link.destination() {
         RdLinkDestination::DisplayText { nodes } => {
             let topic = prose_text(nodes, context);
-            Some(resolve_unqualified_link(&topic, topic.clone(), context))
+            Some(resolve_unqualified_link(
+                &topic,
+                topic.clone(),
+                &context.links,
+            ))
         }
         RdLinkDestination::Explicit { topic } => Some(resolve_unqualified_link(
             topic,
             prose_text(link.display(), context),
-            context,
+            &context.links,
         )),
         RdLinkDestination::Package { package, topic } => match topic {
             RdLinkTopic::Explicit(topic) => Some(resolve_qualified_link(
                 package,
                 topic,
                 prose_text(link.display(), context),
-                context,
+                &context.links,
             )),
             RdLinkTopic::DisplayText(nodes) => {
                 let topic = prose_text(nodes, context);
@@ -252,12 +290,20 @@ fn convert_link(link: &rd_ast::RdLink<'_>, context: &LinkResolutionContext<'_>) 
                     package,
                     &topic,
                     format!("{package}::{topic}"),
-                    context,
+                    &context.links,
                 ))
             }
             _ => None,
         },
         _ => None,
+    }
+}
+
+fn collapse_inline_nodes(nodes: Vec<Node>) -> Option<Node> {
+    if nodes.len() == 1 {
+        nodes.into_iter().next()
+    } else {
+        Some(Node::paragraph(nodes))
     }
 }
 
@@ -386,17 +432,18 @@ mod tests {
     use rd2qmd_mdast::{Node, Root, WriterOptions, mdast_to_qmd};
 
     use super::{
-        LinkResolutionContext, convert_inline_node as convert_inline_node_with_context,
+        InlineConversionContext, LinkResolutionContext,
+        convert_inline_node as convert_inline_node_with_context,
         convert_inline_nodes as convert_inline_nodes_with_context, extract_plain_text,
     };
     use crate::convert_ast::blocks::{BlockConversionContext, convert_block_content};
 
     fn convert_inline_node(node: &RdNode) -> Option<Node> {
-        convert_inline_node_with_context(node, &LinkResolutionContext::default())
+        convert_inline_node_with_context(node, &InlineConversionContext::default())
     }
 
     fn convert_inline_nodes(nodes: &[RdNode]) -> Vec<Node> {
-        convert_inline_nodes_with_context(nodes, &LinkResolutionContext::default())
+        convert_inline_nodes_with_context(nodes, &InlineConversionContext::default())
     }
 
     fn text(value: &str) -> RdNode {
@@ -432,7 +479,7 @@ mod tests {
         convert_block_content(
             parsed.document().nodes(),
             &BlockConversionContext {
-                links: LinkResolutionContext::default(),
+                inline: InlineConversionContext::default(),
                 prefer_ascii_math: false,
                 enclosing_heading_depth: 2,
             },
@@ -455,6 +502,26 @@ mod tests {
             children.push(group(vec![verb(second)]));
         }
         tagged(RdTag::Figure, children)
+    }
+
+    fn conditional(
+        tag: RdTag,
+        format: &str,
+        then_branch: Vec<RdNode>,
+        else_branch: Option<Vec<RdNode>>,
+    ) -> RdNode {
+        let mut children = vec![group(vec![text(format)]), group(then_branch)];
+        if let Some(else_branch) = else_branch {
+            children.push(group(else_branch));
+        }
+        tagged(tag, children)
+    }
+
+    fn context_with_html(include_html_output: bool) -> InlineConversionContext<'static> {
+        InlineConversionContext {
+            include_html_output,
+            ..InlineConversionContext::default()
+        }
     }
 
     #[test]
@@ -537,10 +604,13 @@ mod tests {
             )],
         );
         let alias_map = HashMap::from([("alias".to_owned(), "target".to_owned())]);
-        let context = LinkResolutionContext {
-            internal_link_url: Some("{file}.qmd#{topic}"),
-            alias_map: Some(&alias_map),
-            ..LinkResolutionContext::default()
+        let context = InlineConversionContext {
+            links: LinkResolutionContext {
+                internal_link_url: Some("{file}.qmd#{topic}"),
+                alias_map: Some(&alias_map),
+                ..LinkResolutionContext::default()
+            },
+            include_html_output: false,
         };
 
         assert_eq!(
@@ -572,10 +642,13 @@ mod tests {
             ],
         );
         let alias_map = HashMap::from([("alias".to_owned(), "target".to_owned())]);
-        let context = LinkResolutionContext {
-            internal_link_url: Some("{file}.qmd#{topic}"),
-            alias_map: Some(&alias_map),
-            ..LinkResolutionContext::default()
+        let context = InlineConversionContext {
+            links: LinkResolutionContext {
+                internal_link_url: Some("{file}.qmd#{topic}"),
+                alias_map: Some(&alias_map),
+                ..LinkResolutionContext::default()
+            },
+            include_html_output: false,
         };
 
         assert_eq!(
@@ -704,6 +777,96 @@ mod tests {
     }
 
     #[test]
+    fn plain_if_obeys_format_and_html_output_option() {
+        let html = conditional(RdTag::If, "html", vec![text("HTML")], None);
+        let text_format = conditional(RdTag::If, "text", vec![text("TEXT")], None);
+        let other = conditional(RdTag::If, "latex", vec![text("OTHER")], None);
+
+        assert_eq!(
+            convert_inline_node_with_context(&html, &context_with_html(false)),
+            None
+        );
+        assert_eq!(
+            convert_inline_node_with_context(&html, &context_with_html(true)),
+            Some(Node::text("HTML"))
+        );
+        for include_html_output in [false, true] {
+            let context = context_with_html(include_html_output);
+            assert_eq!(
+                convert_inline_node_with_context(&text_format, &context),
+                Some(Node::text("TEXT"))
+            );
+            assert_eq!(convert_inline_node_with_context(&other, &context), None);
+        }
+    }
+
+    #[test]
+    fn ifelse_selects_by_format_independently_of_html_output_option() {
+        let html = conditional(
+            RdTag::IfElse,
+            "html",
+            vec![text("THEN")],
+            Some(vec![text("ELSE")]),
+        );
+        let text_format = conditional(
+            RdTag::IfElse,
+            "text",
+            vec![text("THEN")],
+            Some(vec![text("ELSE")]),
+        );
+        let other = conditional(
+            RdTag::IfElse,
+            "latex",
+            vec![text("THEN")],
+            Some(vec![text("ELSE")]),
+        );
+
+        for include_html_output in [false, true] {
+            let context = context_with_html(include_html_output);
+            assert_eq!(
+                convert_inline_node_with_context(&html, &context),
+                Some(Node::text("THEN"))
+            );
+            assert_eq!(
+                convert_inline_node_with_context(&text_format, &context),
+                Some(Node::text("THEN"))
+            );
+            assert_eq!(
+                convert_inline_node_with_context(&other, &context),
+                Some(Node::text("ELSE"))
+            );
+        }
+    }
+
+    #[test]
+    fn conditional_collapses_one_node_and_wraps_multiple_nodes() {
+        let empty = conditional(RdTag::If, "text", vec![], None);
+        let one = conditional(RdTag::If, "text", vec![text("one")], None);
+        let multiple = conditional(
+            RdTag::If,
+            "text",
+            vec![text("one "), tagged(RdTag::Strong, vec![text("two")])],
+            None,
+        );
+
+        assert_eq!(convert_inline_node(&empty), Some(Node::paragraph(vec![])));
+        assert_eq!(convert_inline_node(&one), Some(Node::text("one")));
+        assert_eq!(
+            convert_inline_node(&multiple),
+            Some(Node::paragraph(vec![
+                Node::text("one "),
+                Node::strong(vec![Node::text("two")]),
+            ]))
+        );
+    }
+
+    #[test]
+    fn malformed_conditional_is_skipped_without_panicking() {
+        let malformed = tagged(RdTag::If, vec![group(vec![text("html")])]);
+        assert_eq!(convert_inline_node(&malformed), None);
+    }
+
+    #[test]
     fn converts_figure_alt_text_options_and_filename_fallback() {
         let nodes = vec![
             figure("plot.png", Some("A plot")),
@@ -773,11 +936,14 @@ mod tests {
         );
 
         let alias_map = HashMap::from([("helper".to_owned(), "utils".to_owned())]);
-        let context = LinkResolutionContext {
-            internal_link_url: Some("{file}.qmd#{topic}"),
-            unqualified_link_url: Some("https://fallback.example/{topic}"),
-            alias_map: Some(&alias_map),
-            ..LinkResolutionContext::default()
+        let context = InlineConversionContext {
+            links: LinkResolutionContext {
+                internal_link_url: Some("{file}.qmd#{topic}"),
+                unqualified_link_url: Some("https://fallback.example/{topic}"),
+                alias_map: Some(&alias_map),
+                ..LinkResolutionContext::default()
+            },
+            include_html_output: false,
         };
         assert_eq!(
             convert_inline_node_with_context(&link, &context),
@@ -787,10 +953,13 @@ mod tests {
             ))
         );
 
-        let context_without_internal_template = LinkResolutionContext {
-            unqualified_link_url: Some("https://fallback.example/{topic}"),
-            alias_map: Some(&alias_map),
-            ..LinkResolutionContext::default()
+        let context_without_internal_template = InlineConversionContext {
+            links: LinkResolutionContext {
+                unqualified_link_url: Some("https://fallback.example/{topic}"),
+                alias_map: Some(&alias_map),
+                ..LinkResolutionContext::default()
+            },
+            include_html_output: false,
         };
         assert_eq!(
             convert_inline_node_with_context(&link, &context_without_internal_template),
@@ -810,9 +979,12 @@ mod tests {
             Some(Node::inline_code("shown name"))
         );
 
-        let context = LinkResolutionContext {
-            unqualified_link_url: Some("https://example.com/{topic}.html"),
-            ..LinkResolutionContext::default()
+        let context = InlineConversionContext {
+            links: LinkResolutionContext {
+                unqualified_link_url: Some("https://example.com/{topic}.html"),
+                ..LinkResolutionContext::default()
+            },
+            include_html_output: false,
         };
         assert_eq!(
             convert_inline_node_with_context(&link, &context),
@@ -839,10 +1011,13 @@ mod tests {
             "dplyr".to_owned(),
             "https://dplyr.example/{topic}".to_owned(),
         )]);
-        let context = LinkResolutionContext {
-            external_link_url: Some("x-r-help:{package}/{topic}"),
-            package_urls: Some(&package_urls),
-            ..LinkResolutionContext::default()
+        let context = InlineConversionContext {
+            links: LinkResolutionContext {
+                external_link_url: Some("x-r-help:{package}/{topic}"),
+                package_urls: Some(&package_urls),
+                ..LinkResolutionContext::default()
+            },
+            include_html_output: false,
         };
         assert_eq!(
             convert_inline_node_with_context(&link, &context),
@@ -861,9 +1036,12 @@ mod tests {
             Some(Node::inline_code("dplyr::mutate"))
         );
 
-        let context = LinkResolutionContext {
-            external_link_url: Some("x-r-help:{package}/{topic}"),
-            ..LinkResolutionContext::default()
+        let context = InlineConversionContext {
+            links: LinkResolutionContext {
+                external_link_url: Some("x-r-help:{package}/{topic}"),
+                ..LinkResolutionContext::default()
+            },
+            include_html_output: false,
         };
         assert_eq!(
             convert_inline_node_with_context(&link, &context),
@@ -887,10 +1065,13 @@ mod tests {
             ]
         );
 
-        let context = LinkResolutionContext {
-            unqualified_link_url: Some("https://example.com/{topic}.html"),
-            external_link_url: Some("x-r-help:{package}/{topic}"),
-            ..LinkResolutionContext::default()
+        let context = InlineConversionContext {
+            links: LinkResolutionContext {
+                unqualified_link_url: Some("https://example.com/{topic}.html"),
+                external_link_url: Some("x-r-help:{package}/{topic}"),
+                ..LinkResolutionContext::default()
+            },
+            include_html_output: false,
         };
         assert_eq!(
             convert_inline_nodes_with_context(&[qualified, unqualified], &context),

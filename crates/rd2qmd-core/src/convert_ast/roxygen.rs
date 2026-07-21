@@ -95,7 +95,7 @@ mod tests {
 
     use super::try_match_roxygen_code_block;
     use crate::convert_ast::blocks::{BlockConversionContext, convert_block_content};
-    use crate::convert_ast::inline::LinkResolutionContext;
+    use crate::convert_ast::inline::InlineConversionContext;
 
     fn match_snippet(source: &str) -> Option<super::RoxygenCodeBlock> {
         let parsed = rd_source::parse(source.as_bytes()).unwrap();
@@ -175,7 +175,7 @@ mod tests {
         let converted = convert_block_content(
             parsed.document().nodes(),
             &BlockConversionContext {
-                links: LinkResolutionContext::default(),
+                inline: InlineConversionContext::default(),
                 prefer_ascii_math: false,
                 enclosing_heading_depth: 2,
             },
@@ -207,7 +207,7 @@ mod tests {
         let converted = convert_block_content(
             parsed.document().nodes(),
             &BlockConversionContext {
-                links: LinkResolutionContext::default(),
+                inline: InlineConversionContext::default(),
                 prefer_ascii_math: false,
                 enclosing_heading_depth: 2,
             },
