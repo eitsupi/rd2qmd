@@ -295,6 +295,11 @@ fn sanitize_table_cell_inline_node(node: &Node) -> Node {
         Node::Text(text) => text.value = text.value.replace('|', "\\|"),
         Node::InlineCode(code) => code.value = code.value.replace('|', "\\|"),
         Node::InlineMath(math) => math.value = math.value.replace('|', "\\|"),
+        Node::Math(math) => {
+            return Node::InlineMath(rd2qmd_mdast::InlineMath {
+                value: math.value.replace('|', "\\|"),
+            });
+        }
         Node::Image(image) => {
             image.url = image.url.replace('|', "\\|");
             image.alt = image.alt.replace('|', "\\|");
@@ -1194,6 +1199,26 @@ mod tests {
             cell_text,
             ["left \\| value", "**center**", "`right\\|code`"]
         );
+    }
+
+    #[test]
+    fn converts_tabular_block_math_to_pipe_escaped_inline_math() {
+        let table = tagged(
+            RdTag::Tabular,
+            vec![group(vec![text("l")]), group(vec![equation("x | y", None)])],
+        );
+
+        let converted = convert_block_content(&[table], &context(false));
+        let [Node::Table(table)] = converted.as_slice() else {
+            panic!("expected one table")
+        };
+        let [Node::TableRow(row)] = table.children.as_slice() else {
+            panic!("expected one table row")
+        };
+        let [Node::TableCell(cell)] = row.children.as_slice() else {
+            panic!("expected one table cell")
+        };
+        assert_eq!(cell.children, [Node::inline_math("x \\| y")]);
     }
 
     #[test]
