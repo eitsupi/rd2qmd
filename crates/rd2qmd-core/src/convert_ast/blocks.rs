@@ -295,6 +295,9 @@ fn sanitize_table_cell_inline_node(node: &Node) -> Node {
         Node::Text(text) => text.value = text.value.replace('|', "\\|"),
         Node::InlineCode(code) => code.value = code.value.replace('|', "\\|"),
         Node::InlineMath(math) => math.value = math.value.replace('|', "\\|"),
+        // Accepted limitation: this collapse is not TeX-comment-aware, so a `%` line
+        // comment can swallow later `\deqn` content; handling `\%` needs TeX-aware
+        // stripping for this narrow `\deqn`-in-`\tabular` case.
         Node::Math(math) => {
             return Node::InlineMath(rd2qmd_mdast::InlineMath {
                 value: math
