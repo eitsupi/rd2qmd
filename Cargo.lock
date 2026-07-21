@@ -1247,6 +1247,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rd2qmd-source"
+version = "0.4.0"
+dependencies = [
+ "rd-ast",
+ "rd-source",
+]
+
+[[package]]
 name = "ref-cast"
 version = "1.0.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
