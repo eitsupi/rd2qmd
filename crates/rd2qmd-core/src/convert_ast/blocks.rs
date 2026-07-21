@@ -717,9 +717,11 @@ fn convert_paragraph(
 ) -> Option<Node> {
     let children: Vec<_> = items
         .into_iter()
-        .filter_map(|item| match item {
-            ParagraphItem::Text(text) => Some(inline::convert_text(text)),
-            ParagraphItem::Node(node) => inline::convert_inline_node(node, &context.links),
+        .flat_map(|item| match item {
+            ParagraphItem::Text(text) => vec![inline::convert_text(text)],
+            ParagraphItem::Node(node) => {
+                inline::convert_inline_nodes(std::slice::from_ref(node), &context.links)
+            }
         })
         .collect();
 

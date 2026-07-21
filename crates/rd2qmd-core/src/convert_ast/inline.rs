@@ -86,6 +86,10 @@ pub(crate) fn convert_inline_node(
             .ok()
             .and_then(|link| convert_link(&link, context)),
         RdTag::LinkS4Class => convert_s4_class_link(node, &base_path, context),
+        RdTag::Sexpr => tagged
+            .inspect_sexpr(&base_path)
+            .ok()
+            .map(|sexpr| Node::inline_code(sexpr.code().to_owned())),
         RdTag::Doi
             if tagged.option().is_none() && matches!(tagged.children(), [RdNode::Text(_)]) =>
         {
@@ -117,6 +121,10 @@ pub(crate) fn convert_inline_nodes(
             converted.extend(convert_inline_nodes(group.children(), context));
         } else if let RdNode::Raw(raw) = node {
             converted.extend(convert_inline_nodes(raw.children(), context));
+        } else if let Some(tagged) = node.as_tagged()
+            && matches!(tagged.tag(), RdTag::Unknown(_))
+        {
+            converted.extend(convert_inline_nodes(tagged.children(), context));
         } else if let Some(node) = convert_inline_node(node, context) {
             converted.push(node);
         }
@@ -375,12 +383,13 @@ mod tests {
     use std::collections::HashMap;
 
     use rd_ast::{RdNode, RdTag, producer};
-    use rd2qmd_mdast::Node;
+    use rd2qmd_mdast::{Node, Root, WriterOptions, mdast_to_qmd};
 
     use super::{
         LinkResolutionContext, convert_inline_node as convert_inline_node_with_context,
         convert_inline_nodes as convert_inline_nodes_with_context, extract_plain_text,
     };
+    use crate::convert_ast::blocks::{BlockConversionContext, convert_block_content};
 
     fn convert_inline_node(node: &RdNode) -> Option<Node> {
         convert_inline_node_with_context(node, &LinkResolutionContext::default())
@@ -416,6 +425,28 @@ mod tests {
 
     fn raw(nodes: Vec<RdNode>) -> RdNode {
         RdNode::Raw(producer::raw_node(None, None, nodes, None, vec![]))
+    }
+
+    fn convert_parsed(source: &[u8]) -> Vec<Node> {
+        let parsed = rd_source::parse(source).unwrap();
+        convert_block_content(
+            parsed.document().nodes(),
+            &BlockConversionContext {
+                links: LinkResolutionContext::default(),
+                prefer_ascii_math: false,
+                enclosing_heading_depth: 2,
+            },
+        )
+    }
+
+    fn render(nodes: Vec<Node>) -> String {
+        mdast_to_qmd(
+            &Root::new(nodes),
+            &WriterOptions {
+                frontmatter: None,
+                quarto_code_blocks: false,
+            },
+        )
     }
 
     fn figure(file: &str, second: Option<&str>) -> RdNode {
@@ -474,6 +505,25 @@ mod tests {
             convert_inline_node(&node),
             Some(Node::inline_code("recovered"))
         );
+    }
+
+    #[test]
+    fn parsed_unknown_macro_preserves_its_children() {
+        let converted = convert_parsed(br"\madeUpTag{some text}");
+
+        assert_eq!(render(converted), "some text\n");
+    }
+
+    #[test]
+    fn parsed_sexpr_renders_source_as_inline_code() {
+        let converted = convert_parsed(br"\Sexpr{sum(1:10)}");
+
+        assert_eq!(render(converted), "`sum(1:10)`\n");
+    }
+
+    #[test]
+    fn empty_raw_node_contributes_nothing() {
+        assert!(convert_inline_nodes(&[raw(vec![])]).is_empty());
     }
 
     #[test]
