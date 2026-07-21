@@ -54,6 +54,14 @@ pub struct RdConvertOptions {
     pub arguments_format: ArgumentsFormat,
     pub include_html_output: bool,
     pub prefer_ascii_math: bool,
+    /// Overrides the AST-derived `source_files` metadata.
+    ///
+    /// An `RdAstEnvelope`'s own `source_files` (set explicitly by whatever
+    /// produced the AST JSON) is authoritative and may not match what
+    /// AST-embedded generation-header extraction would derive from the
+    /// document alone, so callers converting an envelope should pass its
+    /// `source_files` here rather than let it be silently recomputed.
+    pub source_files_override: Option<Vec<String>>,
 }
 
 /// Extract plain text while preserving the legacy public helper's fallback spellings.
@@ -174,12 +182,19 @@ pub fn convert_rd_document(doc: &RdDocument, options: &RdConvertOptions) -> Stri
             _ => String::new(),
         })
         .filter(|value| !value.is_empty());
+    let metadata = match &options.source_files_override {
+        Some(source_files) => RdMetadata {
+            source_files: source_files.clone(),
+            ..extract_rd_metadata(doc)
+        },
+        None => extract_rd_metadata(doc),
+    };
     let writer_options = WriterOptions {
         frontmatter: options.frontmatter.enabled.then_some(Frontmatter {
             title,
             pagetitle,
             format: None,
-            metadata: Some(extract_rd_metadata(doc)),
+            metadata: Some(metadata),
         }),
         quarto_code_blocks: options.code.quarto_code_blocks,
     };
@@ -297,6 +312,62 @@ mod tests {
             RdNode::Text(".".into()),
         ]);
         assert_eq!(extract_text(doc.description().unwrap()), "Visit the site.");
+    }
+
+    #[test]
+    fn convert_rd_document_source_files_override_replaces_ast_derived_value() {
+        let doc = RdDocument::new(vec![
+            tagged(
+                rd_ast::RdTag::Name,
+                None,
+                vec![RdNode::Text("topic".into())],
+            ),
+            tagged(
+                rd_ast::RdTag::Title,
+                None,
+                vec![RdNode::Text("Topic Title".into())],
+            ),
+        ]);
+        let options = RdConvertOptions {
+            frontmatter: FrontmatterOptions {
+                enabled: true,
+                pagetitle: false,
+            },
+            source_files_override: Some(vec![r"R/topic.R".to_owned()]),
+            ..RdConvertOptions::default()
+        };
+
+        let qmd = convert_rd_document(&doc, &options);
+
+        assert!(qmd.contains("source-files:\n"));
+        assert!(qmd.contains(r#"  - "R/topic.R""#));
+    }
+
+    #[test]
+    fn convert_rd_document_without_override_uses_ast_derived_source_files() {
+        let doc = RdDocument::new(vec![
+            tagged(
+                rd_ast::RdTag::Name,
+                None,
+                vec![RdNode::Text("topic".into())],
+            ),
+            tagged(
+                rd_ast::RdTag::Title,
+                None,
+                vec![RdNode::Text("Topic Title".into())],
+            ),
+        ]);
+        let options = RdConvertOptions {
+            frontmatter: FrontmatterOptions {
+                enabled: true,
+                pagetitle: false,
+            },
+            ..RdConvertOptions::default()
+        };
+
+        let qmd = convert_rd_document(&doc, &options);
+
+        assert!(!qmd.contains("source-files:\n"));
     }
 
     #[test]
