@@ -1,4 +1,4 @@
-# mdast-rd2qmd
+# rd2qmd-mdast
 
 mdast types and Quarto Markdown writer for rd2qmd.
 
@@ -52,7 +52,7 @@ It does **not** implement:
 ## Usage
 
 ```rust
-use mdast_rd2qmd::{Node, Root, mdast_to_qmd, WriterOptions};
+use rd2qmd_mdast::{Node, Root, mdast_to_qmd, WriterOptions};
 
 let doc = Root::new(vec![
     Node::heading(1, vec![Node::text("Hello World")]),
@@ -82,7 +82,7 @@ print('Hello')
 ## Writer Options
 
 ```rust
-use mdast_rd2qmd::{WriterOptions, Frontmatter};
+use rd2qmd_mdast::{WriterOptions, Frontmatter};
 
 let options = WriterOptions {
     frontmatter: Some(Frontmatter {

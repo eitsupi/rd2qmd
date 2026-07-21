@@ -50,7 +50,7 @@ let qmd = mdast_to_qmd(&mdast, &WriterOptions::default());
 This crate builds on:
 
 - [`rd-ast`](https://crates.io/crates/rd-ast) - the canonical, producer-neutral Rd document representation
-- [`mdast-rd2qmd`](https://crates.io/crates/mdast-rd2qmd) - mdast types and Quarto Markdown writer
+- [`rd2qmd-mdast`](https://crates.io/crates/rd2qmd-mdast) - mdast types and Quarto Markdown writer
 
 ## License
 
