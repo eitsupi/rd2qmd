@@ -66,8 +66,9 @@ pub type Result<T> = std::result::Result<T, PackageError>;
 enum ConvertError {
     /// File has `\keyword{internal}` and should be skipped
     SkipInternal(Vec<rd2qmd_source::Diagnostic>),
-    /// Conversion failed with an error message
-    Failed(String),
+    /// Conversion failed with an error message. Carries any diagnostics
+    /// collected before the failure (empty if the file never parsed).
+    Failed(String, Vec<rd2qmd_source::Diagnostic>),
 }
 
 /// Input format for a package's documentation files
@@ -407,8 +408,9 @@ enum ConvertOutcome {
     Success(PathBuf, PathBuf, Vec<rd2qmd_source::Diagnostic>),
     /// Skipped because the topic has \keyword{internal}
     SkippedInternal(PathBuf, Vec<rd2qmd_source::Diagnostic>),
-    /// Failed to convert, contains input path and error message
-    Failed(PathBuf, String),
+    /// Failed to convert, contains input path, error message, and any
+    /// diagnostics collected before the failure
+    Failed(PathBuf, String, Vec<rd2qmd_source::Diagnostic>),
 }
 
 /// Convert an entire package to Quarto Markdown
@@ -465,7 +467,13 @@ pub fn convert_package(
                     });
                 }
             }
-            ConvertOutcome::Failed(path, error) => {
+            ConvertOutcome::Failed(path, error, file_diagnostics) => {
+                if !file_diagnostics.is_empty() {
+                    diagnostics.push(FileDiagnostics {
+                        file: path.clone(),
+                        diagnostics: file_diagnostics,
+                    });
+                }
                 failed_files.push((path, error));
             }
         }
@@ -538,7 +546,13 @@ pub fn export_package_ast(
                     });
                 }
             }
-            Err((input_path, message)) => {
+            Err((input_path, message, file_diagnostics)) => {
+                if !file_diagnostics.is_empty() {
+                    diagnostics.push(FileDiagnostics {
+                        file: input_path.clone(),
+                        diagnostics: file_diagnostics,
+                    });
+                }
                 failed_files.push((input_path, message));
             }
         }
@@ -554,15 +568,23 @@ pub fn export_package_ast(
 }
 
 /// Parse a single Rd file and write it as an AST JSON envelope
+#[allow(clippy::type_complexity)]
 fn export_single_file(
     input: &Path,
     root: &Path,
     output_dir: &Path,
-) -> std::result::Result<(PathBuf, Vec<rd2qmd_source::Diagnostic>), (PathBuf, String)> {
-    let export = || -> std::result::Result<(PathBuf, Vec<rd2qmd_source::Diagnostic>), String> {
-        let content = fs::read_to_string(input).map_err(|e| e.to_string())?;
+) -> std::result::Result<
+    (PathBuf, Vec<rd2qmd_source::Diagnostic>),
+    (PathBuf, String, Vec<rd2qmd_source::Diagnostic>),
+> {
+    let export = || -> std::result::Result<
+        (PathBuf, Vec<rd2qmd_source::Diagnostic>),
+        (String, Vec<rd2qmd_source::Diagnostic>),
+    > {
+        let content = fs::read_to_string(input).map_err(|e| (e.to_string(), Vec::new()))?;
 
-        let parsed = rd2qmd_source::parse(&content).map_err(|e| format!("Parse error: {e}"))?;
+        let parsed = rd2qmd_source::parse(&content)
+            .map_err(|e| (format!("Parse error: {e}"), Vec::new()))?;
         let (doc, diagnostics) = parsed.into_parts();
         let source_files = extract_rd_metadata(&doc).source_files;
 
@@ -571,7 +593,9 @@ fn export_single_file(
             .and_then(|s| s.to_str())
             .map(|s| s.to_string());
         let envelope = RdAstEnvelope::new(doc, source, source_files);
-        let json = envelope.to_json_pretty().map_err(|e| e.to_string())?;
+        let json = envelope
+            .to_json_pretty()
+            .map_err(|e| (e.to_string(), diagnostics.clone()))?;
 
         // Determine output path
         let relative = input.strip_prefix(root).unwrap_or(input);
@@ -579,16 +603,16 @@ fn export_single_file(
 
         // Create parent directory if needed
         if let Some(parent) = output_path.parent() {
-            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            fs::create_dir_all(parent).map_err(|e| (e.to_string(), diagnostics.clone()))?;
         }
 
         // Write output
-        fs::write(&output_path, json).map_err(|e| e.to_string())?;
+        fs::write(&output_path, json).map_err(|e| (e.to_string(), diagnostics.clone()))?;
 
         Ok((output_path, diagnostics))
     };
 
-    export().map_err(|message| (input.to_path_buf(), message))
+    export().map_err(|(message, diagnostics)| (input.to_path_buf(), message, diagnostics))
 }
 
 /// Check if a document has \keyword{internal}
@@ -607,7 +631,7 @@ fn convert_single_file(
         || -> std::result::Result<(PathBuf, Vec<rd2qmd_source::Diagnostic>), ConvertError> {
             // Read and parse the input file (Rd or AST JSON, depending on package.format)
             let (doc, source_files, diagnostics) = load_document(input, package.format)
-                .map_err(|e| ConvertError::Failed(e.to_string()))?;
+                .map_err(|e| ConvertError::Failed(e.to_string(), Vec::new()))?;
 
             // Check for \keyword{internal} - skip unless include_internal is set
             if !options.include_internal && has_keyword_internal(&doc) {
@@ -685,11 +709,13 @@ fn convert_single_file(
 
             // Create parent directory if needed
             if let Some(parent) = output_path.parent() {
-                fs::create_dir_all(parent).map_err(|e| ConvertError::Failed(e.to_string()))?;
+                fs::create_dir_all(parent)
+                    .map_err(|e| ConvertError::Failed(e.to_string(), diagnostics.clone()))?;
             }
 
             // Write output
-            fs::write(&output_path, qmd).map_err(|e| ConvertError::Failed(e.to_string()))?;
+            fs::write(&output_path, qmd)
+                .map_err(|e| ConvertError::Failed(e.to_string(), diagnostics.clone()))?;
 
             Ok((output_path, diagnostics))
         };
@@ -699,7 +725,9 @@ fn convert_single_file(
         Err(ConvertError::SkipInternal(diagnostics)) => {
             ConvertOutcome::SkippedInternal(input.to_path_buf(), diagnostics)
         }
-        Err(ConvertError::Failed(msg)) => ConvertOutcome::Failed(input.to_path_buf(), msg),
+        Err(ConvertError::Failed(msg, diagnostics)) => {
+            ConvertOutcome::Failed(input.to_path_buf(), msg, diagnostics)
+        }
     }
 }
 
@@ -1085,7 +1113,15 @@ An old deprecated function.
     #[test]
     fn test_package_results_retain_parser_diagnostics() {
         let dir = tempdir().unwrap();
-        let content = "\\name{warning_topic}\n\\title{Warning topic}\n\\examples{\n#ifdef unix\n}\nx <- 1\n#endif\ny <- 2\n}";
+        let content = r#"\name{warning_topic}
+\title{Warning topic}
+\examples{
+#ifdef unix
+}
+x <- 1
+#endif
+y <- 2
+}"#;
         let input = dir.path().join("warning_topic.Rd");
         fs::write(&input, content).unwrap();
 
@@ -1113,10 +1149,57 @@ An old deprecated function.
     }
 
     #[test]
+    fn test_convert_retains_diagnostics_when_output_write_fails() {
+        let dir = tempdir().unwrap();
+        let content = r#"\name{warning_topic}
+\title{Warning topic}
+\examples{
+#ifdef unix
+}
+x <- 1
+#endif
+y <- 2
+}"#;
+        let input = dir.path().join("warning_topic.Rd");
+        fs::write(&input, content).unwrap();
+
+        // Force the output write to fail after parsing succeeds: make the
+        // output directory a plain file, so create_dir_all cannot create it.
+        let output_dir = dir.path().join("blocker");
+        fs::write(&output_dir, "not a directory").unwrap();
+
+        let options = PackageConvertOptions {
+            output_dir,
+            output_extension: "qmd".to_string(),
+            ..Default::default()
+        };
+        let package = RdPackage::from_directory(dir.path(), false).unwrap();
+
+        // convert_package's own fs::create_dir_all(&options.output_dir) call
+        // fails first in this setup, so exercise the per-file path directly.
+        let outcome = convert_single_file(&input, &package, &options);
+        match outcome {
+            ConvertOutcome::Failed(path, _message, diagnostics) => {
+                assert_eq!(path, input);
+                assert!(
+                    !diagnostics.is_empty(),
+                    "expected parser warnings to survive a post-parse write failure"
+                );
+            }
+            _ => panic!("expected the conversion to fail due to the blocked output directory"),
+        }
+    }
+
+    #[test]
     fn test_export_results_retain_parser_diagnostics() {
         let dir = tempdir().unwrap();
-        let content =
-            "\\name{warning_topic}\n\\title{Warning topic}\n\\examples{\n#ifdef unix\n}\n#endif\n}";
+        let content = r#"\name{warning_topic}
+\title{Warning topic}
+\examples{
+#ifdef unix
+}
+#endif
+}"#;
         let input = dir.path().join("warning_topic.Rd");
         fs::write(&input, content).unwrap();
 
@@ -1124,6 +1207,37 @@ An old deprecated function.
         let result = export_package_ast(dir.path(), false, &output, Some(1)).unwrap();
         assert_eq!(result.diagnostics.len(), 1);
         assert_eq!(result.diagnostics[0].file, input);
+    }
+
+    #[test]
+    fn test_export_retains_diagnostics_when_output_write_fails() {
+        let dir = tempdir().unwrap();
+        let content = r#"\name{warning_topic}
+\title{Warning topic}
+\examples{
+#ifdef unix
+}
+#endif
+}"#;
+        let input = dir.path().join("warning_topic.Rd");
+        fs::write(&input, content).unwrap();
+
+        // Force the JSON write to fail after parsing succeeds: make the
+        // output directory a plain file, so create_dir_all cannot create it.
+        let output_dir = dir.path().join("blocker");
+        fs::write(&output_dir, "not a directory").unwrap();
+
+        let outcome = export_single_file(&input, dir.path(), &output_dir);
+        match outcome {
+            Err((path, _message, diagnostics)) => {
+                assert_eq!(path, input);
+                assert!(
+                    !diagnostics.is_empty(),
+                    "expected parser warnings to survive a post-parse write failure"
+                );
+            }
+            Ok(_) => panic!("expected the export to fail due to the blocked output directory"),
+        }
     }
 
     #[test]
