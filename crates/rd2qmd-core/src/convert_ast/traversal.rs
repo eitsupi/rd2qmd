@@ -2,6 +2,7 @@
 
 use rd_ast::RdTag;
 
+use super::is_usermacro_definition;
 use super::roxygen::{RoxygenCodeBlock, try_match_roxygen_code_block};
 
 /// A borrowed piece of source content belonging to one paragraph.
@@ -69,7 +70,9 @@ fn scan<'a>(
             }
             rd_ast::RdNode::Comment(_) => {}
             rd_ast::RdNode::Group(group) => scan(group.children(), state, items),
-            rd_ast::RdNode::Raw(raw) => scan(raw.children(), state, items),
+            rd_ast::RdNode::Raw(raw) if !is_usermacro_definition(node) => {
+                scan(raw.children(), state, items)
+            }
             rd_ast::RdNode::Tagged(tagged) if matches!(tagged.tag(), RdTag::Unknown(_)) => {
                 scan(tagged.children(), state, items)
             }
