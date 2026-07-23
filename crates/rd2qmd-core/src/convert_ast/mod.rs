@@ -9,6 +9,18 @@ mod leaf_text;
 mod roxygen;
 mod traversal;
 
+/// Whether a node is the validated RDS help-database marker for a user macro
+/// definition. The definition's children are producer metadata; its expansion
+/// is represented by the following sibling and is rendered separately.
+pub(crate) fn is_usermacro_definition(node: &rd_ast::RdNode) -> bool {
+    node.as_raw().is_some_and(|raw| {
+        matches!(
+            rd_ast::classify_raw_node(raw),
+            rd_ast::RawNodeClassification::ExpectedUserMacroDefinition
+        )
+    })
+}
+
 pub(crate) use assembly::convert_document;
 #[allow(unused_imports)]
 pub(crate) use blocks::{

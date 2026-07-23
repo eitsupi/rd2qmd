@@ -7,6 +7,7 @@ use rd_ast::{
 };
 use rd2qmd_mdast::{Html, Image, Node};
 
+use super::is_usermacro_definition;
 use super::leaf_text::flatten_verbatim_leaves;
 
 /// Borrowed configuration used to resolve Rd links without cloning converter options.
@@ -186,6 +187,11 @@ pub(crate) fn convert_inline_nodes(
     for node in nodes {
         if let RdNode::Group(group) = node {
             converted.extend(convert_inline_nodes(group.children(), context));
+        } else if is_usermacro_definition(node) {
+            // RDS help databases retain user-macro definitions as a Raw
+            // marker followed by the already-expanded sibling. The marker's
+            // child is macro-template metadata (e.g. "#1GhostScript"), not
+            // user-visible documentation.
         } else if let RdNode::Raw(raw) = node {
             converted.extend(convert_inline_nodes(raw.children(), context));
         } else if let Some(tagged) = node.as_tagged()
@@ -461,7 +467,7 @@ fn extract_alt_from_attrs(attributes: &str) -> Option<String> {
 mod tests {
     use std::collections::HashMap;
 
-    use rd_ast::{RdNode, RdTag, producer};
+    use rd_ast::{RawRdEnvironment, RawRdValue, RdNode, RdTag, producer};
     use rd2qmd_mdast::{Node, Root, WriterOptions, mdast_to_qmd};
 
     use super::{
@@ -505,6 +511,45 @@ mod tests {
 
     fn raw(nodes: Vec<RdNode>) -> RdNode {
         RdNode::Raw(producer::raw_node(None, None, nodes, None, vec![]))
+    }
+
+    // Synthetic RDS USERMACRO shape. This is intentionally not copied from an
+    // installed package: it only models the producer contract needed by the
+    // regression test and is original MIT-licensed project test data.
+    fn usermacro(name: &str, template: &str) -> RdNode {
+        let srcref = producer::raw_attribute(
+            "srcref".to_owned(),
+            producer::raw_object(
+                RawRdValue::Integer(vec![Some(1); 6]),
+                vec![
+                    producer::raw_attribute(
+                        "srcfile".to_owned(),
+                        producer::raw_object(
+                            RawRdValue::Environment(RawRdEnvironment::Other),
+                            vec![],
+                        ),
+                    ),
+                    producer::raw_attribute(
+                        "class".to_owned(),
+                        producer::raw_object(
+                            RawRdValue::Character(vec![Some("srcref".to_owned())]),
+                            vec![],
+                        ),
+                    ),
+                ],
+            ),
+        );
+        let macro_definition = producer::raw_attribute(
+            "macro".to_owned(),
+            producer::raw_object(RawRdValue::Character(vec![Some(name.to_owned())]), vec![]),
+        );
+        RdNode::Raw(producer::raw_node(
+            Some("USERMACRO".to_owned()),
+            None,
+            vec![text(template)],
+            None,
+            vec![srcref, macro_definition],
+        ))
     }
 
     fn render(nodes: Vec<Node>) -> String {
@@ -629,6 +674,23 @@ mod tests {
     #[test]
     fn empty_raw_node_contributes_nothing() {
         assert!(convert_inline_nodes(&[raw(vec![])]).is_empty());
+    }
+
+    #[test]
+    fn does_not_render_rds_usermacro_definition_alongside_expansion() {
+        let nodes = vec![
+            text("Uses "),
+            usermacro(r"\DemoMacro", "#1DemoValue"),
+            text("DemoValue"),
+            text(" and "),
+            usermacro(r"\QuoteMacro", "#1\\dQuote{Template}"),
+            tagged(RdTag::DQuote, vec![text("Rendered")]),
+            text("."),
+        ];
+
+        let converted = convert_paragraph(&nodes);
+
+        assert_eq!(render(converted), "Uses DemoValue and \"Rendered\".\n");
     }
 
     #[test]
