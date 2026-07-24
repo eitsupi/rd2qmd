@@ -1165,25 +1165,25 @@ dependencies = [
 
 [[package]]
 name = "rd-ast"
-version = "0.0.1"
+version = "0.1.0-rc.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aaa5a549cda19d85723d7f7e2f4713224daa6b6aada7f9d0359a7006bdb0daaa"
+checksum = "03a90f843c732928497c9633c0e53836d09dc5b184226fa52ca023f79b9028dd"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "rd-source"
-version = "0.0.1"
+version = "0.1.0-rc.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6f4eead470493d660bf3c23f6e6bb9d15e433b8f944f8cb2989897bf7f7e109"
+checksum = "99f11c13c76965e24666211487409ee08ef55638cf713894a4f5063208847370"
 dependencies = [
  "rd-ast",
 ]
 
 [[package]]
 name = "rd2qmd"
-version = "0.5.0-alpha.1"
+version = "0.5.0-beta.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1199,7 +1199,7 @@ dependencies = [
 
 [[package]]
 name = "rd2qmd-core"
-version = "0.5.0-alpha.1"
+version = "0.5.0-beta.1"
 dependencies = [
  "insta",
  "rd-ast",
@@ -1212,7 +1212,7 @@ dependencies = [
 
 [[package]]
 name = "rd2qmd-mdast"
-version = "0.5.0-alpha.1"
+version = "0.5.0-beta.1"
 dependencies = [
  "insta",
  "serde",
@@ -1221,7 +1221,7 @@ dependencies = [
 
 [[package]]
 name = "rd2qmd-package"
-version = "0.5.0-alpha.1"
+version = "0.5.0-beta.1"
 dependencies = [
  "r-description",
  "rayon",
@@ -1239,7 +1239,7 @@ dependencies = [
 
 [[package]]
 name = "rd2qmd-source"
-version = "0.5.0-alpha.1"
+version = "0.5.0-beta.1"
 dependencies = [
  "rd-ast",
  "rd-source",
