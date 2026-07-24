@@ -179,6 +179,15 @@ fn test_formatting() {
     insta::assert_snapshot!("formatting_qmd", output);
 }
 
+/// A prose line wrap can produce adjacent `rd_ast::Text` nodes with
+/// whitespace on both sides of the node boundary. The core converter must
+/// collapse that boundary to one prose space after the real parser path.
+#[test]
+fn test_issue_54_adjacent_prose_text_nodes() {
+    let output = convert_fixture("issue_54", &["--no-frontmatter"]);
+    insta::assert_snapshot!("issue_54_qmd", output);
+}
+
 #[test]
 fn test_example_control() {
     let output = convert_fixture("example_control", &[]);

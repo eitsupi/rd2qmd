@@ -7,6 +7,7 @@ expression: files
 - example_control.qmd
 - examplesif.qmd
 - formatting.qmd
+- issue_54.qmd
 - methods.qmd
 - roxygen_code_blocks.qmd
 - simple.qmd
