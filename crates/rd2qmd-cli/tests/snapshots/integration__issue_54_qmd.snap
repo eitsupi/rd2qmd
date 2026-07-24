@@ -1,0 +1,9 @@
+---
+source: crates/rd2qmd-cli/tests/integration.rs
+expression: output
+---
+# Adjacent prose text nodes
+
+## Description
+
+First sentence ends here Second sentence starts with a space. Third sentence starts with four spaces.

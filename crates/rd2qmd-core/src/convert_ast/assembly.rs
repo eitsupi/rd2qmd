@@ -218,6 +218,25 @@ mod tests {
     }
 
     #[test]
+    fn normalizes_adjacent_prose_text_nodes_to_one_boundary_space() {
+        let document = RdDocument::new(vec![RdNode::tagged(
+            RdTag::Description,
+            None,
+            vec![
+                RdNode::Text("The first text node ends with a space. ".to_owned()),
+                RdNode::Text(" The second text node starts with a space.".to_owned()),
+            ],
+        )]);
+
+        let markdown = render_new(&document, &RdToMdastOptions::default());
+
+        assert_eq!(
+            markdown,
+            "## Description\n\nThe first text node ends with a space. The second text node starts with a space.\n"
+        );
+    }
+
+    #[test]
     fn title_heading_respects_include_title_heading() {
         let document = RdDocument::new(vec![
             section(RdTag::Name, "topic"),

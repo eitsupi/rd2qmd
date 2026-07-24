@@ -36,7 +36,7 @@ pub(crate) fn scan_block_content(nodes: &[rd_ast::RdNode]) -> Vec<BlockContentIt
 #[derive(Default)]
 struct ScanState<'a> {
     current: Vec<ParagraphItem<'a>>,
-    pending_whitespace: Vec<&'a str>,
+    pending_whitespace: bool,
     pending_newlines: usize,
     has_visible: bool,
 }
@@ -89,10 +89,10 @@ fn scan<'a>(
     }
 }
 
-fn append_whitespace<'a>(whitespace: &'a str, state: &mut ScanState<'a>) {
+fn append_whitespace(whitespace: &str, state: &mut ScanState<'_>) {
     if !whitespace.is_empty() {
         state.pending_newlines += whitespace.matches('\n').count();
-        state.pending_whitespace.push(whitespace);
+        state.pending_whitespace = true;
     }
 }
 
@@ -104,14 +104,17 @@ fn append_visible<'a>(
     if state.has_visible {
         if state.pending_newlines >= 2 {
             flush(state, items);
-        } else {
-            state
-                .current
-                .extend(state.pending_whitespace.drain(..).map(ParagraphItem::Text));
-            state.pending_newlines = 0;
+        } else if state.pending_whitespace {
+            // Text nodes can be split at markup boundaries while retaining
+            // whitespace on both sides of the boundary. Keep one logical
+            // prose separator instead of emitting one item for each source
+            // fragment (which would be normalized independently later).
+            state.current.push(ParagraphItem::Text(" "));
         }
+        state.pending_whitespace = false;
+        state.pending_newlines = 0;
     } else {
-        state.pending_whitespace.clear();
+        state.pending_whitespace = false;
         state.pending_newlines = 0;
     }
     state.current.push(item);
@@ -119,7 +122,7 @@ fn append_visible<'a>(
 }
 
 fn flush<'a>(state: &mut ScanState<'a>, items: &mut Vec<BlockContentItem<'a>>) {
-    state.pending_whitespace.clear();
+    state.pending_whitespace = false;
     state.pending_newlines = 0;
     if state.has_visible {
         items.push(BlockContentItem::Paragraph(std::mem::take(
