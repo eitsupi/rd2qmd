@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-## [0.5.0-beta.1] - 2026-07-24
+## [0.5.0] - 2026-07-26
 
 ### Changed
 
@@ -10,7 +10,7 @@
   - `rd2qmd-core`'s public API now operates directly on `rd_ast::RdDocument` (`convert_rd_document`, `rd_to_mdast`); the previous `RdConverter`/`convert_rd_content` API and all `rd_parser` re-exports are removed.
   - Bump the AST JSON envelope format version from 1 to 2 to match the new document shape.
   - Remove the `lifecycle` and `roxygen` Cargo library feature flags; roxygen2 fenced-code-block detection is now always enabled.
-- Update the `rd-ast` and `rd-source` dependencies to `0.1.0-rc.1`.
+- Update the `rd-ast` and `rd-source` dependencies to `0.1.0`.
 - Recoverable parser diagnostics are now surfaced end-to-end through the CLI, package converter, and topic index instead of being silently dropped. (#50)
 
 ### Added
@@ -19,6 +19,7 @@
 
 ### Fixed
 
+- Collapse excessive prose spaces introduced at Rd AST node boundaries, so adjacent inline content no longer produces doubled-up whitespace in generated output. (#55)
 - Ignore RDS `USERMACRO` definition metadata when converting inline nodes, preventing duplicated macro metadata in generated help output. (#52)
 - Complete uniform suppression of the duplicate Rd title heading when YAML frontmatter is enabled across all output formats. (#49)
 - Preserve special-character macros, encoded text, and link/S4-class/DOI display text when extracting frontmatter metadata. (#49)
