@@ -19,8 +19,6 @@
 
 ### Fixed
 
-- Collapse excessive prose spaces introduced at Rd AST node boundaries, so adjacent inline content no longer produces doubled-up whitespace in generated output. (#55)
-- Ignore RDS `USERMACRO` definition metadata when converting inline nodes, preventing duplicated macro metadata in generated help output. (#52)
 - Complete uniform suppression of the duplicate Rd title heading when YAML frontmatter is enabled across all output formats. (#49)
 - Preserve special-character macros, encoded text, and link/S4-class/DOI display text when extracting frontmatter metadata. (#49)
 - Enable a TLS backend for `reqwest` so external link resolution can actually fetch HTTPS `pkgdown.yml` sites instead of silently failing. (#49)
