@@ -1,0 +1,41 @@
+---
+source: crates/rd2qmd-cli/tests/integration.rs
+expression: output
+---
+# Describe Blocks With Roxygen Code Fences
+
+## Description
+
+Demonstrates the Pandoc definition-list writer's handling of multi-line block children -- roxygen2 fenced code blocks, a nested definition list, and a bulleted list item that itself contains a fenced code block -- inside definition-list item descriptions. This is the ggproto/R6-style layout that roxygen2 commonly emits for methods and fields.
+
+## Methods
+
+`compute()`
+:   **Usage**
+
+    ```r
+    compute(a, b)
+    compute(a, b, extra = TRUE)
+    combine(a, b)
+    ```
+
+    **Arguments**
+
+    `a`
+    :   The first value.
+
+    `b`
+    :   The second value.
+
+
+    **Examples**
+
+    - Basic usage:
+
+      ```
+      compute(1, 2)
+      #> [1] 3
+      ```
+    - Advanced usage returns invisibly.
+
+    That covers the `compute()` method.

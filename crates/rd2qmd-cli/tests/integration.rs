@@ -308,6 +308,20 @@ fn test_roxygen_code_blocks() {
     insta::assert_snapshot!("roxygen_code_blocks_qmd", output);
 }
 
+/// `\describe{}` item descriptions containing multi-line block children --
+/// a roxygen2 fenced code block (`\if{html}{\out{<div ...>}}\preformatted{...}\if{html}{\out{</div>}}`),
+/// a nested `\describe{}` (the `\strong{Arguments}` pattern), and an
+/// `\itemize{}` whose item itself contains a `\preformatted{}` block --
+/// the ggproto/R6-style layout roxygen2 commonly emits. Regression coverage
+/// for continuation-line indentation in the Pandoc definition-list writer:
+/// every fence/body/closing-fence line of a block child must be indented,
+/// not just the opening fence.
+#[test]
+fn test_describe_code_blocks() {
+    let output = convert_fixture("describe_code_blocks", &["--no-frontmatter"]);
+    insta::assert_snapshot!("describe_code_blocks_qmd", output);
+}
+
 #[test]
 fn test_directory_conversion() {
     let fixtures = fixtures_dir();

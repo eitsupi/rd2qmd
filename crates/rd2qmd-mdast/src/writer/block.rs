@@ -291,19 +291,11 @@ impl<'a> Writer<'a> {
                                         self.output.push('\n');
                                         after_first = true;
                                     }
-                                    Node::Math(_) | Node::DefinitionList(_) => {
-                                        if after_first {
-                                            self.output.push_str("    ");
-                                        }
-                                        self.write_indented_definition_block(child, 4);
-                                        self.output.push('\n');
-                                        after_first = true;
-                                    }
                                     _ => {
                                         if after_first {
                                             self.output.push_str("    ");
                                         }
-                                        self.write_node(child);
+                                        self.write_reindented_block(child, 4);
                                         self.output.push('\n');
                                         after_first = true;
                                     }
@@ -338,7 +330,12 @@ impl<'a> Writer<'a> {
         self.at_line_start = true;
     }
 
-    fn write_indented_definition_block(&mut self, node: &Node, indent: usize) {
+    /// Render `node`, then re-indent every line after the first by `indent`
+    /// spaces. Used to keep multi-line block children (code fences, nested
+    /// lists, tables, ...) properly indented when nested inside a definition
+    /// description or a list item. The caller is responsible for indenting
+    /// the first line before calling this.
+    fn write_reindented_block(&mut self, node: &Node, indent: usize) {
         let indent_str = " ".repeat(indent);
         let start = self.output.len();
         self.write_node(node);
@@ -358,6 +355,7 @@ impl<'a> Writer<'a> {
 
     fn write_indented_list(&mut self, l: &crate::mdast::List, indent: usize) {
         let indent_str = " ".repeat(indent);
+        let item_indent_str = " ".repeat(indent + 2);
         let mut num = l.start.unwrap_or(1);
         for child in &l.children {
             if let Node::ListItem(li) = child {
@@ -369,19 +367,38 @@ impl<'a> Writer<'a> {
                     self.output.push_str("- ");
                 }
                 for (i, item_child) in li.children.iter().enumerate() {
-                    if i > 0 {
-                        self.output.push_str(&" ".repeat(indent + 2));
-                    }
                     match item_child {
                         Node::Paragraph(p) => {
+                            if i > 0 {
+                                self.output.push('\n');
+                                self.output.push('\n');
+                                self.output.push_str(&item_indent_str);
+                            }
                             for c in &p.children {
                                 self.write_node(c);
                             }
                         }
-                        _ => self.write_node(item_child),
+                        _ => {
+                            // Block children (code fences, nested lists, tables, ...) must
+                            // start on their own line, separated from preceding content by
+                            // a blank line, with every continuation line re-indented to
+                            // `indent + 2` so they stay inside the list item.
+                            self.output.push('\n');
+                            if i > 0 {
+                                self.output.push('\n');
+                            }
+                            self.output.push_str(&item_indent_str);
+                            self.write_reindented_block(item_child, indent + 2);
+                        }
                     }
                 }
-                self.output.push('\n');
+                // Block children (e.g. a code fence) already end with their own
+                // trailing newline; avoid stacking a second one here, which would
+                // otherwise turn into a spurious extra blank line once the caller
+                // (e.g. write_definition_list) adds its own separator newline.
+                if !self.output.ends_with('\n') {
+                    self.output.push('\n');
+                }
             }
         }
     }
