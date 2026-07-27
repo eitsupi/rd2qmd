@@ -38,4 +38,14 @@ Demonstrates the Pandoc definition-list writer's handling of multi-line block ch
       ```
     - Advanced usage returns invisibly.
 
+    **Ordered examples**
+
+    1. Basic usage:
+
+       ```
+       compute(1, 2)
+       #> [1] 3
+       ```
+    2. Advanced usage returns invisibly.
+
     That covers the `compute()` method.

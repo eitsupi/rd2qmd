@@ -34,6 +34,17 @@ combine(a, b)
 \item Advanced usage returns invisibly.
 }
 
+\strong{Ordered examples}
+
+\enumerate{
+\item Basic usage:
+
+\preformatted{compute(1, 2)
+#> [1] 3
+}
+\item Advanced usage returns invisibly.
+}
+
 That covers the \code{compute()} method.}
 }
 }

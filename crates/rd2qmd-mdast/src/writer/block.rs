@@ -355,17 +355,23 @@ impl<'a> Writer<'a> {
 
     fn write_indented_list(&mut self, l: &crate::mdast::List, indent: usize) {
         let indent_str = " ".repeat(indent);
-        let item_indent_str = " ".repeat(indent + 2);
         let mut num = l.start.unwrap_or(1);
         for child in &l.children {
             if let Node::ListItem(li) = child {
                 self.output.push_str(&indent_str);
-                if l.ordered {
-                    self.output.push_str(&format!("{}. ", num));
+                // Build the marker first so item_indent matches the actual marker width.
+                // "- " is always 2 chars, but "10. " is 4 — a fixed +2 would mis-indent
+                // continuation lines for ordered lists with wide numbers.
+                let marker = if l.ordered {
+                    let m = format!("{}. ", num);
                     num += 1;
+                    m
                 } else {
-                    self.output.push_str("- ");
-                }
+                    "- ".to_string()
+                };
+                self.output.push_str(&marker);
+                let item_indent = indent + marker.len();
+                let item_indent_str = " ".repeat(item_indent);
                 for (i, item_child) in li.children.iter().enumerate() {
                     match item_child {
                         Node::Paragraph(p) => {
@@ -382,13 +388,13 @@ impl<'a> Writer<'a> {
                             // Block children (code fences, nested lists, tables, ...) must
                             // start on their own line, separated from preceding content by
                             // a blank line, with every continuation line re-indented to
-                            // `indent + 2` so they stay inside the list item.
+                            // `item_indent` so they stay inside the list item.
                             self.output.push('\n');
                             if i > 0 {
                                 self.output.push('\n');
                             }
                             self.output.push_str(&item_indent_str);
-                            self.write_reindented_block(item_child, indent + 2);
+                            self.write_reindented_block(item_child, item_indent);
                         }
                     }
                 }

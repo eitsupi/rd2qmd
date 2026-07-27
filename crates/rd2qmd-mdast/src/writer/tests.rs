@@ -534,6 +534,52 @@ fn test_definition_list_nested_list_code_block_indent() {
 }
 
 #[test]
+fn test_definition_list_ordered_list_code_block_indent() {
+    // A code block inside an ORDERED list item, where that list is itself
+    // inside a definition description, must be indented by `indent + 3`
+    // (the width of "1. "), not the unordered-list width of `indent + 2`.
+    let root = Root::new(vec![Node::definition_list(vec![
+        Node::definition_term(vec![Node::text("Term")]),
+        Node::definition_description(vec![Node::list(
+            true,
+            vec![Node::list_item(vec![
+                Node::paragraph(vec![Node::text("First item")]),
+                Node::code(Some("r".to_string()), "code_in_list(1)\ncode_in_list(2)"),
+            ])],
+        )]),
+    ])]);
+    let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+    assert!(
+        qmd.contains(
+            "1. First item\n\n       ```r\n       code_in_list(1)\n       code_in_list(2)\n       ```"
+        ),
+        "code block not indented by indent+3 for ordered marker; got: {qmd:?}"
+    );
+}
+
+#[test]
+fn test_definition_list_ordered_list_ten_items_code_block_indent() {
+    // Once the list reaches item 10, the marker becomes "10. " (4 chars),
+    // so the continuation indent must widen accordingly for that item.
+    let mut items: Vec<Node> = (1..=9)
+        .map(|i| Node::list_item(vec![Node::paragraph(vec![Node::text(format!("Item {i}"))])]))
+        .collect();
+    items.push(Node::list_item(vec![
+        Node::paragraph(vec![Node::text("Item 10")]),
+        Node::code(Some("r".to_string()), "tenth(1)"),
+    ]));
+    let root = Root::new(vec![Node::definition_list(vec![
+        Node::definition_term(vec![Node::text("Term")]),
+        Node::definition_description(vec![Node::list(true, items)]),
+    ])]);
+    let qmd = mdast_to_qmd(&root, &WriterOptions::default());
+    assert!(
+        qmd.contains("10. Item 10\n\n        ```r\n        tenth(1)\n        ```"),
+        "code block not indented by indent+4 for '10. ' marker; got: {qmd:?}"
+    );
+}
+
+#[test]
 fn test_table() {
     let root = Root::new(vec![Node::table(
         vec![Some(Align::Left), Some(Align::Right)],
