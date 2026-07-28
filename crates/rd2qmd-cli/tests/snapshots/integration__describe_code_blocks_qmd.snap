@@ -6,7 +6,7 @@ expression: output
 
 ## Description
 
-Demonstrates the Pandoc definition-list writer's handling of multi-line block children -- roxygen2 fenced code blocks, a nested definition list, and a bulleted list item that itself contains a fenced code block -- inside definition-list item descriptions. This is the ggproto/R6-style layout that roxygen2 commonly emits for methods and fields.
+Demonstrates the Pandoc definition-list writer's handling of multi-line block children -- roxygen2 fenced code blocks, a nested definition list, and a bulleted list item that itself contains a fenced code block -- inside definition-list item descriptions. Rd authors reach this layout by embedding raw markup in a free-text roxygen2 field, as ggplot2 does when documenting its extensible base classes.
 
 ## Methods
 

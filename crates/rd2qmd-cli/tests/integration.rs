@@ -312,7 +312,8 @@ fn test_roxygen_code_blocks() {
 /// a roxygen2 fenced code block (`\if{html}{\out{<div ...>}}\preformatted{...}\if{html}{\out{</div>}}`),
 /// a nested `\describe{}` (the `\strong{Arguments}` pattern), and an
 /// `\itemize{}` whose item itself contains a `\preformatted{}` block --
-/// the ggproto/R6-style layout roxygen2 commonly emits. Regression coverage
+/// the layout Rd authors reach by embedding raw markup in a free-text
+/// roxygen2 field, as ggplot2 does for its base classes. Regression coverage
 /// for continuation-line indentation in the Pandoc definition-list writer:
 /// every fence/body/closing-fence line of a block child must be indented,
 /// not just the opening fence.
