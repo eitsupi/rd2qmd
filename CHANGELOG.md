@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Indent every line of a block element nested in a `\describe{}` item, not just its first line. Code block bodies and closing fences were emitted at column 0, which terminated the definition list under strict CommonMark parsers.
+- Start a block element nested in an `\itemize{}` item on its own line instead of appending it to the preceding paragraph text.
+- Derive a list item's continuation indent from its actual marker width. A fixed two-space assumption under-indented block elements in `\enumerate{}` items, letting them escape the item.
+
 ## [0.5.0] - 2026-07-26
 
 ### Changed

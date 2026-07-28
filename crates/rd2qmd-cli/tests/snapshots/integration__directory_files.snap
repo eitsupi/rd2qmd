@@ -4,6 +4,7 @@ expression: files
 ---
 - arguments_rich.qmd
 - conditionals.qmd
+- describe_code_blocks.qmd
 - example_control.qmd
 - examplesif.qmd
 - formatting.qmd

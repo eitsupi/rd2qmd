@@ -291,19 +291,11 @@ impl<'a> Writer<'a> {
                                         self.output.push('\n');
                                         after_first = true;
                                     }
-                                    Node::Math(_) | Node::DefinitionList(_) => {
-                                        if after_first {
-                                            self.output.push_str("    ");
-                                        }
-                                        self.write_indented_definition_block(child, 4);
-                                        self.output.push('\n');
-                                        after_first = true;
-                                    }
                                     _ => {
                                         if after_first {
                                             self.output.push_str("    ");
                                         }
-                                        self.write_node(child);
+                                        self.write_reindented_block(child, 4);
                                         self.output.push('\n');
                                         after_first = true;
                                     }
@@ -338,7 +330,12 @@ impl<'a> Writer<'a> {
         self.at_line_start = true;
     }
 
-    fn write_indented_definition_block(&mut self, node: &Node, indent: usize) {
+    /// Render `node`, then re-indent every line after the first by `indent`
+    /// spaces. Used to keep multi-line block children (code fences, nested
+    /// lists, tables, ...) properly indented when nested inside a definition
+    /// description or a list item. The caller is responsible for indenting
+    /// the first line before calling this.
+    fn write_reindented_block(&mut self, node: &Node, indent: usize) {
         let indent_str = " ".repeat(indent);
         let start = self.output.len();
         self.write_node(node);
@@ -362,26 +359,52 @@ impl<'a> Writer<'a> {
         for child in &l.children {
             if let Node::ListItem(li) = child {
                 self.output.push_str(&indent_str);
-                if l.ordered {
-                    self.output.push_str(&format!("{}. ", num));
+                // Build the marker first so item_indent matches the actual marker width.
+                // "- " is always 2 chars, but "10. " is 4 — a fixed +2 would mis-indent
+                // continuation lines for ordered lists with wide numbers.
+                let marker = if l.ordered {
+                    let m = format!("{}. ", num);
                     num += 1;
+                    m
                 } else {
-                    self.output.push_str("- ");
-                }
+                    "- ".to_string()
+                };
+                self.output.push_str(&marker);
+                let item_indent = indent + marker.len();
+                let item_indent_str = " ".repeat(item_indent);
                 for (i, item_child) in li.children.iter().enumerate() {
-                    if i > 0 {
-                        self.output.push_str(&" ".repeat(indent + 2));
-                    }
                     match item_child {
                         Node::Paragraph(p) => {
+                            if i > 0 {
+                                self.output.push('\n');
+                                self.output.push('\n');
+                                self.output.push_str(&item_indent_str);
+                            }
                             for c in &p.children {
                                 self.write_node(c);
                             }
                         }
-                        _ => self.write_node(item_child),
+                        _ => {
+                            // Block children (code fences, nested lists, tables, ...) must
+                            // start on their own line, separated from preceding content by
+                            // a blank line, with every continuation line re-indented to
+                            // `item_indent` so they stay inside the list item.
+                            self.output.push('\n');
+                            if i > 0 {
+                                self.output.push('\n');
+                            }
+                            self.output.push_str(&item_indent_str);
+                            self.write_reindented_block(item_child, item_indent);
+                        }
                     }
                 }
-                self.output.push('\n');
+                // Block children (e.g. a code fence) already end with their own
+                // trailing newline; avoid stacking a second one here, which would
+                // otherwise turn into a spurious extra blank line once the caller
+                // (e.g. write_definition_list) adds its own separator newline.
+                if !self.output.ends_with('\n') {
+                    self.output.push('\n');
+                }
             }
         }
     }
