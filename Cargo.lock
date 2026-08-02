@@ -1091,9 +1091,9 @@ dependencies = [
 
 [[package]]
 name = "r-description"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31a4cca5ad567b694e4fe874e0ee27aaa43cfb7540b3888fd134ac7774edc209"
+checksum = "7b53aafcdfcc401939c3a77b3f781c1cc9a594757f7f21f78706942469a347d6"
 dependencies = [
  "deb822-derive",
  "deb822-fast",
