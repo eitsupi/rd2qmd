@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Update the `rd-ast` and `rd-source` dependencies to `0.3.1`, and disable `rd-ast`'s default features so that the optional compression codecs (and their `liblzma` link) can never be pulled into the dependency graph.
+
 ## [0.5.1] - 2026-07-31
 
 ### Fixed

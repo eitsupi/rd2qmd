@@ -1165,18 +1165,18 @@ dependencies = [
 
 [[package]]
 name = "rd-ast"
-version = "0.1.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0cd34b9f48d1d7e4b54fcb38e191460edaac7bcef76685235394649868e7c728"
+checksum = "1271da631b9dbdeac3d23e1666c066164ec8eb620cb8504310a0bcd9948b4c0b"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "rd-source"
-version = "0.1.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "498b9c8e7c53b728a85178ca0dcf37c432c108f104bf236d743cd0a33be3a85f"
+checksum = "7820ec265c6daf795863a24a14f648b40f2f70327e641f404b3927047693dc13"
 dependencies = [
  "rd-ast",
 ]
