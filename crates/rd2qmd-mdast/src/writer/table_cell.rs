@@ -1,19 +1,18 @@
 //! Flattening arbitrary block content down to inline nodes safe for a GFM
 //! pipe-table cell.
 
-use rd_ast::RdNode;
-use rd2qmd_mdast::{Html, Node};
+use crate::mdast::{Html, Node};
 
-use super::markdown_text::node_to_markdown_string;
-use super::{BlockConversionContext, convert_block_content, replace_line_endings_with_space};
+use super::arguments::node_to_markdown_string;
+use super::replace_line_endings_with_space;
 
-/// Flatten block content to inline nodes for GFM table cells.
+/// Flatten block-level nodes to inline nodes for GFM table cells.
 /// Uses `<br>` for paragraph breaks and flattens lists with bullet markers.
-pub(super) fn flatten_for_table_cell(
-    content: &[RdNode],
-    context: &BlockConversionContext<'_>,
-) -> Vec<Node> {
-    let block_nodes = convert_block_content(content, context);
+///
+/// The returned nodes are already sanitized for a pipe-table cell, so they
+/// must be written through the pre-sanitized table path (see
+/// [`super::Writer::write_table_with`]) rather than sanitized a second time.
+pub(crate) fn flatten_for_table_cell(block_nodes: &[Node]) -> Vec<Node> {
     let mut result = Vec::new();
 
     for (i, node) in block_nodes.iter().enumerate() {
@@ -174,7 +173,8 @@ fn flatten_block_node_for_table_cell(node: &Node) -> Vec<Node> {
         // roxygen code-block path (Code). Keep this arm exhaustive (no
         // wildcard) so a newly added `Node` variant fails to compile here
         // instead of silently vanishing.
-        Node::ThematicBreak
+        Node::Arguments(_)
+        | Node::ThematicBreak
         | Node::Blockquote(_)
         | Node::ListItem(_)
         | Node::TableRow(_)
@@ -199,6 +199,34 @@ fn flatten_block_node_for_table_cell(node: &Node) -> Vec<Node> {
     result
 }
 
+/// Sanitize every cell of a table for pipe-table output.
+pub(crate) fn sanitize_table(table: &crate::mdast::Table) -> crate::mdast::Table {
+    let children = table
+        .children
+        .iter()
+        .map(|row| match row {
+            Node::TableRow(row) => {
+                let cells = row
+                    .children
+                    .iter()
+                    .map(|cell| match cell {
+                        Node::TableCell(cell) => {
+                            Node::table_cell(sanitize_table_cell_inline_nodes(&cell.children))
+                        }
+                        other => other.clone(),
+                    })
+                    .collect();
+                Node::table_row(cells)
+            }
+            other => other.clone(),
+        })
+        .collect();
+    crate::mdast::Table {
+        align: table.align.clone(),
+        children,
+    }
+}
+
 fn extend_table_cell_inline(result: &mut Vec<Node>, nodes: &[Node]) {
     result.extend(sanitize_table_cell_inline_nodes(nodes));
 }
@@ -209,7 +237,7 @@ fn extend_table_cell_inline(result: &mut Vec<Node>, nodes: &[Node]) {
 /// conditional branch collapses, see `collapse_inline_nodes`) by splicing
 /// its sanitized children in place, since a `Paragraph` is a block node the
 /// real writer cannot safely nest inside a table cell.
-pub(super) fn sanitize_table_cell_inline_nodes(nodes: &[Node]) -> Vec<Node> {
+pub(crate) fn sanitize_table_cell_inline_nodes(nodes: &[Node]) -> Vec<Node> {
     let mut result = Vec::with_capacity(nodes.len());
     for node in nodes {
         match node {
@@ -222,7 +250,7 @@ pub(super) fn sanitize_table_cell_inline_nodes(nodes: &[Node]) -> Vec<Node> {
     result
 }
 
-pub(super) fn sanitize_table_cell_inline_node(node: &Node) -> Node {
+pub(crate) fn sanitize_table_cell_inline_node(node: &Node) -> Node {
     let mut node = node.clone();
     match &mut node {
         Node::Text(text) => {
@@ -239,7 +267,7 @@ pub(super) fn sanitize_table_cell_inline_node(node: &Node) -> Node {
             math.value = replace_line_endings_with_space(&math.value).replace('|', "\\|");
         }
         Node::Math(math) => {
-            return Node::InlineMath(rd2qmd_mdast::InlineMath {
+            return Node::InlineMath(crate::mdast::InlineMath {
                 value: replace_line_endings_with_space(&math.value).replace('|', "\\|"),
             });
         }

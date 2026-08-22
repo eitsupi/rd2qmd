@@ -1,0 +1,42 @@
+---
+source: crates/rd2qmd-cli/tests/integration.rs
+expression: output
+---
+#set document(title: "A Simple Function")
+#metadata((
+  pagetitle: "A Simple Function — simple",
+  aliases: ("simple",),
+))<rd2qmd>
+
+= A Simple Function
+
+== Description
+
+This is a simple function for testing\.
+
+== Usage
+
+```r
+#| eval: false
+simple(x, y = 1)
+```
+
+== Arguments
+
+#table(
+  columns: 2,
+  table.header([Argument], [Description]),
+  [`x`], [The first argument\.],
+  [`y`], [The second argument, defaults to 1\.],
+)
+
+== Value
+
+Returns the sum of `x` and `y`\.
+
+== Examples
+
+```r
+simple(1, 2)
+simple(10)
+```

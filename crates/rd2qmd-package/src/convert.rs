@@ -2,8 +2,8 @@
 
 use rayon::prelude::*;
 use rd2qmd_core::{
-    ArgumentsFormat, Frontmatter, RdAstEnvelope, RdToMdastOptions, WriterOptions,
-    extract_rd_metadata, extract_text, mdast_to_qmd, rd_to_mdast_with_options,
+    ArgumentsFormat, CodeExecutionOptions, FrontmatterOptions, LinkOptions, OutputTarget,
+    RdAstEnvelope, RdConvertOptions, convert_rd_document, extract_rd_metadata,
 };
 use std::collections::HashMap;
 use std::fs;
@@ -80,6 +80,8 @@ pub struct PackageConvertOptions {
     /// Prefer the ASCII representation of `\eqn`/`\deqn` equations over
     /// LaTeX math when one is present (default: false)
     pub prefer_ascii_math: bool,
+    /// Markup language to render into (Markdown or Typst)
+    pub target: OutputTarget,
     /// Table format for the Arguments section
     pub arguments_format: ArgumentsFormat,
 }
@@ -102,6 +104,7 @@ impl Default for PackageConvertOptions {
             include_internal: false, // pkgdown-compatible: skip internal topics by default
             include_html_output: false,
             prefer_ascii_math: false,
+            target: OutputTarget::default(),
             arguments_format: ArgumentsFormat::default(),
         }
     }
@@ -371,61 +374,30 @@ pub(crate) fn convert_single_file(
                 .internal_link_url
                 .clone()
                 .unwrap_or_else(|| format!("{{file}}.{}", options.output_extension));
-            let converter_options = RdToMdastOptions {
-                include_title_heading: !options.frontmatter,
-                internal_link_url: Some(internal_link_url),
-                alias_map: Some(package.alias_index.clone()),
-                unqualified_link_url: options.unqualified_link_url.clone(),
-                package_urls: options.package_urls.clone(),
-                external_link_url: options.external_link_url.clone(),
-                exec_dontrun: options.exec_dontrun,
-                exec_donttest: options.exec_donttest,
-                quarto_code_blocks: options.quarto_code_blocks,
-                arguments_format: options.arguments_format.clone(),
+            let convert_options = RdConvertOptions {
+                frontmatter: FrontmatterOptions {
+                    enabled: options.frontmatter,
+                    pagetitle: options.pagetitle,
+                },
+                code: CodeExecutionOptions {
+                    quarto_code_blocks: options.quarto_code_blocks,
+                    exec_dontrun: options.exec_dontrun,
+                    exec_donttest: options.exec_donttest,
+                },
+                links: LinkOptions {
+                    internal_link_url: Some(internal_link_url),
+                    alias_map: Some(package.alias_index.clone()),
+                    unqualified_link_url: options.unqualified_link_url.clone(),
+                    package_urls: options.package_urls.clone(),
+                    external_link_url: options.external_link_url.clone(),
+                },
+                target: options.target,
+                arguments_format: options.arguments_format,
                 include_html_output: options.include_html_output,
                 prefer_ascii_math: options.prefer_ascii_math,
+                source_files_override: Some(source_files),
             };
-
-            // Convert to mdast
-            let mdast = rd_to_mdast_with_options(&doc, &converter_options);
-
-            // Extract title and name for frontmatter
-            let title = doc.title().map(extract_text);
-            let name = doc.name().map(extract_text);
-
-            // Build pagetitle in pkgdown style: "<title> — <name>"
-            let pagetitle = if options.pagetitle {
-                match (&title, &name) {
-                    (Some(t), Some(n)) => Some(format!("{} \u{2014} {}", t, n)),
-                    _ => None,
-                }
-            } else {
-                None
-            };
-
-            // Extract Rd metadata, including source files from roxygen2 comments
-            let metadata = rd2qmd_core::RdMetadata {
-                source_files,
-                ..extract_rd_metadata(&doc)
-            };
-
-            // Build writer options
-            let writer_options = WriterOptions {
-                frontmatter: if options.frontmatter {
-                    Some(Frontmatter {
-                        title,
-                        pagetitle,
-                        format: None,
-                        metadata: Some(metadata),
-                    })
-                } else {
-                    None
-                },
-                quarto_code_blocks: options.quarto_code_blocks,
-            };
-
-            // Convert to QMD string
-            let qmd = mdast_to_qmd(&mdast, &writer_options);
+            let qmd = convert_rd_document(&doc, &convert_options);
 
             // Determine output path
             let relative = input.strip_prefix(&package.root).unwrap_or(input);

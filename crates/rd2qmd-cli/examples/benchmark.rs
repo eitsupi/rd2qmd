@@ -201,6 +201,7 @@ fn run_single_benchmark(
         include_internal: false, // skip internal topics by default
         include_html_output: false,
         prefer_ascii_math: false,
+        target: rd2qmd_core::OutputTarget::default(),
         arguments_format: rd2qmd_core::ArgumentsFormat::default(),
     };
 

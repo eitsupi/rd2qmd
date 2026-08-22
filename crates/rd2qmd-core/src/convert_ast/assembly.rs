@@ -64,11 +64,9 @@ fn convert_fixed_section(
     let mut nodes = vec![Node::heading(2, vec![Node::text(section.kind.heading())])];
 
     match &section.body {
-        FixedSectionBody::Arguments(arguments) => nodes.extend(convert_arguments(
-            arguments,
-            options.arguments_format.clone(),
-            context,
-        )),
+        FixedSectionBody::Arguments(arguments) => {
+            nodes.extend(convert_arguments(arguments, context))
+        }
         FixedSectionBody::Nodes(body) => match section.kind {
             FixedSectionKind::Usage => {
                 nodes.push(Node::code(Some("r".to_owned()), convert_usage(body).trim()));
@@ -78,7 +76,6 @@ fn convert_fixed_section(
                 &ExampleOptions {
                     exec_dontrun: options.exec_dontrun,
                     exec_donttest: options.exec_donttest,
-                    quarto_code_blocks: options.quarto_code_blocks,
                 },
             )),
             _ => nodes.extend(convert_block_content(body, context)),
@@ -133,6 +130,7 @@ mod tests {
             &WriterOptions {
                 frontmatter: None,
                 quarto_code_blocks: options.quarto_code_blocks,
+                arguments_format: Default::default(),
             },
         )
     }

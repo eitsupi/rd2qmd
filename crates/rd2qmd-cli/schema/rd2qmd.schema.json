@@ -157,7 +157,7 @@
           ]
         },
         "format": {
-          "description": "Output format: \"qmd\" (Quarto Markdown), \"md\" (standard Markdown), or \"rmd\" (R Markdown)",
+          "description": "Output format: \"qmd\" (Quarto Markdown), \"md\" (standard Markdown), \"rmd\" (R Markdown), or \"typ\" (Typst)",
           "type": [
             "string",
             "null"

@@ -51,7 +51,7 @@ fn test_merge_format_config_overrides_default() {
     let cli = default_convert_args();
     let config = Config {
         output: config::OutputConfig {
-            format: Some("md".to_string()),
+            format: Some(OutputFormat::Md),
             ..Default::default()
         },
         ..Default::default()
@@ -65,7 +65,7 @@ fn test_merge_format_cli_overrides_config() {
     cli.format = OutputFormat::Rmd;
     let config = Config {
         output: config::OutputConfig {
-            format: Some("md".to_string()),
+            format: Some(OutputFormat::Md),
             ..Default::default()
         },
         ..Default::default()

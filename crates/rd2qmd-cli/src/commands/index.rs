@@ -17,6 +17,7 @@ pub(crate) fn run_index_command(args: &IndexArgs, quiet: bool) -> Result<()> {
         OutputFormat::Qmd => "qmd",
         OutputFormat::Md => "md",
         OutputFormat::Rmd => "Rmd",
+        OutputFormat::Typ => "typ",
     };
 
     let package = RdPackage::from_directory_with_format(

@@ -1,25 +1,18 @@
 //! General block-content assembly for the rd_ast conversion migration.
 
 use rd_ast::{RdArgument, RdNode};
-use rd2qmd_mdast::{Align, Html, Node};
-use tabled::settings::Style;
-use tabled::settings::style::HorizontalLine;
+use rd2qmd_mdast::{ArgumentItem, Node};
 
 use super::{
     inline::{self, InlineConversionContext},
     leaf_text::flatten_verbatim_leaves,
     traversal::{BlockContentItem, scan_block_content},
 };
-use table_cell::flatten_for_table_cell;
 use tag_conversion::{convert_block, convert_paragraph};
 
-mod markdown_text;
-mod table_cell;
 mod tag_conversion;
 #[cfg(test)]
 mod tests;
-
-use markdown_text::{convert_to_markdown_text, render_block_content, render_list_table_cell};
 
 /// Borrowed configuration used while converting general block content.
 #[derive(Clone, Copy)]
@@ -86,164 +79,30 @@ fn convert_custom_section_body(
     nodes
 }
 
-/// Convert an already-structured Arguments section in the requested output format.
+/// Convert an already-structured Arguments section into a semantic
+/// [`Node::Arguments`].
+///
+/// The physical shape (pipe/grid/list table, loose list, a Typst `#table`)
+/// is a presentation choice and belongs to the writer, so nothing here is
+/// pre-rendered: each entry keeps its name as plain text and its description
+/// as block-level nodes.
 pub(crate) fn convert_arguments(
     arguments: &[RdArgument<'_>],
-    format: crate::ArgumentsFormat,
-    context: &BlockConversionContext<'_>,
-) -> Vec<Node> {
-    match format {
-        crate::ArgumentsFormat::PipeTable => convert_arguments_pipe(arguments, context),
-        crate::ArgumentsFormat::GridTable => convert_arguments_grid(arguments, context),
-        crate::ArgumentsFormat::ListTable => convert_arguments_list_table(arguments, context),
-        crate::ArgumentsFormat::List => convert_arguments_list(arguments, context),
-    }
-}
-
-/// Convert arguments to pipe table format.
-/// Pipe tables cannot contain block elements (lists, multiple paragraphs).
-/// Workaround: use `<br>` for line breaks and flatten lists with bullet markers.
-fn convert_arguments_pipe(
-    arguments: &[RdArgument<'_>],
     context: &BlockConversionContext<'_>,
 ) -> Vec<Node> {
     if arguments.is_empty() {
         return Vec::new();
     }
 
-    let header_row = Node::table_row(vec![
-        Node::table_cell(vec![Node::text("Argument")]),
-        Node::table_cell(vec![Node::text("Description")]),
-    ]);
-    let mut rows = vec![header_row];
-
-    for argument in arguments {
-        let term_text =
-            replace_line_endings_with_space(&argument_name(argument, context)).replace('|', "\\|");
-        rows.push(Node::table_row(vec![
-            Node::table_cell(vec![Node::inline_code(term_text.trim())]),
-            Node::table_cell(flatten_for_table_cell(argument.description, context)),
-        ]));
-    }
-
-    vec![Node::table(
-        vec![Some(Align::Left), Some(Align::Left)],
-        rows,
-    )]
-}
-
-/// Convert arguments to Pandoc grid table format.
-/// Grid tables support block elements (lists, paragraphs) within cells.
-fn convert_arguments_grid(
-    arguments: &[RdArgument<'_>],
-    context: &BlockConversionContext<'_>,
-) -> Vec<Node> {
-    use tabled::builder::Builder;
-
-    if arguments.is_empty() {
-        return Vec::new();
-    }
-
-    let mut builder = Builder::default();
-    builder.push_record(["Argument", "Description"]);
-
-    for argument in arguments {
-        let term_text = argument_name(argument, context);
-        let arg_text = rd2qmd_mdast::format_inline_code(term_text.trim(), false);
-        let desc_text = convert_to_markdown_text(argument.description, context);
-        builder.push_record([arg_text, desc_text]);
-    }
-
-    let mut table = builder.build();
-    let grid_style = Style::ascii().horizontals([(
-        1,
-        HorizontalLine::new('=')
-            .left('+')
-            .right('+')
-            .intersection('+'),
-    )]);
-    let grid_table = table.with(grid_style).to_string();
-
-    vec![Node::Html(Html { value: grid_table })]
-}
-
-/// Convert arguments to Quarto list-table format.
-/// Requires Quarto 1.9+ and is compatible with q2.
-fn convert_arguments_list_table(
-    arguments: &[RdArgument<'_>],
-    context: &BlockConversionContext<'_>,
-) -> Vec<Node> {
-    if arguments.is_empty() {
-        return Vec::new();
-    }
-
-    let rows: Vec<_> = arguments
+    let items = arguments
         .iter()
-        .map(|argument| {
-            let term_text = argument_name(argument, context);
-            let arg_text = rd2qmd_mdast::format_inline_code(term_text.trim(), false);
-            let desc_nodes = convert_block_content(argument.description, context);
-            let desc_text = render_list_table_cell(&desc_nodes);
-            (arg_text, desc_text)
+        .map(|argument| ArgumentItem {
+            name: argument_name(argument, context),
+            description: convert_block_content(argument.description, context),
         })
         .collect();
 
-    let mut output = String::new();
-    output.push_str("::: {.list-table header-rows=1}\n\n");
-    output.push_str("- - Argument\n  - Description\n");
-
-    for (arg, desc) in &rows {
-        output.push('\n');
-        output.push_str("- - ");
-        output.push_str(arg);
-        output.push('\n');
-        output.push_str("  - ");
-        output.push_str(desc);
-        output.push('\n');
-    }
-
-    output.push_str("\n:::\n");
-    vec![Node::Html(Html { value: output })]
-}
-
-/// Convert arguments to Markdown loose-list format.
-fn convert_arguments_list(
-    arguments: &[RdArgument<'_>],
-    context: &BlockConversionContext<'_>,
-) -> Vec<Node> {
-    if arguments.is_empty() {
-        return Vec::new();
-    }
-
-    let items: Vec<_> = arguments
-        .iter()
-        .map(|argument| {
-            let term_text = argument_name(argument, context);
-            let arg_code = rd2qmd_mdast::format_inline_code(term_text.trim(), false);
-            let desc_nodes = convert_block_content(argument.description, context);
-            let desc_text = render_block_content(&desc_nodes, 2);
-            (arg_code, desc_text)
-        })
-        .collect();
-
-    let mut output = String::new();
-    for (i, (arg, desc)) in items.iter().enumerate() {
-        if i > 0 {
-            output.push('\n');
-        }
-        output.push_str("- **");
-        output.push_str(arg);
-        output.push_str("**\n");
-
-        if !desc.is_empty() {
-            output.push('\n');
-            output.push_str("  ");
-            output.push_str(desc);
-            output.push('\n');
-        }
-    }
-
-    vec![Node::Html(Html { value: output })]
+    vec![Node::arguments(items)]
 }
 
 fn argument_name(argument: &RdArgument<'_>, context: &BlockConversionContext<'_>) -> String {

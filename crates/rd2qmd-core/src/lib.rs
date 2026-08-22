@@ -8,7 +8,20 @@ mod source_parse;
 pub use ast_io::{AST_FORMAT_VERSION, AstIoError, RdAstEnvelope};
 pub use options::{ArgumentsFormat, RdToMdastOptions};
 pub use rd_ast::{RdDocument, RdNode};
-pub use rd2qmd_mdast::{Frontmatter, RdMetadata, WriterOptions, mdast_to_qmd};
+pub use rd2qmd_mdast::{
+    Frontmatter, RdMetadata, TypstWriterOptions, WriterOptions, mdast_to_qmd, mdast_to_typst,
+};
+
+/// Markup language a document is rendered into.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum OutputTarget {
+    /// Quarto / R / standard Markdown.
+    #[default]
+    Markdown,
+    /// Typst markup (`.typ`), compilable to PDF or, with Typst 0.15's
+    /// experimental HTML export, to HTML.
+    Typst,
+}
 
 /// Frontmatter output options.
 #[derive(Debug, Clone, Default)]
@@ -51,6 +64,8 @@ pub struct RdConvertOptions {
     pub frontmatter: FrontmatterOptions,
     pub code: CodeExecutionOptions,
     pub links: LinkOptions,
+    /// Markup language to render into.
+    pub target: OutputTarget,
     pub arguments_format: ArgumentsFormat,
     pub include_html_output: bool,
     pub prefer_ascii_math: bool,
@@ -167,7 +182,6 @@ pub fn convert_rd_document(doc: &RdDocument, options: &RdConvertOptions) -> Stri
         exec_dontrun: options.code.exec_dontrun,
         exec_donttest: options.code.exec_donttest,
         quarto_code_blocks: options.code.quarto_code_blocks,
-        arguments_format: options.arguments_format.clone(),
         include_html_output: options.include_html_output,
         prefer_ascii_math: options.prefer_ascii_math,
     };
@@ -189,16 +203,30 @@ pub fn convert_rd_document(doc: &RdDocument, options: &RdConvertOptions) -> Stri
         },
         None => extract_rd_metadata(doc),
     };
-    let writer_options = WriterOptions {
-        frontmatter: options.frontmatter.enabled.then_some(Frontmatter {
-            title,
-            pagetitle,
-            format: None,
-            metadata: Some(metadata),
-        }),
-        quarto_code_blocks: options.code.quarto_code_blocks,
-    };
-    mdast_to_qmd(&mdast, &writer_options)
+    let frontmatter = options.frontmatter.enabled.then_some(Frontmatter {
+        title,
+        pagetitle,
+        format: None,
+        metadata: Some(metadata),
+    });
+
+    match options.target {
+        OutputTarget::Markdown => mdast_to_qmd(
+            &mdast,
+            &WriterOptions {
+                frontmatter,
+                quarto_code_blocks: options.code.quarto_code_blocks,
+                arguments_format: options.arguments_format,
+            },
+        ),
+        OutputTarget::Typst => mdast_to_typst(
+            &mdast,
+            &TypstWriterOptions {
+                frontmatter,
+                arguments_format: options.arguments_format,
+            },
+        ),
+    }
 }
 
 /// Convert a document to mdast with default options.

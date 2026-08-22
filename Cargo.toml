@@ -32,6 +32,7 @@ schemars = "1"
 
 # Table generation (for Grid Tables)
 tabled = { version = "0.21", default-features = false, features = ["std"] }
+html-escape = "0.2"
 
 # External link resolution (optional)
 r-description = "0.4.0"

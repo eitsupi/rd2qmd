@@ -19,16 +19,18 @@
 //! ```
 
 pub mod mdast;
+pub mod typst;
 pub mod writer;
 
 pub use mdast::{
-    Align, Blockquote, Code, DefinitionDescription, DefinitionList, DefinitionTerm, Emphasis,
-    Heading, Html, Image, InlineCode, InlineMath, Link, List, ListItem, Math, Node, Paragraph,
-    Root, Strong, Table, TableCell, TableRow, Text,
+    Align, ArgumentItem, Arguments, Blockquote, Code, DefinitionDescription, DefinitionList,
+    DefinitionTerm, Emphasis, Heading, Html, Image, InlineCode, InlineMath, Link, List, ListItem,
+    Math, Node, Paragraph, Root, Strong, Table, TableCell, TableRow, Text,
 };
+pub use typst::{MITEX_VERSION, TypstWriterOptions, mdast_to_typst};
 pub use writer::{
-    Frontmatter, RdMetadata, WriterOptions, escape_link_title, format_link_destination,
-    mdast_to_qmd,
+    ArgumentsFormat, Frontmatter, RdMetadata, WriterOptions, escape_link_title,
+    format_link_destination, mdast_to_qmd,
 };
 
 /// Format an inline code value as a Markdown code span, with safe backtick fencing.

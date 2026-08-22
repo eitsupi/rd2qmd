@@ -141,6 +141,10 @@ impl<'a> Writer<'a> {
     }
 
     pub(super) fn write_code(&mut self, c: &crate::mdast::Code) {
+        let is_hidden = c.meta.as_deref() == Some("hidden");
+        if is_hidden && !self.options.quarto_code_blocks {
+            return;
+        }
         self.ensure_newline();
 
         // Determine fence length: must be longer than any backtick sequence in content
@@ -150,7 +154,7 @@ impl<'a> Writer<'a> {
         self.output.push_str(&fence);
         if let Some(lang) = &c.lang {
             // Only use {r} for executable code blocks (Examples section)
-            let is_executable = c.meta.as_deref() == Some("executable");
+            let is_executable = matches!(c.meta.as_deref(), Some("executable" | "hidden"));
             if self.options.quarto_code_blocks && lang == "r" && is_executable {
                 self.output.push_str("{r}");
             } else {
@@ -158,6 +162,9 @@ impl<'a> Writer<'a> {
             }
         }
         self.output.push('\n');
+        if is_hidden {
+            self.output.push_str("#| include: false\n");
+        }
         self.output.push_str(&c.value);
         if !c.value.ends_with('\n') {
             self.output.push('\n');
@@ -168,7 +175,27 @@ impl<'a> Writer<'a> {
     }
 
     pub(super) fn write_table(&mut self, t: &crate::mdast::Table) {
+        self.write_table_with(t, false);
+    }
+
+    /// Write a pipe table, sanitizing cell content for a pipe-table cell
+    /// unless the caller has already done so.
+    ///
+    /// Cells arrive holding unescaped inline content (a `\tabular{}` cell is
+    /// just converted inline nodes), so escaping happens here, at the point
+    /// where the pipe-table syntax is actually chosen. The one exception is
+    /// the Arguments pipe renderer, which must flatten block content down to
+    /// inline nodes first and sanitizes as part of that flattening; escaping
+    /// its cells again would double every backslash.
+    pub(super) fn write_table_with(&mut self, t: &crate::mdast::Table, pre_sanitized: bool) {
         self.ensure_newline();
+        let sanitized;
+        let t = if pre_sanitized {
+            t
+        } else {
+            sanitized = super::table_cell::sanitize_table(t);
+            &sanitized
+        };
 
         let rows: Vec<&crate::mdast::TableRow> = t
             .children

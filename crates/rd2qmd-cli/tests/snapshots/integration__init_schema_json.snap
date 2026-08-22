@@ -161,10 +161,14 @@ expression: schema
           ]
         },
         "format": {
-          "description": "Output format: \"qmd\" (Quarto Markdown), \"md\" (standard Markdown), or \"rmd\" (R Markdown)",
-          "type": [
-            "string",
-            "null"
+          "description": "Output format: \"qmd\" (Quarto Markdown), \"md\" (standard Markdown), \"rmd\" (R Markdown), or \"typ\" (Typst)",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OutputFormat"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "frontmatter": {
@@ -196,6 +200,31 @@ expression: schema
           ]
         }
       }
+    },
+    "OutputFormat": {
+      "description": "Output format for markdown conversion",
+      "oneOf": [
+        {
+          "description": "Quarto Markdown (.qmd) - uses {r} code blocks for examples",
+          "type": "string",
+          "const": "qmd"
+        },
+        {
+          "description": "Standard Markdown (.md) - uses plain r code blocks",
+          "type": "string",
+          "const": "md"
+        },
+        {
+          "description": "R Markdown (.Rmd) - uses {r} code blocks for examples",
+          "type": "string",
+          "const": "rmd"
+        },
+        {
+          "description": "Typst (.typ) - plain ```r raw blocks, MiTeX math, executable with calepin",
+          "type": "string",
+          "const": "typ"
+        }
+      ]
     }
   }
 }

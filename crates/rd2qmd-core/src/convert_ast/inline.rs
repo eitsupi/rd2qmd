@@ -222,6 +222,12 @@ pub(crate) fn extract_plain_text(nodes: &[Node]) -> String {
             Node::DefinitionList(node) => append_children_text(&node.children, text),
             Node::DefinitionTerm(node) => append_children_text(&node.children, text),
             Node::DefinitionDescription(node) => append_children_text(&node.children, text),
+            Node::Arguments(node) => {
+                for item in &node.items {
+                    text.push_str(&item.name);
+                    append_children_text(&item.description, text);
+                }
+            }
             Node::Text(node) => text.push_str(&node.value),
             Node::Emphasis(node) => append_children_text(&node.children, text),
             Node::Strong(node) => append_children_text(&node.children, text),
@@ -558,6 +564,7 @@ mod tests {
             &WriterOptions {
                 frontmatter: None,
                 quarto_code_blocks: false,
+                arguments_format: Default::default(),
             },
         )
     }
