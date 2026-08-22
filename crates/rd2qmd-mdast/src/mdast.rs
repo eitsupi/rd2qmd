@@ -29,6 +29,12 @@ pub enum Node {
 
     // Container for definition lists (not standard mdast, but useful)
     DefinitionList(DefinitionList),
+    /// An Rd `\arguments{}` section (not standard mdast).
+    ///
+    /// Held semantically -- a list of (name, block description) entries --
+    /// rather than pre-rendered, so each writer picks its own physical
+    /// rendering (pipe/grid/list table, loose list, Typst `#table`).
+    Arguments(Arguments),
     DefinitionTerm(DefinitionTerm),
     DefinitionDescription(DefinitionDescription),
 
@@ -118,6 +124,21 @@ pub enum Align {
     Left,
     Center,
     Right,
+}
+
+/// An Rd `\arguments{}` section (extension)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Arguments {
+    pub items: Vec<ArgumentItem>,
+}
+
+/// One entry of an [`Arguments`] section
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ArgumentItem {
+    /// Argument name(s) as plain text, e.g. `x` or `..., .by`.
+    pub name: String,
+    /// Description as block-level mdast nodes.
+    pub description: Vec<Node>,
 }
 
 /// Definition list (extension)
@@ -319,6 +340,10 @@ impl Node {
 
     pub fn table_cell(children: Vec<Node>) -> Self {
         Node::TableCell(TableCell { children })
+    }
+
+    pub fn arguments(items: Vec<ArgumentItem>) -> Self {
+        Node::Arguments(Arguments { items })
     }
 
     pub fn definition_list(children: Vec<Node>) -> Self {

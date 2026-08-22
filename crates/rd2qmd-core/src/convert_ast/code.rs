@@ -9,7 +9,6 @@ use super::leaf_text::flatten_verbatim_leaves;
 pub(crate) struct ExampleOptions {
     pub(crate) exec_dontrun: bool,
     pub(crate) exec_donttest: bool,
-    pub(crate) quarto_code_blocks: bool,
 }
 
 /// Flatten a Usage section while preserving its source whitespace.
@@ -71,9 +70,11 @@ pub(crate) fn convert_examples(nodes: &[RdNode], options: &ExampleOptions) -> Ve
                     flush_code(&mut current_code, &mut result, true);
                     has_executable = false;
 
-                    if options.quarto_code_blocks {
-                        push_code(&mut result, &format!("#| include: false\n{trimmed}"), true);
-                    }
+                    result.push(Node::code_with_meta(
+                        Some("r".to_owned()),
+                        Some("hidden".to_owned()),
+                        trimmed,
+                    ));
                 }
             }
             RdExampleControlKind::DontDiff => {
@@ -358,12 +359,11 @@ mod tests {
     fn example_options(
         exec_dontrun: bool,
         exec_donttest: bool,
-        quarto_code_blocks: bool,
+        _quarto_code_blocks: bool,
     ) -> ExampleOptions {
         ExampleOptions {
             exec_dontrun,
             exec_donttest,
-            quarto_code_blocks,
         }
     }
 
@@ -377,6 +377,10 @@ mod tests {
 
     fn plain(value: &str) -> Node {
         Node::code(Some("r".to_string()), value)
+    }
+
+    fn hidden(value: &str) -> Node {
+        Node::code_with_meta(Some("r".to_string()), Some("hidden".to_string()), value)
     }
 
     fn method(tag: RdTag, generic: &str, qualifier: &str) -> RdNode {
@@ -584,7 +588,7 @@ mod tests {
     }
 
     #[test]
-    fn genuine_dontshow_is_hidden_in_quarto_and_omitted_otherwise() {
+    fn genuine_dontshow_is_preserved_as_hidden_setup_code() {
         let nodes = vec![control(
             RdTag::DontShow,
             vec![RdNode::RCode("setup()\n".to_owned())],
@@ -592,9 +596,12 @@ mod tests {
 
         assert_eq!(
             convert_examples(&nodes, &example_options(false, false, true)),
-            vec![executable("#| include: false\nsetup()")]
+            vec![hidden("setup()")]
         );
-        assert!(convert_examples(&nodes, &example_options(false, false, false)).is_empty());
+        assert_eq!(
+            convert_examples(&nodes, &example_options(false, false, false)),
+            vec![hidden("setup()")]
+        );
     }
 
     #[test]
@@ -651,9 +658,12 @@ mod tests {
 
         assert_eq!(
             convert_examples(&complete, &example_options(false, false, true)),
-            vec![executable("#| include: false\nstopifnot(TRUE)")]
+            vec![hidden("stopifnot(TRUE)")]
         );
-        assert!(convert_examples(&complete, &example_options(false, false, false)).is_empty());
+        assert_eq!(
+            convert_examples(&complete, &example_options(false, false, false)),
+            vec![hidden("stopifnot(TRUE)")]
+        );
         assert_eq!(
             convert_examples(&wrappers, &example_options(false, false, true)),
             vec![executable("inside()")]

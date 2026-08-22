@@ -37,15 +37,11 @@ pub(crate) fn load_config(args: &ConvertArgs) -> Result<Config> {
 /// This means config wins when CLI uses default (qmd).
 pub(crate) fn merge_format(args: &ConvertArgs, config: &Config) -> OutputFormat {
     // If config specifies a format, check if CLI is using the default
-    if let Some(ref fmt) = config.output.format {
+    if let Some(format) = config.output.format {
         // Only use config if CLI appears to be using default
         // This is a heuristic - we assume if CLI is Qmd (default), config should win
         if args.format == OutputFormat::Qmd {
-            return match fmt.to_lowercase().as_str() {
-                "md" => OutputFormat::Md,
-                "rmd" => OutputFormat::Rmd,
-                _ => OutputFormat::Qmd,
-            };
+            return format;
         }
     }
     args.format

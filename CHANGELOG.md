@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- Typst output format (`-f typ`, config `output.format = "typ"`). The generated `.typ` compiles to PDF with `typst compile`, and to HTML with Typst 0.15's `--features html --format html` export target. Rd LaTeX equations go through [MiTeX](https://typst.app/universe/package/mitex/) (`#mi`/`#mitex`, imported only by documents that contain math), `\out{}` fragments become `html.elem` calls guarded by `target()` so PDF compilation still works, and R code is emitted as plain ```` ```r ```` raw blocks — highlighted listings under plain `typst`, executable under [calepin](https://vincentarelbundock.github.io/calepin/).
+
+### Changed
+
+- The Arguments section is now carried through the pipeline as a semantic `Arguments` mdast node instead of a pre-rendered Markdown string, and `--arguments-format` is applied by the writer rather than during conversion. Markdown output is unchanged; the new Typst writer renders the same node as a `#table` (or `#terms` for `--arguments-format list`). Pipe-table cell escaping for `\tabular{}` likewise moved to the Markdown writer, so no Markdown syntax is produced during Rd conversion any more.
+
 ## [0.5.2] - 2026-08-12
 
 ### Changed

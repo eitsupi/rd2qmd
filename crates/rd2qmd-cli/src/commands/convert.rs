@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
 
+use rd2qmd_core::OutputTarget;
 use rd2qmd_core::{
     ArgumentsFormat, CodeExecutionOptions, FrontmatterOptions, LinkOptions, RdAstEnvelope,
     RdConvertOptions, convert_rd_document,
@@ -43,6 +44,12 @@ pub(crate) fn run_convert_command(args: &ConvertArgs, verbose: bool, quiet: bool
         OutputFormat::Qmd => "qmd",
         OutputFormat::Md => "md",
         OutputFormat::Rmd => "Rmd",
+        OutputFormat::Typ => "typ",
+    };
+
+    let target = match format {
+        OutputFormat::Typ => OutputTarget::Typst,
+        _ => OutputTarget::Markdown,
     };
 
     // quarto_code_blocks: CLI > Config > auto (based on format)
@@ -101,6 +108,7 @@ pub(crate) fn run_convert_command(args: &ConvertArgs, verbose: bool, quiet: bool
             exec_donttest,
             include_html_output,
             prefer_ascii_math,
+            target,
             arguments_format,
             verbose,
             quiet,
@@ -129,6 +137,7 @@ pub(crate) fn run_convert_command(args: &ConvertArgs, verbose: bool, quiet: bool
             include_internal,
             include_html_output,
             prefer_ascii_math,
+            target,
             arguments_format,
             args.topic_index.as_deref(),
             verbose,
@@ -159,6 +168,7 @@ fn convert_single_file(
     exec_donttest: bool,
     include_html_output: bool,
     prefer_ascii_math: bool,
+    target: OutputTarget,
     arguments_format: ArgumentsFormat,
     verbose: bool,
     quiet: bool,
@@ -205,6 +215,7 @@ fn convert_single_file(
                 alias_map: None,
                 package_urls,
             },
+            target,
             arguments_format,
             include_html_output,
             prefer_ascii_math,
@@ -244,6 +255,7 @@ fn convert_single_file(
                 alias_map: None,
                 package_urls,
             },
+            target,
             arguments_format,
             include_html_output,
             prefer_ascii_math,
@@ -288,6 +300,7 @@ fn convert_directory(
     include_internal: bool,
     include_html_output: bool,
     prefer_ascii_math: bool,
+    target: OutputTarget,
     arguments_format: ArgumentsFormat,
     topic_index_path: Option<&Path>,
     verbose: bool,
@@ -352,6 +365,7 @@ fn convert_directory(
         include_internal,
         include_html_output,
         prefer_ascii_math,
+        target,
         arguments_format,
     };
 

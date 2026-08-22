@@ -123,6 +123,26 @@ fn test_quarto_code_block() {
 }
 
 #[test]
+fn test_hidden_setup_code_is_only_rendered_for_quarto() {
+    let root = Root::new(vec![Node::code_with_meta(
+        Some("r".to_string()),
+        Some("hidden".to_string()),
+        "setup()",
+    )]);
+    let quarto = mdast_to_qmd(
+        &root,
+        &WriterOptions {
+            quarto_code_blocks: true,
+            ..Default::default()
+        },
+    );
+    assert_eq!(quarto, "```{r}\n#| include: false\nsetup()\n```\n");
+
+    let markdown = mdast_to_qmd(&root, &WriterOptions::default());
+    assert!(markdown.is_empty());
+}
+
+#[test]
 fn test_inline_code() {
     let root = Root::new(vec![Node::paragraph(vec![
         Node::text("Use "),
@@ -896,4 +916,125 @@ fn test_frontmatter_with_source_files() {
     assert!(qmd.contains("source-files:\n"));
     assert!(qmd.contains(r#"  - "R/coord-map.R""#));
     assert!(qmd.contains(r#"  - "R/coord-quickmap.R""#));
+}
+
+// ---------------------------------------------------------------------------
+// Pipe-table cell sanitization and grid-table cell rendering
+//
+// These moved here with the Arguments rendering itself: they describe what the
+// Markdown writer does to cell content, not how Rd is parsed.
+// ---------------------------------------------------------------------------
+
+use crate::writer::arguments::convert_to_markdown_text;
+use crate::writer::table_cell::sanitize_table_cell_inline_node;
+
+#[test]
+fn pipe_table_sanitizer_replaces_only_line_endings() {
+    let sanitized = sanitize_table_cell_inline_node(&Node::inline_code("a  b\tc\r\nd\re\n f"));
+    assert!(matches!(
+        sanitized,
+        Node::InlineCode(code) if code.value == "a  b\tc d e  f"
+    ));
+}
+
+#[test]
+fn pipe_table_sanitizer_replaces_inline_code_line_endings() {
+    let sanitized = sanitize_table_cell_inline_node(&Node::inline_code("first\n second"));
+
+    assert!(matches!(sanitized, Node::InlineCode(code) if code.value == "first  second"));
+}
+
+#[test]
+fn pipe_table_sanitizer_escapes_literal_pipes_in_image_urls() {
+    let sanitized = sanitize_table_cell_inline_node(&Node::image("path|name.png", "alt"));
+
+    assert!(
+        matches!(sanitized, Node::Image(image) if image.url == "path\\|name.png" && image.alt == "alt")
+    );
+}
+
+#[test]
+fn pipe_table_sanitizer_replaces_link_title_line_endings() {
+    let sanitized = sanitize_table_cell_inline_node(&Node::link_with_title(
+        "url\nvalue",
+        "title\r\nvalue",
+        vec![Node::text("link")],
+    ));
+    let markdown = mdast_to_qmd(
+        &Root::new(vec![Node::paragraph(vec![sanitized])]),
+        &WriterOptions::default(),
+    );
+
+    assert_eq!(markdown, "[link](<url value> \"title value\")\n");
+}
+
+#[test]
+fn pipe_table_sanitizer_replaces_image_field_line_endings() {
+    let sanitized = sanitize_table_cell_inline_node(&Node::image_with_title(
+        "url\rvalue",
+        "alt\nvalue",
+        "title\r\nvalue",
+    ));
+    let markdown = mdast_to_qmd(
+        &Root::new(vec![Node::paragraph(vec![sanitized])]),
+        &WriterOptions::default(),
+    );
+
+    assert_eq!(markdown, "![alt value](<url value> \"title value\")\n");
+}
+
+#[test]
+fn table_cell_serializer_formats_link_and_image_destinations() {
+    let markdown = crate::writer::arguments::inline_nodes_to_markdown(&[
+        Node::link_with_title(
+            r"link url",
+            r#"link "title" \ docs"#,
+            vec![Node::text(r"link")],
+        ),
+        Node::text(r" "),
+        Node::image_with_title(r"image url", r"alt", r#"image "title" \ docs"#),
+    ]);
+
+    assert_eq!(
+        markdown,
+        r#"[link](<link url> "link \"title\" \\ docs") ![alt](<image url> "image \"title\" \\ docs")"#
+    );
+}
+
+#[test]
+fn grid_table_list_item_second_paragraph_is_indented_under_marker() {
+    // A list item's continuation content must be indented under the marker
+    // column, or a grid-table cell's block-level Markdown parser stops
+    // treating it as part of the same list item.
+    let list = Node::list(
+        false,
+        vec![Node::list_item(vec![
+            Node::paragraph(vec![Node::text("first paragraph")]),
+            Node::paragraph(vec![Node::text("second paragraph")]),
+        ])],
+    );
+
+    assert_eq!(
+        convert_to_markdown_text(&[list]),
+        "- first paragraph\n\n  second paragraph"
+    );
+}
+
+#[test]
+fn grid_table_list_item_cr_break_in_first_paragraph_is_indented_under_marker() {
+    // A hard break *within the first paragraph* of a list item must also be
+    // indented under the marker, not just subsequent sibling blocks.
+    let list = Node::list(
+        false,
+        vec![Node::list_item(vec![Node::paragraph(vec![
+            Node::text("first line"),
+            Node::line_break(),
+            Node::text("second line"),
+        ])])],
+    );
+
+    assert_eq!(
+        convert_to_markdown_text(&[list]),
+        "- first line  \n  second line"
+    );
 }

@@ -217,6 +217,7 @@ mod tests {
                 &WriterOptions {
                     frontmatter: None,
                     quarto_code_blocks: false,
+                    arguments_format: Default::default(),
                 }
             ),
             "```r\nx <- 1 + 2\n```\n"

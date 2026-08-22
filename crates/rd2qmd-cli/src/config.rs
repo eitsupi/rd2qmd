@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use crate::cli::OutputFormat;
+
 /// Output format for the Arguments section
 #[derive(
     Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, JsonSchema, clap::ValueEnum,
@@ -53,9 +55,9 @@ pub struct Config {
 #[derive(Debug, Default, Clone, Deserialize, Serialize, JsonSchema)]
 #[serde(default)]
 pub struct OutputConfig {
-    /// Output format: "qmd" (Quarto Markdown), "md" (standard Markdown), or "rmd" (R Markdown)
+    /// Output format: "qmd" (Quarto Markdown), "md" (standard Markdown), "rmd" (R Markdown), or "typ" (Typst)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub format: Option<String>,
+    pub format: Option<OutputFormat>,
     /// Add YAML frontmatter with title (default: true)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub frontmatter: Option<bool>,
@@ -212,7 +214,7 @@ impl Config {
     pub fn sample() -> Self {
         Config {
             output: OutputConfig {
-                format: Some("qmd".to_string()),
+                format: Some(OutputFormat::Qmd),
                 frontmatter: Some(true),
                 pagetitle: Some(true),
                 arguments_format: Some(ArgumentsFormat::ListTable),
@@ -265,13 +267,23 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(config.output.format, Some("md".to_string()));
+        assert_eq!(config.output.format, Some(OutputFormat::Md));
         assert_eq!(config.output.frontmatter, Some(false));
         assert_eq!(config.output.pagetitle, Some(true));
         assert_eq!(
             config.output.arguments_format,
             Some(ArgumentsFormat::PipeTable)
         );
+    }
+
+    #[test]
+    fn test_output_format_rejects_typos_and_accepts_typst_alias() {
+        let error = toml::from_str::<Config>("[output]\nformat = \"typs\"\n")
+            .expect_err("an unknown output format must be rejected");
+        assert!(error.to_string().contains("unknown variant `typs`"));
+
+        let config: Config = toml::from_str("[output]\nformat = \"typst\"\n").unwrap();
+        assert_eq!(config.output.format, Some(OutputFormat::Typ));
     }
 
     #[test]
@@ -391,7 +403,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(config.output.format, Some("qmd".to_string()));
+        assert_eq!(config.output.format, Some(OutputFormat::Qmd));
         assert_eq!(config.external.enabled, Some(true));
     }
 
@@ -406,7 +418,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(config.output.format, Some("md".to_string()));
+        assert_eq!(config.output.format, Some(OutputFormat::Md));
         // Other sections should be default
         assert!(config.code.quarto_code_blocks.is_none());
         assert!(config.links.unqualified_link_url.is_none());

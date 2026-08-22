@@ -36,7 +36,13 @@ fn convert_fixture(name: &str, args: &[&str]) -> String {
     // Use a unique temp file for each invocation to avoid race conditions
     let unique_id = COUNTER.fetch_add(1, Ordering::SeqCst);
     let pid = std::process::id();
-    let ext = if args.contains(&"md") { "md" } else { "qmd" };
+    let ext = if args.contains(&"md") {
+        "md"
+    } else if args.contains(&"typ") {
+        "typ"
+    } else {
+        "qmd"
+    };
     let output = std::env::temp_dir().join(format!(
         "rd2qmd_test_{}_{}_{}_{}.{}",
         name,
@@ -978,4 +984,53 @@ fn test_index_empty_ast_directory_mentions_json_files() {
 
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("No .json files found"));
+}
+
+#[test]
+fn test_simple_to_typst() {
+    let output = convert_fixture("simple", &["-f", "typ"]);
+    insta::assert_snapshot!("simple_typ", output);
+}
+
+#[test]
+fn test_arguments_rich_to_typst() {
+    let output = convert_fixture("arguments_rich", &["-f", "typ"]);
+    insta::assert_snapshot!("arguments_rich_typ", output);
+}
+
+#[test]
+fn test_typst_directory_links_resolve_to_typ_files() {
+    let output_dir = unique_temp_dir("typst_dir");
+    fs::create_dir_all(&output_dir).expect("Failed to create output dir");
+
+    let status = Command::new(rd2qmd_binary())
+        .arg("convert")
+        .arg(fixtures_dir())
+        .arg("-o")
+        .arg(&output_dir)
+        .args(["-f", "typ", "-q", "--no-external-links"])
+        .status()
+        .expect("Failed to run rd2qmd");
+    assert!(status.success(), "rd2qmd directory conversion failed");
+
+    let converted = fs::read_to_string(output_dir.join("with_links.typ")).expect("with_links.typ");
+    // Alias-resolved internal links follow the output extension, like every
+    // other format.
+    assert!(
+        converted.contains("#link(\"simple.typ\")"),
+        "expected an internal link to a .typ file, got:\n{converted}"
+    );
+
+    let _ = fs::remove_dir_all(&output_dir);
+}
+
+#[test]
+fn test_typst_examples_are_plain_r_blocks() {
+    let output = convert_fixture("example_control", &["-f", "typ"]);
+    // Never `{r}`: calepin executes a plain raw block, plain typst renders it.
+    assert!(output.contains("```r\n"), "expected a plain ```r block");
+    assert!(
+        !output.contains("{r}"),
+        "expected no Quarto executable block"
+    );
 }

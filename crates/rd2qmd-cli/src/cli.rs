@@ -14,7 +14,19 @@ pub(crate) struct ExternalLinkOptions {
 }
 
 /// Output format for markdown conversion
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, clap::ValueEnum)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    clap::ValueEnum,
+    serde::Deserialize,
+    serde::Serialize,
+    schemars::JsonSchema,
+)]
+#[serde(rename_all = "lowercase")]
 pub(crate) enum OutputFormat {
     /// Quarto Markdown (.qmd) - uses {r} code blocks for examples
     #[default]
@@ -23,6 +35,9 @@ pub(crate) enum OutputFormat {
     Md,
     /// R Markdown (.Rmd) - uses {r} code blocks for examples
     Rmd,
+    /// Typst (.typ) - plain ```r raw blocks, MiTeX math, executable with calepin
+    #[serde(alias = "typst")]
+    Typ,
 }
 
 /// Input format for Rd documentation

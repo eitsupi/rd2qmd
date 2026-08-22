@@ -3,14 +3,89 @@ use std::collections::HashMap;
 use rd_ast::{RdDocument, RdNode, RdTag};
 use rd2qmd_mdast::{Node, Root, WriterOptions, mdast_to_qmd};
 
-use super::markdown_text::{convert_to_markdown_text, inline_nodes_to_markdown};
-use super::table_cell::sanitize_table_cell_inline_node;
 use super::{
     BlockConversionContext, convert_arguments, convert_block_content, convert_custom_section,
 };
 use crate::ArgumentsFormat;
 use crate::convert_ast::document::build_custom_sections;
 use crate::convert_ast::inline::{InlineConversionContext, LinkResolutionContext};
+
+fn writer_options(arguments_format: ArgumentsFormat) -> WriterOptions {
+    WriterOptions {
+        frontmatter: None,
+        quarto_code_blocks: true,
+        arguments_format,
+    }
+}
+
+/// Render block nodes through the Markdown writer.
+fn render(nodes: Vec<Node>, arguments_format: ArgumentsFormat) -> String {
+    mdast_to_qmd(&Root::new(nodes), &writer_options(arguments_format))
+}
+
+/// Render inline nodes through the Markdown writer, as one paragraph.
+fn inline_nodes_to_markdown(nodes: &[Node]) -> String {
+    render(
+        vec![Node::paragraph(nodes.to_vec())],
+        ArgumentsFormat::default(),
+    )
+    .trim_end()
+    .to_owned()
+}
+
+/// Convert a document's Arguments section and render it in `format`.
+fn render_arguments(
+    document: &RdDocument,
+    format: ArgumentsFormat,
+    context: &BlockConversionContext<'_>,
+) -> String {
+    let arguments: Vec<_> = document.arguments().collect();
+    render(convert_arguments(&arguments, context), format)
+}
+
+/// The nth `|`-prefixed line of rendered Markdown.
+fn pipe_line(markdown: &str, index: usize) -> &str {
+    markdown
+        .lines()
+        .filter(|line| line.starts_with('|'))
+        .nth(index)
+        .unwrap_or_else(|| panic!("expected pipe-table line {index} in:\n{markdown}"))
+}
+
+/// The cells of the nth body row of a rendered pipe table (0 = first
+/// argument), splitting only on unescaped `|`.
+fn pipe_row(markdown: &str, index: usize) -> Vec<String> {
+    // Skip the header row and the alignment separator.
+    pipe_cells(pipe_line(markdown, index + 2))
+}
+
+/// Split one rendered pipe-table row into cells on unescaped `|`.
+fn pipe_cells(row: &str) -> Vec<String> {
+    let mut cells = vec![String::new()];
+    let mut escaped = false;
+    for character in row.trim_matches('|').chars() {
+        match character {
+            '\\' if !escaped => {
+                escaped = true;
+                cells.last_mut().expect("cell").push(character);
+            }
+            '|' if !escaped => cells.push(String::new()),
+            _ => {
+                escaped = false;
+                cells.last_mut().expect("cell").push(character);
+            }
+        }
+    }
+    cells.iter().map(|cell| cell.trim().to_owned()).collect()
+}
+
+/// The description (second) cell of the nth body row of a pipe table.
+fn description_cell(markdown: &str, index: usize) -> String {
+    pipe_row(markdown, index)
+        .get(1)
+        .cloned()
+        .unwrap_or_else(|| panic!("expected a description cell in:\n{markdown}"))
+}
 
 fn context(prefer_ascii_math: bool) -> BlockConversionContext<'static> {
     BlockConversionContext {
@@ -82,13 +157,6 @@ fn argument_document_with_description(description: Vec<RdNode>) -> RdDocument {
         RdTag::Arguments,
         vec![described_item(vec![text("value")], description)],
     )])
-}
-
-fn html_value(nodes: &[Node]) -> &str {
-    let [Node::Html(html)] = nodes else {
-        panic!("expected one raw output node")
-    };
-    &html.value
 }
 
 fn equation(latex: &str, ascii: Option<&str>) -> RdNode {
@@ -311,19 +379,12 @@ fn converts_tabular_alignment_rows_and_sanitized_cells() {
         ]
     );
     assert_eq!(table.children.len(), 2);
-    let Node::TableRow(first_row) = &table.children[0] else {
-        panic!("expected first table row")
-    };
-    let cell_text: Vec<_> = first_row
-        .children
-        .iter()
-        .map(|cell| match cell {
-            Node::TableCell(cell) => inline_nodes_to_markdown(&cell.children),
-            _ => panic!("expected table cell"),
-        })
-        .collect();
+
+    // Cells hold unescaped content; the writer escapes when it commits to
+    // pipe-table syntax.
+    let markdown = render(converted.clone(), ArgumentsFormat::default());
     assert_eq!(
-        cell_text,
+        pipe_cells(pipe_line(&markdown, 0)),
         ["left \\| value", "**center**", "`right\\|code`"]
     );
 }
@@ -336,16 +397,8 @@ fn converts_tabular_block_math_to_pipe_escaped_inline_math() {
     );
 
     let converted = convert_block_content(&[table], &context(false));
-    let [Node::Table(table)] = converted.as_slice() else {
-        panic!("expected one table")
-    };
-    let [Node::TableRow(row)] = table.children.as_slice() else {
-        panic!("expected one table row")
-    };
-    let [Node::TableCell(cell)] = row.children.as_slice() else {
-        panic!("expected one table cell")
-    };
-    assert_eq!(cell.children, [Node::inline_math("x \\| y")]);
+    let markdown = render(converted, ArgumentsFormat::default());
+    assert_eq!(pipe_cells(pipe_line(&markdown, 0)), ["$x \\| y$"]);
 }
 
 #[test]
@@ -359,20 +412,10 @@ fn converts_tabular_multiline_block_math_to_single_line_inline_math() {
     );
 
     let converted = convert_block_content(&[table], &context(false));
-    let [Node::Table(table)] = converted.as_slice() else {
-        panic!("expected one table")
-    };
-    let [Node::TableRow(row)] = table.children.as_slice() else {
-        panic!("expected one table row")
-    };
-    let [Node::TableCell(cell)] = row.children.as_slice() else {
-        panic!("expected one table cell")
-    };
-    assert_eq!(cell.children, [Node::inline_math("x \\| y")]);
-    let [Node::InlineMath(math)] = cell.children.as_slice() else {
-        panic!("expected inline math")
-    };
-    assert!(!math.value.contains('\n'));
+    let markdown = render(converted, ArgumentsFormat::default());
+    // The line ending is flattened during conversion, the pipe escaped by
+    // the writer, and the row stays on one line either way.
+    assert_eq!(pipe_cells(pipe_line(&markdown, 0)), ["$x \\| y$"]);
 }
 
 #[test]
@@ -393,6 +436,7 @@ fn converts_tabular_multiline_ascii_equation_to_single_line_inline_code() {
         &WriterOptions {
             frontmatter: None,
             quarto_code_blocks: true,
+            arguments_format: Default::default(),
         },
     );
     let row = markdown
@@ -400,15 +444,6 @@ fn converts_tabular_multiline_ascii_equation_to_single_line_inline_code() {
         .find(|line| line.contains("x^2"))
         .expect("expected equation table row");
     assert_eq!(row, "| `x^2 +  y^2` |");
-}
-
-#[test]
-fn pipe_table_sanitizer_replaces_only_line_endings() {
-    let sanitized = sanitize_table_cell_inline_node(&Node::inline_code("a  b\tc\r\nd\re\n f"));
-    assert!(matches!(
-        sanitized,
-        Node::InlineCode(code) if code.value == "a  b\tc d e  f"
-    ));
 }
 
 #[test]
@@ -427,6 +462,7 @@ fn converts_multiline_out_in_tabular_cell_to_one_pipe_table_row() {
         &WriterOptions {
             frontmatter: None,
             quarto_code_blocks: true,
+            arguments_format: Default::default(),
         },
     );
     let rows: Vec<_> = markdown
@@ -434,71 +470,6 @@ fn converts_multiline_out_in_tabular_cell_to_one_pipe_table_row() {
         .filter(|line| line.starts_with('|'))
         .collect();
     assert_eq!(rows, ["| first second |", "|:---|"]);
-}
-
-#[test]
-fn pipe_table_sanitizer_replaces_link_title_line_endings() {
-    let mut url = String::from(r"url");
-    url.push('\n');
-    url.push_str(r"value");
-    let mut title = String::from(r"title");
-    title.push('\r');
-    title.push('\n');
-    title.push_str(r"value");
-    let sanitized = sanitize_table_cell_inline_node(&Node::link_with_title(
-        url,
-        title,
-        vec![Node::text(r"link")],
-    ));
-    let markdown = mdast_to_qmd(
-        &Root::new(vec![Node::paragraph(vec![sanitized])]),
-        &WriterOptions::default(),
-    );
-
-    let mut expected = String::from(r#"[link](<url value> "title value")"#);
-    expected.push('\n');
-    assert_eq!(markdown, expected);
-}
-
-#[test]
-fn pipe_table_sanitizer_replaces_image_field_line_endings() {
-    let mut url = String::from(r"url");
-    url.push('\r');
-    url.push_str(r"value");
-    let mut alt = String::from(r"alt");
-    alt.push('\n');
-    alt.push_str(r"value");
-    let mut title = String::from(r"title");
-    title.push('\r');
-    title.push('\n');
-    title.push_str(r"value");
-    let sanitized = sanitize_table_cell_inline_node(&Node::image_with_title(url, alt, title));
-    let markdown = mdast_to_qmd(
-        &Root::new(vec![Node::paragraph(vec![sanitized])]),
-        &WriterOptions::default(),
-    );
-
-    let mut expected = String::from(r#"![alt value](<url value> "title value")"#);
-    expected.push('\n');
-    assert_eq!(markdown, expected);
-}
-
-#[test]
-fn legacy_table_cell_serializer_formats_link_and_image_destinations() {
-    let markdown = inline_nodes_to_markdown(&[
-        Node::link_with_title(
-            r"link url",
-            r#"link "title" \ docs"#,
-            vec![Node::text(r"link")],
-        ),
-        Node::text(r" "),
-        Node::image_with_title(r"image url", r"alt", r#"image "title" \ docs"#),
-    ]);
-
-    assert_eq!(
-        markdown,
-        r#"[link](<link url> "link \"title\" \\ docs") ![alt](<image url> "image \"title\" \\ docs")"#
-    );
 }
 
 #[test]
@@ -567,34 +538,22 @@ fn custom_section_tree_preserves_content_around_nested_subsections() {
 #[test]
 fn converts_arguments_to_pipe_table_and_flattens_lists_with_breaks() {
     let document = argument_document();
-    let arguments: Vec<_> = document.arguments().collect();
-    let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
+    let converted = render_arguments(&document, ArgumentsFormat::PipeTable, &context(false));
 
-    let [Node::Table(table)] = converted.as_slice() else {
-        panic!("expected one table")
-    };
-    assert_eq!(table.align, [Some(rd2qmd_mdast::Align::Left); 2]);
-    assert_eq!(table.children.len(), 3);
-
-    let Node::TableRow(first_argument) = &table.children[1] else {
-        panic!("expected first argument row")
-    };
-    let Node::TableCell(first_description) = &first_argument.children[1] else {
-        panic!("expected first description cell")
-    };
+    let rows: Vec<_> = converted
+        .lines()
+        .filter(|line| line.starts_with('|'))
+        .collect();
+    assert_eq!(rows.len(), 4, "header, separator and two argument rows");
+    assert_eq!(rows[1], "|:---|:---|");
+    assert_eq!(pipe_row(&converted, 0)[0], "`alpha`");
     assert_eq!(
-        inline_nodes_to_markdown(&first_description.children),
+        description_cell(&converted, 0),
         "First paragraph <br>Second paragraph"
     );
-
-    let Node::TableRow(second_argument) = &table.children[2] else {
-        panic!("expected second argument row")
-    };
-    let Node::TableCell(second_description) = &second_argument.children[1] else {
-        panic!("expected second description cell")
-    };
+    assert_eq!(pipe_row(&converted, 1)[0], "`choice`");
     assert_eq!(
-        inline_nodes_to_markdown(&second_description.children),
+        description_cell(&converted, 1),
         "Choices: <br>- one <br>- two"
     );
 }
@@ -606,85 +565,34 @@ fn pipe_table_replaces_inline_breaks_with_html_breaks() {
         tagged(RdTag::Cr, vec![]),
         text("after"),
     ]);
-    let arguments: Vec<_> = document.arguments().collect();
-    let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
+    let converted = render_arguments(&document, ArgumentsFormat::PipeTable, &context(false));
 
-    let [Node::Table(table)] = converted.as_slice() else {
-        panic!("expected one table")
-    };
-    let Node::TableRow(row) = &table.children[1] else {
-        panic!("expected argument row")
-    };
-    let Node::TableCell(description) = &row.children[1] else {
-        panic!("expected description cell")
-    };
-
+    // A `\cr` becomes an HTML break, not a Markdown hard break, which would
+    // split the row across two lines.
+    assert_eq!(description_cell(&converted, 0), "before<br>after");
     assert_eq!(
-        inline_nodes_to_markdown(&description.children),
-        "before<br>after"
-    );
-    assert!(
-        description
-            .children
-            .iter()
-            .any(|node| matches!(node, Node::Html(html) if html.value == "<br>"))
-    );
-    assert!(
-        !description
-            .children
-            .iter()
-            .any(|node| matches!(node, Node::Break))
+        converted
+            .lines()
+            .filter(|line| line.starts_with('|'))
+            .count(),
+        3
     );
 }
 
 #[test]
 fn pipe_table_escapes_literal_pipes_in_text() {
     let document = argument_document_with_description(vec![text("left | right")]);
-    let arguments: Vec<_> = document.arguments().collect();
-    let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
+    let converted = render_arguments(&document, ArgumentsFormat::PipeTable, &context(false));
 
-    let [Node::Table(table)] = converted.as_slice() else {
-        panic!("expected one table")
-    };
-    let Node::TableRow(row) = &table.children[1] else {
-        panic!("expected argument row")
-    };
-    let Node::TableCell(description) = &row.children[1] else {
-        panic!("expected description cell")
-    };
-
-    assert_eq!(
-        inline_nodes_to_markdown(&description.children),
-        "left \\| right"
-    );
-    assert!(description.children.iter().all(|node| {
-        !matches!(node, Node::Text(text) if text.value.contains('|') && !text.value.contains("\\|"))
-    }));
+    assert_eq!(description_cell(&converted, 0), "left \\| right");
 }
 
 #[test]
 fn pipe_table_escapes_literal_pipes_in_inline_code() {
     let document = argument_document_with_description(vec![tagged(RdTag::Code, vec![text("a|b")])]);
-    let arguments: Vec<_> = document.arguments().collect();
-    let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
+    let converted = render_arguments(&document, ArgumentsFormat::PipeTable, &context(false));
 
-    let [Node::Table(table)] = converted.as_slice() else {
-        panic!("expected one table")
-    };
-    let Node::TableRow(row) = &table.children[1] else {
-        panic!("expected argument row")
-    };
-    let Node::TableCell(description) = &row.children[1] else {
-        panic!("expected description cell")
-    };
-
-    assert_eq!(inline_nodes_to_markdown(&description.children), "`a\\|b`");
-    assert!(
-        description
-            .children
-            .iter()
-            .any(|node| matches!(node, Node::InlineCode(code) if code.value == "a\\|b"))
-    );
+    assert_eq!(description_cell(&converted, 0), "`a\\|b`");
 }
 
 #[test]
@@ -693,23 +601,9 @@ fn pipe_table_escapes_literal_pipes_in_argument_names() {
         RdTag::Arguments,
         vec![described_item(vec![text("a|b")], vec![text("description")])],
     )]);
-    let arguments: Vec<_> = document.arguments().collect();
-    let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
+    let converted = render_arguments(&document, ArgumentsFormat::PipeTable, &context(false));
 
-    let [Node::Table(table)] = converted.as_slice() else {
-        panic!("expected one table")
-    };
-    let Node::TableRow(row) = &table.children[1] else {
-        panic!("expected argument row")
-    };
-    let Node::TableCell(argument) = &row.children[0] else {
-        panic!("expected argument cell")
-    };
-
-    assert!(
-        matches!(argument.children.as_slice(), [Node::InlineCode(code)] if code.value == "a\\|b")
-    );
-    assert_eq!(inline_nodes_to_markdown(&argument.children), "`a\\|b`");
+    assert_eq!(pipe_row(&converted, 0)[0], "`a\\|b`");
 }
 
 #[test]
@@ -728,49 +622,10 @@ fn pipe_table_flattens_and_escapes_nested_conditional_paragraphs() {
         ],
     );
     let document = argument_document_with_description(vec![multi_node_conditional]);
-    let arguments: Vec<_> = document.arguments().collect();
-    let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
+    let markdown = render_arguments(&document, ArgumentsFormat::PipeTable, &context(false));
 
-    let [Node::Table(table)] = converted.as_slice() else {
-        panic!("expected one table")
-    };
-    let Node::TableRow(row) = &table.children[1] else {
-        panic!("expected argument row")
-    };
-    let Node::TableCell(description) = &row.children[1] else {
-        panic!("expected description cell")
-    };
-
-    // Structural invariant: no Paragraph (block node) may survive as a
-    // TableCell child, at any nesting depth.
-    fn assert_no_paragraphs(nodes: &[Node]) {
-        for node in nodes {
-            assert!(
-                !matches!(node, Node::Paragraph(_)),
-                "unexpected Paragraph in table-cell content: {node:?}"
-            );
-            let children: &[Node] = match node {
-                Node::Emphasis(e) => &e.children,
-                Node::Strong(s) => &s.children,
-                Node::Link(l) => &l.children,
-                _ => &[],
-            };
-            assert_no_paragraphs(children);
-        }
-    }
-    assert_no_paragraphs(&description.children);
-
-    // Render through the real writer -- not the file-local
-    // inline_nodes_to_markdown helper, whose own Paragraph-unwrapping
-    // fallback would mask exactly this class of bug -- and confirm the
-    // row stays a single line with pipes escaped.
-    let markdown = mdast_to_qmd(
-        &Root::new(vec![Node::Table(table.clone())]),
-        &WriterOptions {
-            frontmatter: None,
-            quarto_code_blocks: true,
-        },
-    );
+    // A surviving Paragraph would break the row across several lines, so the
+    // single-line row is itself the structural assertion.
     let row_line = markdown
         .lines()
         .find(|line| line.contains("value"))
@@ -783,22 +638,14 @@ fn pipe_table_flattens_and_escapes_nested_conditional_paragraphs() {
         !row_line.contains("c|d") && row_line.contains(r"c\|d"),
         "expected escaped pipe in flattened paragraph inline code, got: {markdown:?}"
     );
-}
-
-#[test]
-fn pipe_table_sanitizer_escapes_literal_pipes_in_image_urls() {
-    let sanitized = sanitize_table_cell_inline_node(&Node::image("path|name.png", "alt"));
-
-    assert!(
-        matches!(sanitized, Node::Image(image) if image.url == "path\\|name.png" && image.alt == "alt")
+    assert_eq!(
+        markdown
+            .lines()
+            .filter(|line| line.starts_with('|'))
+            .count(),
+        3,
+        "expected exactly a header, separator and one argument row: {markdown:?}"
     );
-}
-
-#[test]
-fn pipe_table_sanitizer_replaces_inline_code_line_endings() {
-    let sanitized = sanitize_table_cell_inline_node(&Node::inline_code("first\n second"));
-
-    assert!(matches!(sanitized, Node::InlineCode(code) if code.value == "first  second"));
 }
 
 #[test]
@@ -810,15 +657,7 @@ fn pipe_table_collapses_multiline_argument_names_through_real_writer() {
             vec![text("description")],
         )],
     )]);
-    let arguments: Vec<_> = document.arguments().collect();
-    let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
-    let markdown = mdast_to_qmd(
-        &Root::new(converted),
-        &WriterOptions {
-            frontmatter: None,
-            quarto_code_blocks: true,
-        },
-    );
+    let markdown = render_arguments(&document, ArgumentsFormat::PipeTable, &context(false));
 
     let row = markdown
         .lines()
@@ -849,38 +688,22 @@ fn pipe_table_escapes_literal_pipes_in_resolved_links() {
         prefer_ascii_math: false,
         enclosing_heading_depth: 2,
     };
-    let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context);
-
-    let [Node::Table(table)] = converted.as_slice() else {
-        panic!("expected one table")
-    };
-    let Node::TableRow(row) = &table.children[1] else {
-        panic!("expected argument row")
-    };
-    let Node::TableCell(description) = &row.children[1] else {
-        panic!("expected description cell")
-    };
+    let converted = render(
+        convert_arguments(&arguments, &context),
+        ArgumentsFormat::PipeTable,
+    );
 
     assert_eq!(
-        inline_nodes_to_markdown(&description.children),
+        description_cell(&converted, 0),
         "[`a\\|b`](target\\|variant.qmd#alias)"
     );
-    assert!(description.children.iter().any(|node| {
-        matches!(
-            node,
-            Node::Link(link)
-                if link.url == "target\\|variant.qmd#alias"
-                    && matches!(link.children.as_slice(), [Node::InlineCode(code)] if code.value == "a\\|b")
-        )
-    }));
 }
 
 #[test]
 fn converts_arguments_to_grid_table_with_header_separator() {
     let document = argument_document();
-    let arguments: Vec<_> = document.arguments().collect();
-    let converted = convert_arguments(&arguments, ArgumentsFormat::GridTable, &context(false));
-    let table = html_value(&converted);
+    let converted = render_arguments(&document, ArgumentsFormat::GridTable, &context(false));
+    let table = converted.as_str();
 
     assert!(table.contains("Argument"));
     assert!(table.contains("Description"));
@@ -897,9 +720,8 @@ fn converts_arguments_to_grid_table_with_header_separator() {
 #[test]
 fn grid_table_preserves_block_equations() {
     let document = argument_document_with_description(vec![equation("x^2 + y^2", None)]);
-    let arguments: Vec<_> = document.arguments().collect();
-    let converted = convert_arguments(&arguments, ArgumentsFormat::GridTable, &context(false));
-    let table = html_value(&converted);
+    let converted = render_arguments(&document, ArgumentsFormat::GridTable, &context(false));
+    let table = converted.as_str();
 
     assert!(table.contains("$$"));
     assert!(table.contains("x^2 + y^2"));
@@ -915,9 +737,8 @@ fn grid_table_preserves_nested_definition_lists() {
         )],
     );
     let document = argument_document_with_description(vec![describe]);
-    let arguments: Vec<_> = document.arguments().collect();
-    let converted = convert_arguments(&arguments, ArgumentsFormat::GridTable, &context(false));
-    let table = html_value(&converted);
+    let converted = render_arguments(&document, ArgumentsFormat::GridTable, &context(false));
+    let table = converted.as_str();
 
     assert!(table.contains("nested term"));
     assert!(table.contains("nested description"));
@@ -926,9 +747,8 @@ fn grid_table_preserves_nested_definition_lists() {
 #[test]
 fn converts_arguments_to_quarto_list_table() {
     let document = argument_document();
-    let arguments: Vec<_> = document.arguments().collect();
-    let converted = convert_arguments(&arguments, ArgumentsFormat::ListTable, &context(false));
-    let table = html_value(&converted);
+    let converted = render_arguments(&document, ArgumentsFormat::ListTable, &context(false));
+    let table = converted.as_str();
 
     assert!(table.starts_with("::: {.list-table header-rows=1}\n\n"));
     assert!(table.contains("- - Argument\n  - Description\n"));
@@ -940,9 +760,8 @@ fn converts_arguments_to_quarto_list_table() {
 #[test]
 fn list_table_preserves_indented_block_equations() {
     let document = argument_document_with_description(vec![equation("x^2 + y^2", None)]);
-    let arguments: Vec<_> = document.arguments().collect();
-    let converted = convert_arguments(&arguments, ArgumentsFormat::ListTable, &context(false));
-    let table = html_value(&converted);
+    let converted = render_arguments(&document, ArgumentsFormat::ListTable, &context(false));
+    let table = converted.as_str();
 
     assert!(table.contains("  - \n\n    $$\n    x^2 + y^2\n    $$\n"));
 }
@@ -950,9 +769,8 @@ fn list_table_preserves_indented_block_equations() {
 #[test]
 fn converts_arguments_to_loose_list_with_two_space_continuations() {
     let document = argument_document();
-    let arguments: Vec<_> = document.arguments().collect();
-    let converted = convert_arguments(&arguments, ArgumentsFormat::List, &context(false));
-    let list = html_value(&converted);
+    let converted = render_arguments(&document, ArgumentsFormat::List, &context(false));
+    let list = converted.as_str();
 
     assert!(list.contains("- **`alpha`**\n\n  First paragraph\n\n  Second paragraph\n"));
     assert!(list.contains("- **`choice`**\n\n  Choices:\n\n  - one\n  - two\n"));
@@ -961,16 +779,15 @@ fn converts_arguments_to_loose_list_with_two_space_continuations() {
 #[test]
 fn loose_list_preserves_indented_block_equations() {
     let document = argument_document_with_description(vec![equation("x^2 + y^2", None)]);
-    let arguments: Vec<_> = document.arguments().collect();
-    let converted = convert_arguments(&arguments, ArgumentsFormat::List, &context(false));
-    let list = html_value(&converted);
+    let converted = render_arguments(&document, ArgumentsFormat::List, &context(false));
+    let list = converted.as_str();
 
     assert!(list.contains("- **`value`**\n\n  \n\n  $$\n  x^2 + y^2\n  $$\n"));
 }
 
 #[test]
 fn empty_arguments_return_no_nodes() {
-    assert!(convert_arguments(&[], ArgumentsFormat::PipeTable, &context(false)).is_empty());
+    assert!(convert_arguments(&[], &context(false)).is_empty());
 }
 
 #[test]
@@ -990,15 +807,7 @@ fn pipe_table_preserves_describe_tabular_and_preformatted_content() {
     );
     let preformatted = tagged(RdTag::Preformatted, vec![text("preformatted text")]);
     let document = argument_document_with_description(vec![describe, table, preformatted]);
-    let arguments: Vec<_> = document.arguments().collect();
-    let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
-    let markdown = mdast_to_qmd(
-        &Root::new(converted),
-        &WriterOptions {
-            frontmatter: None,
-            quarto_code_blocks: true,
-        },
-    );
+    let markdown = render_arguments(&document, ArgumentsFormat::PipeTable, &context(false));
     let row = markdown
         .lines()
         .find(|line| line.contains("value"))
@@ -1031,15 +840,7 @@ fn pipe_table_preserves_both_paragraphs_of_a_multi_paragraph_list_item() {
         vec![vec![text("first paragraph\n\nsecond paragraph")]],
     );
     let document = argument_document_with_description(vec![list]);
-    let arguments: Vec<_> = document.arguments().collect();
-    let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
-    let markdown = mdast_to_qmd(
-        &Root::new(converted),
-        &WriterOptions {
-            frontmatter: None,
-            quarto_code_blocks: true,
-        },
-    );
+    let markdown = render_arguments(&document, ArgumentsFormat::PipeTable, &context(false));
     let row = markdown
         .lines()
         .find(|line| line.contains("value"))
@@ -1058,9 +859,8 @@ fn grid_table_preserves_tabular_content() {
         vec![group(vec![text("l")]), group(vec![text("table cell text")])],
     );
     let document = argument_document_with_description(vec![table]);
-    let arguments: Vec<_> = document.arguments().collect();
-    let converted = convert_arguments(&arguments, ArgumentsFormat::GridTable, &context(false));
-    let table_text = html_value(&converted);
+    let converted = render_arguments(&document, ArgumentsFormat::GridTable, &context(false));
+    let table_text = converted.as_str();
 
     assert!(
         table_text.contains("table cell text"),
@@ -1077,9 +877,8 @@ fn grid_table_preserves_both_paragraphs_of_a_multi_paragraph_list_item() {
         vec![vec![text("first paragraph\n\nsecond paragraph")]],
     );
     let document = argument_document_with_description(vec![list]);
-    let arguments: Vec<_> = document.arguments().collect();
-    let converted = convert_arguments(&arguments, ArgumentsFormat::GridTable, &context(false));
-    let table_text = html_value(&converted);
+    let converted = render_arguments(&document, ArgumentsFormat::GridTable, &context(false));
+    let table_text = converted.as_str();
 
     assert!(
         table_text.contains("first paragraph"),
@@ -1089,40 +888,6 @@ fn grid_table_preserves_both_paragraphs_of_a_multi_paragraph_list_item() {
         table_text.contains("second paragraph"),
         "got: {table_text:?}"
     );
-}
-
-#[test]
-fn grid_table_list_item_second_paragraph_is_indented_under_marker() {
-    // Regression test for Bug 1: a list item's continuation content
-    // (here, a second paragraph) must be indented under the marker
-    // column, or a grid-table cell's block-level Markdown parser stops
-    // treating it as part of the same list item.
-    let list = delimited_list(
-        RdTag::Itemize,
-        vec![vec![text("first paragraph\n\nsecond paragraph")]],
-    );
-    let markdown = convert_to_markdown_text(&[list], &context(false));
-
-    assert_eq!(markdown, "- first paragraph\n\n  second paragraph");
-}
-
-#[test]
-fn grid_table_list_item_cr_break_in_first_paragraph_is_indented_under_marker() {
-    // Regression test for the latent bug Bug 1's fix also closes: a
-    // `\cr`-induced line break *within the first paragraph* of a list
-    // item must also be indented under the marker, not just subsequent
-    // sibling blocks.
-    let list = delimited_list(
-        RdTag::Itemize,
-        vec![vec![
-            text("first line"),
-            tagged(RdTag::Cr, vec![]),
-            text("second line"),
-        ]],
-    );
-    let markdown = convert_to_markdown_text(&[list], &context(false));
-
-    assert_eq!(markdown, "- first line  \n  second line");
 }
 
 #[test]
@@ -1140,15 +905,7 @@ fn pipe_table_nested_tabular_pipe_is_not_double_escaped() {
         RdTag::Arguments,
         vec![described_item(vec![text("table_arg")], vec![table])],
     )]);
-    let arguments: Vec<_> = document.arguments().collect();
-    let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
-    let markdown = mdast_to_qmd(
-        &Root::new(converted),
-        &WriterOptions {
-            frontmatter: None,
-            quarto_code_blocks: true,
-        },
-    );
+    let markdown = render_arguments(&document, ArgumentsFormat::PipeTable, &context(false));
     let row = markdown
         .lines()
         .find(|line| line.contains("table_arg"))
@@ -1207,15 +964,7 @@ fn pipe_table_tabular_nested_in_describe_pipe_is_not_double_escaped() {
         RdTag::Arguments,
         vec![described_item(vec![text("describe_arg")], vec![describe])],
     )]);
-    let arguments: Vec<_> = document.arguments().collect();
-    let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
-    let markdown = mdast_to_qmd(
-        &Root::new(converted),
-        &WriterOptions {
-            frontmatter: None,
-            quarto_code_blocks: true,
-        },
-    );
+    let markdown = render_arguments(&document, ArgumentsFormat::PipeTable, &context(false));
     let row = markdown
         .lines()
         .find(|line| line.contains("describe_arg"))
@@ -1246,15 +995,7 @@ fn pipe_table_preformatted_pipe_preserves_backslash() {
     // original backslash from the rendered code.
     let preformatted = tagged(RdTag::Preformatted, vec![text(r"a\|b")]);
     let document = argument_document_with_description(vec![preformatted]);
-    let arguments: Vec<_> = document.arguments().collect();
-    let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
-    let markdown = mdast_to_qmd(
-        &Root::new(converted),
-        &WriterOptions {
-            frontmatter: None,
-            quarto_code_blocks: true,
-        },
-    );
+    let markdown = render_arguments(&document, ArgumentsFormat::PipeTable, &context(false));
 
     assert!(
         markdown.contains(r"`a\\|b`"),
@@ -1270,15 +1011,7 @@ fn pipe_table_math_pipe_preserves_backslash() {
     // content, not treated as already-escaped table syntax.
     let deqn = equation(r"a\|b", None);
     let document = argument_document_with_description(vec![deqn]);
-    let arguments: Vec<_> = document.arguments().collect();
-    let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
-    let markdown = mdast_to_qmd(
-        &Root::new(converted),
-        &WriterOptions {
-            frontmatter: None,
-            quarto_code_blocks: true,
-        },
-    );
+    let markdown = render_arguments(&document, ArgumentsFormat::PipeTable, &context(false));
 
     assert!(
         markdown.contains(r"a\\|b"),
@@ -1304,9 +1037,8 @@ fn grid_table_escapes_list_marker_lookalikes_after_cr_break() {
         text(" 1. ordered period."),
     ];
     let document = argument_document_with_description(description);
-    let arguments: Vec<_> = document.arguments().collect();
-    let converted = convert_arguments(&arguments, ArgumentsFormat::GridTable, &context(false));
-    let table_text = html_value(&converted);
+    let converted = render_arguments(&document, ArgumentsFormat::GridTable, &context(false));
+    let table_text = converted.as_str();
 
     assert!(table_text.contains(r"\- hyphen."), "got: {table_text:?}");
     assert!(table_text.contains(r"\* asterisk."), "got: {table_text:?}");

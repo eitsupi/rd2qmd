@@ -1,14 +1,6 @@
 use std::collections::HashMap;
 
-/// Format for the Arguments section output.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub enum ArgumentsFormat {
-    PipeTable,
-    GridTable,
-    #[default]
-    ListTable,
-    List,
-}
+pub use rd2qmd_mdast::ArgumentsFormat;
 
 /// Options for converting an Rd document to mdast.
 #[derive(Debug, Clone)]
@@ -22,7 +14,6 @@ pub struct RdToMdastOptions {
     pub exec_dontrun: bool,
     pub exec_donttest: bool,
     pub quarto_code_blocks: bool,
-    pub arguments_format: ArgumentsFormat,
     pub include_html_output: bool,
     pub prefer_ascii_math: bool,
 }
@@ -39,7 +30,6 @@ impl Default for RdToMdastOptions {
             exec_dontrun: false,
             exec_donttest: true,
             quarto_code_blocks: true,
-            arguments_format: ArgumentsFormat::default(),
             include_html_output: false,
             prefer_ascii_math: false,
         }

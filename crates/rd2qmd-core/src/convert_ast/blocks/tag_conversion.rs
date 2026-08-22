@@ -7,7 +7,6 @@ use rd2qmd_mdast::{Align, Node};
 use crate::convert_ast::inline::{self, InlineConversionContext};
 use crate::convert_ast::traversal::ParagraphItem;
 
-use super::table_cell::sanitize_table_cell_inline_nodes;
 use super::{BlockConversionContext, convert_block_content, recover_verbatim};
 
 pub(super) fn convert_paragraph(
@@ -129,16 +128,16 @@ fn convert_tabular(
         .rows()
         .iter()
         .map(|row| {
-            let cells =
-                row.cells()
-                    .iter()
-                    .map(|cell| {
-                        let children = sanitize_table_cell_inline_nodes(
-                            &inline::convert_inline_nodes(cell.nodes(), &context.inline),
-                        );
-                        Node::table_cell(children)
-                    })
-                    .collect();
+            let cells = row
+                .cells()
+                .iter()
+                .map(|cell| {
+                    // Cells hold plain inline content; escaping is the
+                    // writer's job, since only it knows whether the table
+                    // becomes pipe-table syntax or something else.
+                    Node::table_cell(inline::convert_inline_nodes(cell.nodes(), &context.inline))
+                })
+                .collect();
             Node::table_row(cells)
         })
         .collect();

@@ -11,6 +11,7 @@ A fast Rd-to-Quarto Markdown converter written in Rust, with intelligent link re
 - **Quarto-ready**: Generates `.qmd` files with `{r}` executable code blocks and YAML frontmatter
 - **Flexible Arguments format**: Supports Quarto native List-Tables (default), Pandoc Grid Tables, GFM Pipe Tables, and Markdown loose lists for the Arguments section (`--arguments-format list-table|grid-table|pipe-table|list`)
 - **pkgdown-compatible metadata**: Adds `pagetitle` in pkgdown style (`"<title> — <name>"`) for SEO
+- **Typst output**: Emits `.typ` markup (`-f typ`) that compiles to PDF or, via Typst 0.15 HTML export, to HTML — with MiTeX for Rd LaTeX equations, `html.elem` for `\out{}` fragments, and plain ```` ```r ```` blocks that [calepin](https://vincentarelbundock.github.io/calepin/) can execute
 - **No R required**: Pure Rust binary with no runtime R dependency
 
 ## Installation
@@ -41,7 +42,7 @@ powershell -ExecutionPolicy Bypass -c "irm https://github.com/eitsupi/rd2qmd/rel
 
 rd2qmd provides four subcommands:
 
-- `convert` — convert Rd files to Quarto Markdown, R Markdown, or standard Markdown
+- `convert` — convert Rd files to Quarto Markdown, R Markdown, standard Markdown, or Typst
 - `parse` — parse Rd files to AST JSON (see [AST JSON I/O](#ast-json-io))
 - `index` — generate a JSON topic index (see [Topic index generation](#topic-index-generation))
 - `init` — create a starter `_rd2qmd.toml` configuration file
@@ -59,6 +60,9 @@ rd2qmd convert file.Rd -o output.qmd
 
 # Convert to standard Markdown instead of Quarto
 rd2qmd convert file.Rd -f md
+
+# Convert to Typst
+rd2qmd convert file.Rd -f typ
 ```
 
 ### Directory conversion
@@ -81,7 +85,7 @@ rd2qmd convert man/ -o docs/ -j4
 | Option | Description |
 |--------|-------------|
 | `-o, --output <PATH>` | Output file or directory |
-| `-f, --format <FORMAT>` | Output format: `qmd` (default), `md`, or `rmd` |
+| `-f, --format <FORMAT>` | Output format: `qmd` (default), `md`, `rmd`, or `typ` |
 | `-j, --jobs <N>` | Number of parallel jobs (defaults to CPU count) |
 | `-r, --recursive` | Process directories recursively |
 | `--no-frontmatter` | Disable YAML frontmatter; use this for a visible body `# Title` in Markdown consumers that do not render YAML titles |
@@ -328,6 +332,51 @@ Use `-f md` for standard markdown with:
 - Internal links resolved to `.md` files
 
 Unlike Quarto, not all `.md` consumers render a YAML frontmatter title as a visible heading; use `--no-frontmatter` when portability requires a body heading.
+
+### Typst (`.typ`)
+
+Use `-f typ` for [Typst](https://typst.app) markup, which compiles to PDF with
+`typst compile`, and to HTML with Typst 0.15's export target
+(`typst compile --features html --format html`). Output uses:
+
+- `#set document(title: ..)` plus a queryable `#metadata((..))<rd2qmd>` block
+  and a visible `= Title` heading, in place of YAML frontmatter
+- Plain ```` ```r ```` raw blocks — Typst has no executable code blocks, so
+  under plain `typst` these render as highlighted listings, while
+  [calepin](https://vincentarelbundock.github.io/calepin/) can execute the
+  very same blocks
+- `#table` for the Arguments section and `\tabular{}`, `#terms` for
+  `\describe{}`, `#link` for links
+- Internal links resolved to `.typ` files
+
+Two Rd constructs need translation rather than a direct mapping:
+
+**Equations.** Rd equation bodies are LaTeX, which Typst's own math mode does
+not read, so `\eqn`/`\deqn` are emitted as [MiTeX](https://typst.app/universe/package/mitex/)
+calls (`#mi` inline, `#mitex` for display). The import line is added only to
+documents that actually contain math, so packages without equations need no
+Typst packages at all. `--prefer-ascii-math` still applies and avoids MiTeX
+entirely where an ASCII representation exists.
+
+**Raw HTML.** `\out{}` content is re-expressed with Typst 0.15's
+[`html.elem`](https://typst.app/docs/reference/html/elem/), guarded by
+`target()` so the same file still compiles to PDF:
+
+```typst
+#context { if target() == "html" { html.elem("sup")[2] } }
+```
+
+A fragment too involved to express as one element (nested tags, several
+siblings) is kept verbatim as `#raw(..)` rather than dropped.
+
+One caveat: `\figure{}` becomes `#image("file.png")`, and Typst *errors* on a
+missing image file where Markdown renderers merely show a broken image. Copy
+the package's `man/figures/` alongside the output before compiling.
+
+`--arguments-format` still applies, but Typst's table holds arbitrary block
+content, so the three table variants (`list-table`, `grid-table`,
+`pipe-table` — all Markdown workarounds) produce the same `#table`. Only
+`list` differs: it renders `#terms` instead.
 
 ### Arguments format
 

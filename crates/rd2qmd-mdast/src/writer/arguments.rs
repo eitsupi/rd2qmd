@@ -1,23 +1,139 @@
-//! Standalone markdown-string rendering used for grid-table / list-table
-//! cells -- a separate code path from the pipe-table flattening in
+//! Markdown rendering of an [`Arguments`] section.
+//!
+//! The Arguments section is the one construct whose physical shape is a user
+//! choice ([`ArgumentsFormat`]), so the converter hands the writer a semantic
+//! node and every rendering decision is made here.
+//!
+//! The standalone markdown-string serializers below are used for grid-table /
+//! list-table cells -- a separate code path from the pipe-table flattening in
 //! [`super::table_cell`], per the doc comment on [`convert_to_markdown_text`].
 
-use rd_ast::RdNode;
-use rd2qmd_mdast::{Node, Root, WriterOptions, mdast_to_qmd};
+use tabled::settings::Style;
+use tabled::settings::style::HorizontalLine;
 
-use super::{BlockConversionContext, convert_block_content};
+use super::table_cell::flatten_for_table_cell;
+use super::{ArgumentsFormat, Writer, WriterOptions, mdast_to_qmd};
+use crate::mdast::{Align, ArgumentItem, Arguments, Node, Root};
 
-/// Convert Rd content to a standalone Markdown string for a grid-table cell.
+impl Writer<'_> {
+    pub(super) fn write_arguments(&mut self, arguments: &Arguments) {
+        if arguments.items.is_empty() {
+            return;
+        }
+        match self.options.arguments_format {
+            ArgumentsFormat::PipeTable => self.write_arguments_pipe(&arguments.items),
+            ArgumentsFormat::GridTable => self.write_arguments_grid(&arguments.items),
+            ArgumentsFormat::ListTable => self.write_arguments_list_table(&arguments.items),
+            ArgumentsFormat::List => self.write_arguments_list(&arguments.items),
+        }
+    }
+
+    /// Pipe table: cannot contain block elements (lists, multiple paragraphs).
+    /// Workaround: use `<br>` for line breaks and flatten lists with bullet markers.
+    fn write_arguments_pipe(&mut self, items: &[ArgumentItem]) {
+        let header_row = Node::table_row(vec![
+            Node::table_cell(vec![Node::text("Argument")]),
+            Node::table_cell(vec![Node::text("Description")]),
+        ]);
+        let mut rows = vec![header_row];
+
+        for item in items {
+            let name = replace_line_endings_with_space(&item.name).replace('|', "\\|");
+            rows.push(Node::table_row(vec![
+                Node::table_cell(vec![Node::inline_code(name.trim())]),
+                Node::table_cell(flatten_for_table_cell(&item.description)),
+            ]));
+        }
+
+        let table = crate::mdast::Table {
+            align: vec![Some(Align::Left), Some(Align::Left)],
+            children: rows,
+        };
+        // Cells are already pipe-table-sanitized by `flatten_for_table_cell`.
+        self.write_table_with(&table, true);
+    }
+
+    /// Pandoc grid table: supports block elements (lists, paragraphs) in cells.
+    fn write_arguments_grid(&mut self, items: &[ArgumentItem]) {
+        use tabled::builder::Builder;
+
+        let mut builder = Builder::default();
+        builder.push_record(["Argument", "Description"]);
+
+        for item in items {
+            let arg_text = crate::format_inline_code(item.name.trim(), false);
+            let desc_text = convert_to_markdown_text(&item.description);
+            builder.push_record([arg_text, desc_text]);
+        }
+
+        let mut table = builder.build();
+        let grid_style = Style::ascii().horizontals([(
+            1,
+            HorizontalLine::new('=')
+                .left('+')
+                .right('+')
+                .intersection('+'),
+        )]);
+        self.write_raw_block(&table.with(grid_style).to_string());
+    }
+
+    /// Quarto list-table: requires Quarto 1.9+, compatible with q2.
+    fn write_arguments_list_table(&mut self, items: &[ArgumentItem]) {
+        let mut output = String::new();
+        output.push_str("::: {.list-table header-rows=1}\n\n");
+        output.push_str("- - Argument\n  - Description\n");
+
+        for item in items {
+            output.push('\n');
+            output.push_str("- - ");
+            output.push_str(&crate::format_inline_code(item.name.trim(), false));
+            output.push('\n');
+            output.push_str("  - ");
+            output.push_str(&render_list_table_cell(&item.description));
+            output.push('\n');
+        }
+
+        output.push_str("\n:::\n");
+        self.write_raw_block(&output);
+    }
+
+    /// Markdown loose list: compatible everywhere.
+    fn write_arguments_list(&mut self, items: &[ArgumentItem]) {
+        let mut output = String::new();
+        for (i, item) in items.iter().enumerate() {
+            if i > 0 {
+                output.push('\n');
+            }
+            output.push_str("- **");
+            output.push_str(&crate::format_inline_code(item.name.trim(), false));
+            output.push_str("**\n");
+
+            let desc = render_block_content(&item.description, 2);
+            if !desc.is_empty() {
+                output.push('\n');
+                output.push_str("  ");
+                output.push_str(&desc);
+                output.push('\n');
+            }
+        }
+        self.write_raw_block(&output);
+    }
+}
+
+/// Replace line endings with a single space, leaving every other byte of
+/// whitespace untouched.
+fn replace_line_endings_with_space(value: &str) -> String {
+    value.replace("\r\n", " ").replace(['\r', '\n'], " ")
+}
+
+/// Convert block nodes to a standalone Markdown string for a grid-table cell.
 ///
 /// Grid tables are built from raw strings by `tabled`, whereas the main mdast
 /// writer owns one global output buffer and tracks whole-document line state.
-/// The dedicated serializers below therefore preserve the legacy subtree path
-/// until the writer can directly serialize isolated AST fragments.
-pub(super) fn convert_to_markdown_text(
-    content: &[RdNode],
-    context: &BlockConversionContext<'_>,
-) -> String {
-    nodes_to_markdown(&convert_block_content(content, context))
+/// The dedicated serializers below therefore keep a separate subtree path
+/// until the writer can directly serialize isolated fragments.
+pub(crate) fn convert_to_markdown_text(nodes: &[Node]) -> String {
+    nodes_to_markdown(nodes)
 }
 
 fn nodes_to_markdown(nodes: &[Node]) -> String {
@@ -100,7 +216,8 @@ fn nodes_to_markdown(nodes: &[Node]) -> String {
             // roxygen code-block path (Code). Keep this arm exhaustive (no
             // wildcard) so a newly added `Node` variant fails to compile here
             // instead of silently vanishing.
-            Node::ThematicBreak
+            Node::Arguments(_)
+            | Node::ThematicBreak
             | Node::Blockquote(_)
             | Node::ListItem(_)
             | Node::TableRow(_)
@@ -127,13 +244,13 @@ fn nodes_to_markdown(nodes: &[Node]) -> String {
     result
 }
 
-pub(super) fn inline_nodes_to_markdown(nodes: &[Node]) -> String {
+pub(crate) fn inline_nodes_to_markdown(nodes: &[Node]) -> String {
     let mut result = String::new();
 
     for node in nodes {
         match node {
             Node::Text(text) => result.push_str(&text.value),
-            Node::InlineCode(code) => result.push_str(&rd2qmd_mdast::format_inline_code(
+            Node::InlineCode(code) => result.push_str(&crate::format_inline_code(
                 &code.value,
                 result.ends_with('`'),
             )),
@@ -151,10 +268,10 @@ pub(super) fn inline_nodes_to_markdown(nodes: &[Node]) -> String {
                 result.push('[');
                 result.push_str(&inline_nodes_to_markdown(&link.children));
                 result.push_str("](");
-                result.push_str(&rd2qmd_mdast::format_link_destination(&link.url));
+                result.push_str(&crate::format_link_destination(&link.url));
                 if let Some(title) = &link.title {
                     result.push_str(" \"");
-                    result.push_str(&rd2qmd_mdast::escape_link_title(title));
+                    result.push_str(&crate::escape_link_title(title));
                     result.push('"');
                 }
                 result.push(')');
@@ -168,10 +285,10 @@ pub(super) fn inline_nodes_to_markdown(nodes: &[Node]) -> String {
                 result.push_str("![");
                 result.push_str(&image.alt);
                 result.push_str("](");
-                result.push_str(&rd2qmd_mdast::format_link_destination(&image.url));
+                result.push_str(&crate::format_link_destination(&image.url));
                 if let Some(title) = &image.title {
                     result.push_str(" \"");
-                    result.push_str(&rd2qmd_mdast::escape_link_title(title));
+                    result.push_str(&crate::escape_link_title(title));
                     result.push('"');
                 }
                 result.push(')');
@@ -198,11 +315,11 @@ fn node_to_text(node: &Node) -> Option<String> {
     }
 }
 
-pub(super) fn render_list_table_cell(nodes: &[Node]) -> String {
+pub(crate) fn render_list_table_cell(nodes: &[Node]) -> String {
     render_block_content(nodes, 4)
 }
 
-pub(super) fn render_block_content(nodes: &[Node], indent: u8) -> String {
+pub(crate) fn render_block_content(nodes: &[Node], indent: u8) -> String {
     let indent = " ".repeat(indent as usize);
     let indent = indent.as_str();
     let mut result = String::new();
@@ -357,13 +474,15 @@ pub(super) fn render_block_content(nodes: &[Node], indent: u8) -> String {
 }
 
 /// Serialize one mdast node through the real writer.
-pub(super) fn node_to_markdown_string(node: &Node) -> String {
+pub(crate) fn node_to_markdown_string(node: &Node) -> String {
     let root = Root::new(vec![node.clone()]);
     let options = WriterOptions {
         frontmatter: None,
         // The migration context has no writer-format option yet. Preserve the
         // legacy call site's default until the document converter is wired.
         quarto_code_blocks: true,
+        // Unreachable from here: an Arguments node never nests inside a cell.
+        arguments_format: ArgumentsFormat::default(),
     };
     mdast_to_qmd(&root, &options).trim().to_owned()
 }

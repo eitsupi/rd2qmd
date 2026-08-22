@@ -5,10 +5,30 @@
 use crate::mdast::{Node, Root};
 use serde::Serialize;
 
+mod arguments;
 mod block;
 mod inline;
+pub(crate) mod table_cell;
 #[cfg(test)]
 mod tests;
+
+/// Physical rendering chosen for the Arguments section.
+///
+/// This is a presentation decision, so it belongs to the writer rather than
+/// to the Rd -> mdast conversion, which emits a semantic
+/// [`crate::mdast::Arguments`] node.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ArgumentsFormat {
+    /// Pipe table - limited to inline content
+    PipeTable,
+    /// Pandoc grid table - supports block elements in cells
+    GridTable,
+    /// Quarto list-table (default) - requires Quarto 1.9+
+    #[default]
+    ListTable,
+    /// Markdown loose list - compatible everywhere
+    List,
+}
 
 /// Options for the QMD writer
 #[derive(Debug, Clone, Default)]
@@ -17,6 +37,8 @@ pub struct WriterOptions {
     pub frontmatter: Option<Frontmatter>,
     /// Use {r} instead of r for R code blocks
     pub quarto_code_blocks: bool,
+    /// Physical rendering of the Arguments section
+    pub arguments_format: ArgumentsFormat,
 }
 
 /// YAML frontmatter content
@@ -197,6 +219,7 @@ impl<'a> Writer<'a> {
             Node::TableRow(_) => {}  // Handled by write_table
             Node::TableCell(_) => {} // Handled by write_table
             Node::DefinitionList(dl) => self.write_definition_list(dl),
+            Node::Arguments(a) => self.write_arguments(a),
             Node::DefinitionTerm(_) => {} // Handled by write_definition_list
             Node::DefinitionDescription(_) => {} // Handled by write_definition_list
             Node::Text(t) => self.output.push_str(&t.value),
@@ -218,6 +241,17 @@ impl<'a> Writer<'a> {
     }
 
     // Helper methods
+
+    /// Emit an already-rendered Markdown block verbatim.
+    ///
+    /// Used by the Arguments renderers, whose grid-table / list-table / list
+    /// shapes are built as raw strings rather than as mdast subtrees.
+    fn write_raw_block(&mut self, value: &str) {
+        self.output.push_str(value);
+        if !value.is_empty() {
+            self.at_line_start = value.ends_with('\n');
+        }
+    }
 
     fn ensure_newline(&mut self) {
         if !self.at_line_start && !self.output.is_empty() {
