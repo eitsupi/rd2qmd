@@ -8,6 +8,10 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
+    groups:
+      r-documentation-rs:
+        patterns:
+          - "rd-*"
 
   - package-ecosystem: github-actions
     directory: /
