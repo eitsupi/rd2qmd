@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-08-30
+
+### Changed
+
+- Update the `rd-ast` and `rd-source` dependencies to `0.4.0`. (#78)
+
 ## [0.5.2] - 2026-08-12
 
 ### Changed
