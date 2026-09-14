@@ -2,8 +2,11 @@
 
 use std::collections::HashMap;
 
+#[cfg(test)]
+use rd_ast::RdDocument;
 use rd_ast::{
-    RdConditionalKind, RdInlineSpanKind, RdLinkDestination, RdLinkTopic, RdNode, RdPath, RdTag,
+    RdConditionalKind, RdInlineSpanKind, RdLinkDestination, RdLinkTopic, RdNode, RdNodeRef,
+    RdNodesRef, RdTag,
 };
 use rd2qmd_mdast::{Html, Image, Node};
 
@@ -38,33 +41,42 @@ fn single_line_equation_text(value: &str) -> String {
 }
 
 /// Convert the inline nodes currently supported by the AST migration.
+#[cfg(test)]
 pub(crate) fn convert_inline_node(
     node: &RdNode,
     context: &InlineConversionContext<'_>,
 ) -> Option<Node> {
-    match node {
+    let document = RdDocument::new(vec![node.clone()]);
+    convert_inline_node_ref(
+        document.top_level().get(0).expect("single-node document"),
+        context,
+    )
+}
+
+pub(super) fn convert_inline_node_ref(
+    node: RdNodeRef<'_>,
+    context: &InlineConversionContext<'_>,
+) -> Option<Node> {
+    match node.node() {
         RdNode::Text(text) => return Some(Node::text(normalize_whitespace(text))),
         RdNode::RCode(code) | RdNode::Verb(code) => return Some(Node::inline_code(code.clone())),
         _ => {}
     }
 
-    // Real source-path tracking is deferred until a later migration phase.
-    let base_path = RdPath::new(Vec::new());
-
-    if let Some(span) = node.inline_span(&base_path) {
-        return convert_inline_span(span.kind(), span.body(), context);
+    if let Some(span) = node.inline_span_lossy() {
+        return convert_inline_span(span.kind(), span.body_ref(), context);
     }
 
-    if let Some(symbol) = node.text_symbol(&base_path) {
+    if let Some(symbol) = node.text_symbol_lossy() {
         return Some(Node::text(symbol.fallback_text().to_owned()));
     }
 
-    let tagged = node.as_tagged()?;
+    let tagged = node.node().as_tagged()?;
     match tagged.tag() {
         RdTag::Cr if tagged.option().is_none() && tagged.children().is_empty() => Some(Node::Break),
         RdTag::Enc => node
-            .enc(&base_path)
-            .map(|encoding| Node::text(prose_text(encoding.encoded(), context))),
+            .enc_lossy()
+            .map(|encoding| Node::text(prose_text_ref(encoding.encoded_ref(), context))),
         // convert_inline_node's result can be nested inside Paragraph,
         // Emphasis, Strong, or Link children, where a block node
         // (Node::Code, Node::Math) is structurally unsafe for the writer
@@ -75,7 +87,7 @@ pub(crate) fn convert_inline_node(
         // RdEquationDisplay; only the block-scan path (blocks.rs's
         // standalone Deqn handling) may produce a true block-level
         // equation.
-        RdTag::Eqn | RdTag::Deqn => tagged.inspect_equation(&base_path).ok().map(|equation| {
+        RdTag::Eqn | RdTag::Deqn => node.inspect_equation().ok().flatten().map(|equation| {
             if context.prefer_ascii_math
                 && let Some(ascii) = equation.ascii()
             {
@@ -85,11 +97,11 @@ pub(crate) fn convert_inline_node(
                     return Node::inline_code(ascii);
                 }
             }
-            let latex = prose_text(equation.latex(), context);
+            let latex = prose_text_ref(equation.latex_ref(), context);
             Node::inline_math(single_line_equation_text(&latex))
         }),
         RdTag::If | RdTag::IfElse => {
-            let conditional = node.inspect_conditional(&base_path).ok().flatten()?;
+            let conditional = node.inspect_conditional().ok().flatten()?;
             let format = conditional.format();
 
             let branch = match conditional.kind() {
@@ -101,21 +113,21 @@ pub(crate) fn convert_inline_node(
                         return None;
                     }
 
-                    conditional.then_branch()
+                    conditional.then_branch_ref()
                 }
                 RdConditionalKind::IfElse => {
                     if format == "html" || format == "text" {
-                        conditional.then_branch()
+                        conditional.then_branch_ref()
                     } else {
-                        conditional.else_branch()?
+                        conditional.else_branch_ref()?
                     }
                 }
                 _ => unreachable!("all conditional kinds are handled"),
             };
 
-            collapse_inline_nodes(convert_inline_nodes(branch, context))
+            collapse_inline_nodes(convert_inline_nodes_ref(branch, context))
         }
-        RdTag::Figure => node.figure(&base_path).map(|figure| {
+        RdTag::Figure => node.figure_lossy().map(|figure| {
             let file = figure.file();
             let alt = figure
                 .second()
@@ -135,20 +147,22 @@ pub(crate) fn convert_inline_node(
         RdTag::Out => Some(Node::Html(Html {
             value: verbatim_text(tagged.children()),
         })),
-        RdTag::Href => tagged.inspect_href(&base_path).ok().map(|href| {
+        RdTag::Href => node.inspect_href().ok().flatten().map(|href| {
             Node::link(
-                prose_text(href.url(), context),
-                convert_inline_nodes(href.display(), context),
+                prose_text_ref(href.url_ref(), context),
+                convert_inline_nodes_ref(href.display_ref(), context),
             )
         }),
-        RdTag::Link => tagged
-            .inspect_link(&base_path)
+        RdTag::Link => node
+            .inspect_link()
             .ok()
+            .flatten()
             .and_then(|link| convert_link(&link, context)),
-        RdTag::LinkS4Class => convert_s4_class_link(node, &base_path, &context.links),
-        RdTag::Sexpr => tagged
-            .inspect_sexpr(&base_path)
+        RdTag::LinkS4Class => convert_s4_class_link(&node, &context.links),
+        RdTag::Sexpr => node
+            .inspect_sexpr()
             .ok()
+            .flatten()
             .map(|sexpr| Node::inline_code(sexpr.code().to_owned())),
         RdTag::Doi
             if tagged.option().is_none() && matches!(tagged.children(), [RdNode::Text(_)]) =>
@@ -167,7 +181,7 @@ pub(crate) fn convert_inline_node(
         // this mirrors the legacy converter's prose fallback: just the bare
         // generic name as a call, e.g. `print()`.
         RdTag::Method | RdTag::S3Method | RdTag::S4Method => node
-            .method(&base_path)
+            .method_lossy()
             .map(|method| Node::text(format!("{}()", method.generic()))),
         _ => None,
     }
@@ -179,27 +193,36 @@ pub(super) fn convert_text(text: &str) -> Node {
 }
 
 /// Convert all supported inline nodes, skipping out-of-scope nodes.
+#[cfg(test)]
 pub(crate) fn convert_inline_nodes(
     nodes: &[RdNode],
     context: &InlineConversionContext<'_>,
 ) -> Vec<Node> {
+    let document = RdDocument::new(nodes.to_vec());
+    convert_inline_nodes_ref(document.top_level(), context)
+}
+
+pub(super) fn convert_inline_nodes_ref(
+    nodes: RdNodesRef<'_>,
+    context: &InlineConversionContext<'_>,
+) -> Vec<Node> {
     let mut converted = Vec::new();
     for node in nodes {
-        if let RdNode::Group(group) = node {
-            converted.extend(convert_inline_nodes(group.children(), context));
-        } else if is_usermacro_definition(node) {
+        if matches!(node.node(), RdNode::Group(_)) {
+            converted.extend(convert_inline_nodes_ref(node.children(), context));
+        } else if is_usermacro_definition(node.node()) {
             // RDS help databases retain user-macro definitions as a Raw
             // marker followed by the already-expanded sibling. The marker's
             // child is macro-template metadata (e.g. "#1GhostScript"), not
             // user-visible documentation.
-        } else if let RdNode::Raw(raw) = node {
-            converted.extend(convert_inline_nodes(raw.children(), context));
-        } else if let Some(tagged) = node.as_tagged()
+        } else if matches!(node.node(), RdNode::Raw(_)) {
+            converted.extend(convert_inline_nodes_ref(node.children(), context));
+        } else if let Some(tagged) = node.node().as_tagged()
             && matches!(tagged.tag(), RdTag::Unknown(_))
         {
-            converted.extend(convert_inline_nodes(tagged.children(), context));
-        } else if let Some(node) = convert_inline_node(node, context) {
-            converted.push(node);
+            converted.extend(convert_inline_nodes_ref(node.children(), context));
+        } else if let Some(converted_node) = convert_inline_node_ref(node, context) {
+            converted.push(converted_node);
         }
     }
     converted
@@ -248,63 +271,65 @@ pub(crate) fn extract_plain_text(nodes: &[Node]) -> String {
 
 fn convert_inline_span(
     kind: RdInlineSpanKind,
-    body: &[RdNode],
+    body: RdNodesRef<'_>,
     context: &InlineConversionContext<'_>,
 ) -> Option<Node> {
     let node = match kind {
         RdInlineSpanKind::Emph | RdInlineSpanKind::Dfn => {
-            Node::emphasis(convert_inline_nodes(body, context))
+            Node::emphasis(convert_inline_nodes_ref(body, context))
         }
         RdInlineSpanKind::Strong | RdInlineSpanKind::Bold => {
-            Node::strong(convert_inline_nodes(body, context))
+            Node::strong(convert_inline_nodes_ref(body, context))
         }
         RdInlineSpanKind::Code => {
-            if let [node] = body
-                && node
+            if body.len() == 1
+                && let Some(child) = body.get(0)
+                && child
+                    .node()
                     .as_tagged()
                     .is_some_and(|tagged| tagged.tag() == &RdTag::Link)
             {
-                return convert_inline_node(node, context);
+                return convert_inline_node_ref(child, context);
             }
-            Node::inline_code(prose_text(body, context))
+            Node::inline_code(prose_text_ref(body, context))
         }
         RdInlineSpanKind::Samp
         | RdInlineSpanKind::File
         | RdInlineSpanKind::Kbd
         | RdInlineSpanKind::Option
         | RdInlineSpanKind::Command
-        | RdInlineSpanKind::Env => Node::inline_code(prose_text(body, context)),
-        RdInlineSpanKind::Verb => Node::inline_code(verbatim_text(body)),
+        | RdInlineSpanKind::Env => Node::inline_code(prose_text_ref(body, context)),
+        RdInlineSpanKind::Verb => Node::inline_code(verbatim_text(body.nodes())),
         RdInlineSpanKind::Var | RdInlineSpanKind::Cite => {
-            Node::emphasis(vec![Node::text(prose_text(body, context))])
+            Node::emphasis(vec![Node::text(prose_text_ref(body, context))])
         }
         RdInlineSpanKind::Acronym | RdInlineSpanKind::Abbr | RdInlineSpanKind::Special => {
-            Node::text(prose_text(body, context))
+            Node::text(prose_text_ref(body, context))
         }
-        RdInlineSpanKind::SQuote => Node::text(format!("'{}'", prose_text(body, context))),
-        RdInlineSpanKind::DQuote => Node::text(format!("\"{}\"", prose_text(body, context))),
+        RdInlineSpanKind::SQuote => Node::text(format!("'{}'", prose_text_ref(body, context))),
+        RdInlineSpanKind::DQuote => Node::text(format!("\"{}\"", prose_text_ref(body, context))),
         RdInlineSpanKind::Url => {
-            let url = prose_text(body, context);
+            let url = prose_text_ref(body, context);
             Node::link(url.clone(), vec![Node::text(url)])
         }
         RdInlineSpanKind::Email => {
-            let email = prose_text(body, context);
+            let email = prose_text_ref(body, context);
             Node::link(format!("mailto:{email}"), vec![Node::text(email)])
         }
-        RdInlineSpanKind::Pkg => Node::strong(vec![Node::text(prose_text(body, context))]),
+        RdInlineSpanKind::Pkg => Node::strong(vec![Node::text(prose_text_ref(body, context))]),
         _ => return None,
     };
     Some(node)
 }
 
-fn prose_text(nodes: &[RdNode], context: &InlineConversionContext<'_>) -> String {
-    extract_plain_text(&convert_inline_nodes(nodes, context))
+fn prose_text_ref(nodes: RdNodesRef<'_>, context: &InlineConversionContext<'_>) -> String {
+    extract_plain_text(&convert_inline_nodes_ref(nodes, context))
 }
 
 fn convert_link(link: &rd_ast::RdLink<'_>, context: &InlineConversionContext<'_>) -> Option<Node> {
     match link.destination() {
-        RdLinkDestination::DisplayText { nodes } => {
-            let topic = prose_text(nodes, context);
+        RdLinkDestination::DisplayText { nodes: _ } => {
+            let topic = prose_text_ref(link.display_ref(), context);
             Some(resolve_unqualified_link(
                 &topic,
                 topic.clone(),
@@ -313,18 +338,18 @@ fn convert_link(link: &rd_ast::RdLink<'_>, context: &InlineConversionContext<'_>
         }
         RdLinkDestination::Explicit { topic } => Some(resolve_unqualified_link(
             topic,
-            prose_text(link.display(), context),
+            prose_text_ref(link.display_ref(), context),
             &context.links,
         )),
         RdLinkDestination::Package { package, topic } => match topic {
             RdLinkTopic::Explicit(topic) => Some(resolve_qualified_link(
                 package,
                 topic,
-                prose_text(link.display(), context),
+                prose_text_ref(link.display_ref(), context),
                 &context.links,
             )),
-            RdLinkTopic::DisplayText(nodes) => {
-                let topic = prose_text(nodes, context);
+            RdLinkTopic::DisplayText(_) => {
+                let topic = prose_text_ref(link.display_ref(), context);
                 Some(resolve_qualified_link(
                     package,
                     &topic,
@@ -347,11 +372,10 @@ fn collapse_inline_nodes(nodes: Vec<Node>) -> Option<Node> {
 }
 
 fn convert_s4_class_link(
-    node: &RdNode,
-    base_path: &RdPath,
+    node: &RdNodeRef<'_>,
     context: &LinkResolutionContext<'_>,
 ) -> Option<Node> {
-    let link = node.s4_class_link(base_path)?;
+    let link = node.s4_class_link_lossy()?;
     let classname = link.class_text()?;
     let topic = format!("{classname}-class");
     match link.package() {

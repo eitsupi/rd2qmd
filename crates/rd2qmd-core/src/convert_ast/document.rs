@@ -1,8 +1,8 @@
 //! Document ordering and metadata extraction for the rd_ast migration.
 
-use rd_ast::{RdArgument, RdDocument, RdNode};
+use rd_ast::{RdArgument, RdDocument, RdNodesRef};
 
-use super::inline::{InlineConversionContext, convert_inline_nodes, extract_plain_text};
+use super::inline::{InlineConversionContext, convert_inline_nodes_ref, extract_plain_text};
 
 /// The document-level information needed by later rendering steps.
 #[derive(Debug, Clone, PartialEq)]
@@ -22,8 +22,8 @@ pub(crate) enum DocumentSection<'a> {
 /// One custom section and the nested subsections recognized by rd-ast.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct CustomSection<'a> {
-    pub(crate) title: &'a [RdNode],
-    pub(crate) body: &'a [RdNode],
+    pub(crate) title: RdNodesRef<'a>,
+    pub(crate) body: RdNodesRef<'a>,
     pub(crate) nesting: usize,
     /// This section's index within its parent's body (or within the
     /// document, for a top-level section) — used to splice recursively
@@ -42,7 +42,7 @@ pub(crate) struct FixedSection<'a> {
 /// The body retained for a later section-specific conversion step.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum FixedSectionBody<'a> {
-    Nodes(&'a [RdNode]),
+    Nodes(RdNodesRef<'a>),
     Arguments(Vec<RdArgument<'a>>),
 }
 
@@ -99,11 +99,15 @@ pub(crate) fn build_document_structure(document: &RdDocument) -> DocumentStructu
     push_nodes(
         &mut sections,
         FixedSectionKind::Description,
-        document.description(),
+        document.description_lossy().map(|field| field.body_ref()),
     );
-    push_nodes(&mut sections, FixedSectionKind::Usage, document.usage());
+    push_nodes(
+        &mut sections,
+        FixedSectionKind::Usage,
+        document.usage_lossy().map(|field| field.body_ref()),
+    );
 
-    let arguments: Vec<_> = document.arguments().collect();
+    let arguments: Vec<_> = document.arguments_lossy().collect();
     if !arguments.is_empty() {
         sections.push(DocumentSection::Fixed(FixedSection {
             kind: FixedSectionKind::Arguments,
@@ -111,21 +115,45 @@ pub(crate) fn build_document_structure(document: &RdDocument) -> DocumentStructu
         }));
     }
 
-    push_nodes(&mut sections, FixedSectionKind::Value, document.value());
-    push_nodes(&mut sections, FixedSectionKind::Details, document.details());
-    push_nodes(&mut sections, FixedSectionKind::Format, document.format());
-    push_nodes(&mut sections, FixedSectionKind::Source, document.source());
-    push_nodes(&mut sections, FixedSectionKind::Note, document.note());
+    push_nodes(
+        &mut sections,
+        FixedSectionKind::Value,
+        document.value_lossy().map(|field| field.body_ref()),
+    );
+    push_nodes(
+        &mut sections,
+        FixedSectionKind::Details,
+        document.details_lossy().map(|field| field.body_ref()),
+    );
+    push_nodes(
+        &mut sections,
+        FixedSectionKind::Format,
+        document.format_lossy().map(|field| field.body_ref()),
+    );
+    push_nodes(
+        &mut sections,
+        FixedSectionKind::Source,
+        document.source_lossy().map(|field| field.body_ref()),
+    );
+    push_nodes(
+        &mut sections,
+        FixedSectionKind::Note,
+        document.note_lossy().map(|field| field.body_ref()),
+    );
     push_nodes(
         &mut sections,
         FixedSectionKind::References,
-        document.references(),
+        document.references_lossy().map(|field| field.body_ref()),
     );
-    push_nodes(&mut sections, FixedSectionKind::Author, document.author());
+    push_nodes(
+        &mut sections,
+        FixedSectionKind::Author,
+        document.author_lossy().map(|field| field.body_ref()),
+    );
     push_nodes(
         &mut sections,
         FixedSectionKind::SeeAlso,
-        document.see_also(),
+        document.see_also_lossy().map(|field| field.body_ref()),
     );
 
     sections.extend(
@@ -137,12 +165,16 @@ pub(crate) fn build_document_structure(document: &RdDocument) -> DocumentStructu
     push_nodes(
         &mut sections,
         FixedSectionKind::Examples,
-        document.examples(),
+        document.examples_lossy().map(|field| field.body_ref()),
     );
 
     DocumentStructure {
-        title: document.title().map(prose_text),
-        name: document.name().map(prose_text),
+        title: document
+            .title_lossy()
+            .map(|field| prose_text(field.body_ref())),
+        name: document
+            .name_lossy()
+            .map(|field| prose_text(field.body_ref())),
         sections,
     }
 }
@@ -152,13 +184,13 @@ pub(crate) fn build_custom_sections(document: &RdDocument) -> Vec<CustomSection<
     let mut roots: Vec<CustomSection<'_>> = Vec::new();
     let mut stack: Vec<usize> = Vec::new();
 
-    for visit in document.section_tree() {
+    for visit in document.section_tree_lossy() {
         let nesting = visit.nesting();
         stack.truncate(nesting);
 
         let section = CustomSection {
-            title: visit.title(),
-            body: visit.body(),
+            title: visit.title_ref(),
+            body: visit.body_ref(),
             nesting,
             source_index: path_source_index(visit.path()),
             children: Vec::new(),
@@ -183,23 +215,23 @@ fn child_vec<'a, 'b>(
     children
 }
 
-fn path_source_index(path: &rd_ast::RdPath) -> usize {
+fn path_source_index(path: &rd_ast::RdAstPath) -> usize {
     match path.segments().last() {
-        Some(rd_ast::RdPathSegment::TopLevel(index) | rd_ast::RdPathSegment::Child(index)) => {
-            *index
-        }
+        Some(
+            rd_ast::RdAstPathSegment::TopLevel(index) | rd_ast::RdAstPathSegment::Child(index),
+        ) => *index,
         _ => 0,
     }
 }
 
 /// Extract sorted, deduplicated topic metadata and generation sources.
 pub(crate) fn extract_document_metadata(document: &RdDocument) -> DocumentMetadata {
-    let lifecycle_badges = document.lifecycle_badges();
+    let lifecycle_badges = document.lifecycle_badges_lossy();
 
     DocumentMetadata {
-        aliases: sorted_unique(document.aliases()),
-        keywords: sorted_unique(document.keywords()),
-        concepts: sorted_unique(document.concepts()),
+        aliases: sorted_unique(document.aliases_lossy()),
+        keywords: sorted_unique(document.keywords_lossy()),
+        concepts: sorted_unique(document.concepts_lossy()),
         lifecycle: lifecycle_badges
             .first()
             .map(|badge| badge.stage().as_str().to_owned()),
@@ -210,7 +242,7 @@ pub(crate) fn extract_document_metadata(document: &RdDocument) -> DocumentMetada
 fn push_nodes<'a>(
     sections: &mut Vec<DocumentSection<'a>>,
     kind: FixedSectionKind,
-    body: Option<&'a [RdNode]>,
+    body: Option<RdNodesRef<'a>>,
 ) {
     if let Some(body) = body {
         sections.push(DocumentSection::Fixed(FixedSection {
@@ -220,8 +252,8 @@ fn push_nodes<'a>(
     }
 }
 
-fn prose_text(nodes: &[RdNode]) -> String {
-    extract_plain_text(&convert_inline_nodes(
+fn prose_text(nodes: RdNodesRef<'_>) -> String {
+    extract_plain_text(&convert_inline_nodes_ref(
         nodes,
         &InlineConversionContext::default(),
     ))
@@ -310,10 +342,13 @@ mod tests {
         let DocumentSection::Fixed(description) = &structure.sections[0] else {
             panic!("expected description section");
         };
-        let FixedSectionBody::Nodes(body) = description.body else {
+        let FixedSectionBody::Nodes(ref body) = description.body else {
             panic!("expected node body");
         };
-        assert!(std::ptr::eq(body, document.description().unwrap()));
+        assert!(std::ptr::eq(
+            body.nodes(),
+            document.description_lossy().unwrap().body()
+        ));
 
         let DocumentSection::Fixed(arguments) = &structure.sections[1] else {
             panic!("expected arguments section");
@@ -341,11 +376,11 @@ mod tests {
         ));
         assert!(matches!(
             &structure.sections[1],
-            DocumentSection::Custom(section) if prose_text(section.title) == "Second in output"
+            DocumentSection::Custom(section) if prose_text(section.title.clone()) == "Second in output"
         ));
         assert!(matches!(
             &structure.sections[2],
-            DocumentSection::Custom(section) if prose_text(section.title) == "Third in output"
+            DocumentSection::Custom(section) if prose_text(section.title.clone()) == "Third in output"
         ));
         assert!(matches!(
             &structure.sections[3],
@@ -356,8 +391,8 @@ mod tests {
             panic!("expected custom section");
         };
         assert!(std::ptr::eq(
-            section.body,
-            document.sections().next().unwrap().body
+            section.body.nodes(),
+            document.sections_lossy().next().unwrap().body()
         ));
         assert_eq!(section.nesting, 0);
         assert_eq!(section.source_index, 1);
@@ -392,14 +427,14 @@ mod tests {
         let sections = build_custom_sections(&document);
         assert_eq!(sections.len(), 1);
         let parent = &sections[0];
-        assert_eq!(prose_text(parent.title), "Parent");
+        assert_eq!(prose_text(parent.title.clone()), "Parent");
         assert_eq!(parent.nesting, 0);
         assert_eq!(parent.source_index, 0);
         assert_eq!(parent.children.len(), 2);
-        assert_eq!(prose_text(parent.children[0].title), "First child");
+        assert_eq!(prose_text(parent.children[0].title.clone()), "First child");
         assert_eq!(parent.children[0].nesting, 1);
         assert_eq!(parent.children[0].source_index, 1);
-        assert_eq!(prose_text(parent.children[1].title), "Second child");
+        assert_eq!(prose_text(parent.children[1].title.clone()), "Second child");
         assert_eq!(parent.children[1].nesting, 1);
         assert_eq!(parent.children[1].source_index, 3);
     }

@@ -2,10 +2,14 @@
 //! cells -- a separate code path from the pipe-table flattening in
 //! [`super::table_cell`], per the doc comment on [`convert_to_markdown_text`].
 
+#[cfg(test)]
 use rd_ast::RdNode;
+use rd_ast::RdNodesRef;
 use rd2qmd_mdast::{Node, Root, WriterOptions, mdast_to_qmd};
 
-use super::{BlockConversionContext, convert_block_content};
+use super::BlockConversionContext;
+#[cfg(test)]
+use super::convert_block_content;
 
 /// Convert Rd content to a standalone Markdown string for a grid-table cell.
 ///
@@ -13,11 +17,19 @@ use super::{BlockConversionContext, convert_block_content};
 /// writer owns one global output buffer and tracks whole-document line state.
 /// The dedicated serializers below therefore preserve the legacy subtree path
 /// until the writer can directly serialize isolated AST fragments.
+#[cfg(test)]
 pub(super) fn convert_to_markdown_text(
     content: &[RdNode],
     context: &BlockConversionContext<'_>,
 ) -> String {
     nodes_to_markdown(&convert_block_content(content, context))
+}
+
+pub(super) fn convert_to_markdown_text_ref(
+    content: RdNodesRef<'_>,
+    context: &BlockConversionContext<'_>,
+) -> String {
+    nodes_to_markdown(&super::convert_block_content_ref(content, context))
 }
 
 fn nodes_to_markdown(nodes: &[Node]) -> String {

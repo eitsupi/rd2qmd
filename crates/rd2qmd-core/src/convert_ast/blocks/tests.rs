@@ -567,7 +567,7 @@ fn custom_section_tree_preserves_content_around_nested_subsections() {
 #[test]
 fn converts_arguments_to_pipe_table_and_flattens_lists_with_breaks() {
     let document = argument_document();
-    let arguments: Vec<_> = document.arguments().collect();
+    let arguments: Vec<_> = document.arguments_lossy().collect();
     let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
 
     let [Node::Table(table)] = converted.as_slice() else {
@@ -606,7 +606,7 @@ fn pipe_table_replaces_inline_breaks_with_html_breaks() {
         tagged(RdTag::Cr, vec![]),
         text("after"),
     ]);
-    let arguments: Vec<_> = document.arguments().collect();
+    let arguments: Vec<_> = document.arguments_lossy().collect();
     let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
 
     let [Node::Table(table)] = converted.as_slice() else {
@@ -640,7 +640,7 @@ fn pipe_table_replaces_inline_breaks_with_html_breaks() {
 #[test]
 fn pipe_table_escapes_literal_pipes_in_text() {
     let document = argument_document_with_description(vec![text("left | right")]);
-    let arguments: Vec<_> = document.arguments().collect();
+    let arguments: Vec<_> = document.arguments_lossy().collect();
     let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
 
     let [Node::Table(table)] = converted.as_slice() else {
@@ -665,7 +665,7 @@ fn pipe_table_escapes_literal_pipes_in_text() {
 #[test]
 fn pipe_table_escapes_literal_pipes_in_inline_code() {
     let document = argument_document_with_description(vec![tagged(RdTag::Code, vec![text("a|b")])]);
-    let arguments: Vec<_> = document.arguments().collect();
+    let arguments: Vec<_> = document.arguments_lossy().collect();
     let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
 
     let [Node::Table(table)] = converted.as_slice() else {
@@ -693,7 +693,7 @@ fn pipe_table_escapes_literal_pipes_in_argument_names() {
         RdTag::Arguments,
         vec![described_item(vec![text("a|b")], vec![text("description")])],
     )]);
-    let arguments: Vec<_> = document.arguments().collect();
+    let arguments: Vec<_> = document.arguments_lossy().collect();
     let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
 
     let [Node::Table(table)] = converted.as_slice() else {
@@ -728,7 +728,7 @@ fn pipe_table_flattens_and_escapes_nested_conditional_paragraphs() {
         ],
     );
     let document = argument_document_with_description(vec![multi_node_conditional]);
-    let arguments: Vec<_> = document.arguments().collect();
+    let arguments: Vec<_> = document.arguments_lossy().collect();
     let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
 
     let [Node::Table(table)] = converted.as_slice() else {
@@ -810,7 +810,7 @@ fn pipe_table_collapses_multiline_argument_names_through_real_writer() {
             vec![text("description")],
         )],
     )]);
-    let arguments: Vec<_> = document.arguments().collect();
+    let arguments: Vec<_> = document.arguments_lossy().collect();
     let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
     let markdown = mdast_to_qmd(
         &Root::new(converted),
@@ -834,7 +834,7 @@ fn pipe_table_escapes_literal_pipes_in_resolved_links() {
         "=alias",
         vec![text("a|b")],
     )]);
-    let arguments: Vec<_> = document.arguments().collect();
+    let arguments: Vec<_> = document.arguments_lossy().collect();
     let alias_map = HashMap::from([("alias".to_owned(), "target|variant".to_owned())]);
     let context = BlockConversionContext {
         inline: InlineConversionContext {
@@ -878,7 +878,7 @@ fn pipe_table_escapes_literal_pipes_in_resolved_links() {
 #[test]
 fn converts_arguments_to_grid_table_with_header_separator() {
     let document = argument_document();
-    let arguments: Vec<_> = document.arguments().collect();
+    let arguments: Vec<_> = document.arguments_lossy().collect();
     let converted = convert_arguments(&arguments, ArgumentsFormat::GridTable, &context(false));
     let table = html_value(&converted);
 
@@ -897,7 +897,7 @@ fn converts_arguments_to_grid_table_with_header_separator() {
 #[test]
 fn grid_table_preserves_block_equations() {
     let document = argument_document_with_description(vec![equation("x^2 + y^2", None)]);
-    let arguments: Vec<_> = document.arguments().collect();
+    let arguments: Vec<_> = document.arguments_lossy().collect();
     let converted = convert_arguments(&arguments, ArgumentsFormat::GridTable, &context(false));
     let table = html_value(&converted);
 
@@ -915,7 +915,7 @@ fn grid_table_preserves_nested_definition_lists() {
         )],
     );
     let document = argument_document_with_description(vec![describe]);
-    let arguments: Vec<_> = document.arguments().collect();
+    let arguments: Vec<_> = document.arguments_lossy().collect();
     let converted = convert_arguments(&arguments, ArgumentsFormat::GridTable, &context(false));
     let table = html_value(&converted);
 
@@ -926,7 +926,7 @@ fn grid_table_preserves_nested_definition_lists() {
 #[test]
 fn converts_arguments_to_quarto_list_table() {
     let document = argument_document();
-    let arguments: Vec<_> = document.arguments().collect();
+    let arguments: Vec<_> = document.arguments_lossy().collect();
     let converted = convert_arguments(&arguments, ArgumentsFormat::ListTable, &context(false));
     let table = html_value(&converted);
 
@@ -940,7 +940,7 @@ fn converts_arguments_to_quarto_list_table() {
 #[test]
 fn list_table_preserves_indented_block_equations() {
     let document = argument_document_with_description(vec![equation("x^2 + y^2", None)]);
-    let arguments: Vec<_> = document.arguments().collect();
+    let arguments: Vec<_> = document.arguments_lossy().collect();
     let converted = convert_arguments(&arguments, ArgumentsFormat::ListTable, &context(false));
     let table = html_value(&converted);
 
@@ -950,7 +950,7 @@ fn list_table_preserves_indented_block_equations() {
 #[test]
 fn converts_arguments_to_loose_list_with_two_space_continuations() {
     let document = argument_document();
-    let arguments: Vec<_> = document.arguments().collect();
+    let arguments: Vec<_> = document.arguments_lossy().collect();
     let converted = convert_arguments(&arguments, ArgumentsFormat::List, &context(false));
     let list = html_value(&converted);
 
@@ -961,7 +961,7 @@ fn converts_arguments_to_loose_list_with_two_space_continuations() {
 #[test]
 fn loose_list_preserves_indented_block_equations() {
     let document = argument_document_with_description(vec![equation("x^2 + y^2", None)]);
-    let arguments: Vec<_> = document.arguments().collect();
+    let arguments: Vec<_> = document.arguments_lossy().collect();
     let converted = convert_arguments(&arguments, ArgumentsFormat::List, &context(false));
     let list = html_value(&converted);
 
@@ -990,7 +990,7 @@ fn pipe_table_preserves_describe_tabular_and_preformatted_content() {
     );
     let preformatted = tagged(RdTag::Preformatted, vec![text("preformatted text")]);
     let document = argument_document_with_description(vec![describe, table, preformatted]);
-    let arguments: Vec<_> = document.arguments().collect();
+    let arguments: Vec<_> = document.arguments_lossy().collect();
     let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
     let markdown = mdast_to_qmd(
         &Root::new(converted),
@@ -1031,7 +1031,7 @@ fn pipe_table_preserves_both_paragraphs_of_a_multi_paragraph_list_item() {
         vec![vec![text("first paragraph\n\nsecond paragraph")]],
     );
     let document = argument_document_with_description(vec![list]);
-    let arguments: Vec<_> = document.arguments().collect();
+    let arguments: Vec<_> = document.arguments_lossy().collect();
     let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
     let markdown = mdast_to_qmd(
         &Root::new(converted),
@@ -1058,7 +1058,7 @@ fn grid_table_preserves_tabular_content() {
         vec![group(vec![text("l")]), group(vec![text("table cell text")])],
     );
     let document = argument_document_with_description(vec![table]);
-    let arguments: Vec<_> = document.arguments().collect();
+    let arguments: Vec<_> = document.arguments_lossy().collect();
     let converted = convert_arguments(&arguments, ArgumentsFormat::GridTable, &context(false));
     let table_text = html_value(&converted);
 
@@ -1077,7 +1077,7 @@ fn grid_table_preserves_both_paragraphs_of_a_multi_paragraph_list_item() {
         vec![vec![text("first paragraph\n\nsecond paragraph")]],
     );
     let document = argument_document_with_description(vec![list]);
-    let arguments: Vec<_> = document.arguments().collect();
+    let arguments: Vec<_> = document.arguments_lossy().collect();
     let converted = convert_arguments(&arguments, ArgumentsFormat::GridTable, &context(false));
     let table_text = html_value(&converted);
 
@@ -1140,7 +1140,7 @@ fn pipe_table_nested_tabular_pipe_is_not_double_escaped() {
         RdTag::Arguments,
         vec![described_item(vec![text("table_arg")], vec![table])],
     )]);
-    let arguments: Vec<_> = document.arguments().collect();
+    let arguments: Vec<_> = document.arguments_lossy().collect();
     let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
     let markdown = mdast_to_qmd(
         &Root::new(converted),
@@ -1207,7 +1207,7 @@ fn pipe_table_tabular_nested_in_describe_pipe_is_not_double_escaped() {
         RdTag::Arguments,
         vec![described_item(vec![text("describe_arg")], vec![describe])],
     )]);
-    let arguments: Vec<_> = document.arguments().collect();
+    let arguments: Vec<_> = document.arguments_lossy().collect();
     let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
     let markdown = mdast_to_qmd(
         &Root::new(converted),
@@ -1246,7 +1246,7 @@ fn pipe_table_preformatted_pipe_preserves_backslash() {
     // original backslash from the rendered code.
     let preformatted = tagged(RdTag::Preformatted, vec![text(r"a\|b")]);
     let document = argument_document_with_description(vec![preformatted]);
-    let arguments: Vec<_> = document.arguments().collect();
+    let arguments: Vec<_> = document.arguments_lossy().collect();
     let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
     let markdown = mdast_to_qmd(
         &Root::new(converted),
@@ -1270,7 +1270,7 @@ fn pipe_table_math_pipe_preserves_backslash() {
     // content, not treated as already-escaped table syntax.
     let deqn = equation(r"a\|b", None);
     let document = argument_document_with_description(vec![deqn]);
-    let arguments: Vec<_> = document.arguments().collect();
+    let arguments: Vec<_> = document.arguments_lossy().collect();
     let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context(false));
     let markdown = mdast_to_qmd(
         &Root::new(converted),
@@ -1304,7 +1304,7 @@ fn grid_table_escapes_list_marker_lookalikes_after_cr_break() {
         text(" 1. ordered period."),
     ];
     let document = argument_document_with_description(description);
-    let arguments: Vec<_> = document.arguments().collect();
+    let arguments: Vec<_> = document.arguments_lossy().collect();
     let converted = convert_arguments(&arguments, ArgumentsFormat::GridTable, &context(false));
     let table_text = html_value(&converted);
 

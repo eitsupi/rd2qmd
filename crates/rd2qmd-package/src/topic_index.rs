@@ -1,6 +1,6 @@
 //! Topic index generation for package documentation
 
-use rd2qmd_core::{RdMetadata, extract_rd_metadata, extract_text};
+use rd2qmd_core::{RdMetadata, extract_rd_metadata, extract_text_ref};
 use serde::Serialize;
 use std::path::Path;
 
@@ -128,10 +128,16 @@ fn extract_topic_info_with_diagnostics(
     let (doc, source_files, diagnostics) = load_document(file, format)?;
 
     // Extract name
-    let name = doc.name().map(extract_text).unwrap_or_default();
+    let name = doc
+        .name_lossy()
+        .map(|field| extract_text_ref(field.body_ref()))
+        .unwrap_or_default();
 
     // Extract title
-    let title = doc.title().map(extract_text).unwrap_or_default();
+    let title = doc
+        .title_lossy()
+        .map(|field| extract_text_ref(field.body_ref()))
+        .unwrap_or_default();
 
     // Extract metadata using shared function
     let metadata = rd2qmd_core::RdMetadata {

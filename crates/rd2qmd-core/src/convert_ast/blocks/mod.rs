@@ -1,6 +1,8 @@
 //! General block-content assembly for the rd_ast conversion migration.
 
-use rd_ast::{RdArgument, RdNode};
+#[cfg(test)]
+use rd_ast::RdDocument;
+use rd_ast::{RdArgument, RdNode, RdNodesRef};
 use rd2qmd_mdast::{Align, Html, Node};
 use tabled::settings::Style;
 use tabled::settings::style::HorizontalLine;
@@ -10,7 +12,6 @@ use super::{
     leaf_text::flatten_verbatim_leaves,
     traversal::{BlockContentItem, scan_block_content},
 };
-use table_cell::flatten_for_table_cell;
 use tag_conversion::{convert_block, convert_paragraph};
 
 mod markdown_text;
@@ -19,7 +20,7 @@ mod tag_conversion;
 #[cfg(test)]
 mod tests;
 
-use markdown_text::{convert_to_markdown_text, render_block_content, render_list_table_cell};
+use markdown_text::{render_block_content, render_list_table_cell};
 
 /// Borrowed configuration used while converting general block content.
 #[derive(Clone, Copy)]
@@ -30,8 +31,17 @@ pub(crate) struct BlockConversionContext<'a> {
 }
 
 /// Convert paragraphs and supported semantic blocks in source order.
+#[cfg(test)]
 pub(crate) fn convert_block_content(
     nodes: &[RdNode],
+    context: &BlockConversionContext<'_>,
+) -> Vec<Node> {
+    let document = RdDocument::new(nodes.to_vec());
+    convert_block_content_ref(document.top_level(), context)
+}
+
+pub(crate) fn convert_block_content_ref(
+    nodes: RdNodesRef<'_>,
     context: &BlockConversionContext<'_>,
 ) -> Vec<Node> {
     scan_block_content(nodes)
@@ -54,7 +64,7 @@ pub(crate) fn convert_custom_section(
     let depth = (2usize + section.nesting).min(6) as u8;
     let mut nodes = vec![Node::heading(
         depth,
-        inline::convert_inline_nodes(section.title, &context.inline),
+        inline::convert_inline_nodes_ref(section.title.clone(), &context.inline),
     )];
     nodes.extend(convert_custom_section_body(section, context, depth));
     nodes
@@ -72,15 +82,21 @@ fn convert_custom_section_body(
     let mut nodes = Vec::new();
     let mut cursor = 0;
     for child in &section.children {
-        nodes.extend(convert_block_content(
-            &section.body[cursor..child.source_index],
+        nodes.extend(convert_block_content_ref(
+            section
+                .body
+                .slice(cursor..child.source_index)
+                .expect("custom section child range is in bounds"),
             &child_context,
         ));
         nodes.extend(convert_custom_section(child, &child_context));
         cursor = child.source_index + 1;
     }
-    nodes.extend(convert_block_content(
-        &section.body[cursor..],
+    nodes.extend(convert_block_content_ref(
+        section
+            .body
+            .slice(cursor..section.body.len())
+            .expect("custom section tail range is in bounds"),
         &child_context,
     ));
     nodes
@@ -122,7 +138,10 @@ fn convert_arguments_pipe(
             replace_line_endings_with_space(&argument_name(argument, context)).replace('|', "\\|");
         rows.push(Node::table_row(vec![
             Node::table_cell(vec![Node::inline_code(term_text.trim())]),
-            Node::table_cell(flatten_for_table_cell(argument.description, context)),
+            Node::table_cell(table_cell::flatten_for_table_cell_ref(
+                argument.description_ref(),
+                context,
+            )),
         ]));
     }
 
@@ -150,7 +169,8 @@ fn convert_arguments_grid(
     for argument in arguments {
         let term_text = argument_name(argument, context);
         let arg_text = rd2qmd_mdast::format_inline_code(term_text.trim(), false);
-        let desc_text = convert_to_markdown_text(argument.description, context);
+        let desc_text =
+            markdown_text::convert_to_markdown_text_ref(argument.description_ref(), context);
         builder.push_record([arg_text, desc_text]);
     }
 
@@ -182,7 +202,7 @@ fn convert_arguments_list_table(
         .map(|argument| {
             let term_text = argument_name(argument, context);
             let arg_text = rd2qmd_mdast::format_inline_code(term_text.trim(), false);
-            let desc_nodes = convert_block_content(argument.description, context);
+            let desc_nodes = convert_block_content_ref(argument.description_ref(), context);
             let desc_text = render_list_table_cell(&desc_nodes);
             (arg_text, desc_text)
         })
@@ -220,7 +240,7 @@ fn convert_arguments_list(
         .map(|argument| {
             let term_text = argument_name(argument, context);
             let arg_code = rd2qmd_mdast::format_inline_code(term_text.trim(), false);
-            let desc_nodes = convert_block_content(argument.description, context);
+            let desc_nodes = convert_block_content_ref(argument.description_ref(), context);
             let desc_text = render_block_content(&desc_nodes, 2);
             (arg_code, desc_text)
         })
@@ -247,8 +267,8 @@ fn convert_arguments_list(
 }
 
 fn argument_name(argument: &RdArgument<'_>, context: &BlockConversionContext<'_>) -> String {
-    inline::extract_plain_text(&inline::convert_inline_nodes(
-        argument.name,
+    inline::extract_plain_text(&inline::convert_inline_nodes_ref(
+        argument.name_ref(),
         &context.inline,
     ))
 }

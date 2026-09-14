@@ -1,6 +1,8 @@
 //! Detection of roxygen2's three-node Markdown fenced-code representation.
 
-use rd_ast::{RdConditionalKind, RdNode, RdPath, RdTag};
+#[cfg(test)]
+use rd_ast::RdDocument;
+use rd_ast::{RdConditionalKind, RdNode, RdNodeRef, RdNodesRef, RdTag};
 
 use super::{blocks::recover_verbatim, leaf_text::flatten_verbatim_leaves};
 
@@ -10,14 +12,23 @@ pub(crate) struct RoxygenCodeBlock {
     pub(crate) code: String,
 }
 
+#[cfg(test)]
 pub(crate) fn try_match_roxygen_code_block(nodes: &[RdNode]) -> Option<RoxygenCodeBlock> {
-    let [opening, preformatted, closing, ..] = nodes else {
+    let document = RdDocument::new(nodes.to_vec());
+    try_match_roxygen_code_block_ref(document.top_level())
+}
+
+pub(super) fn try_match_roxygen_code_block_ref(nodes: RdNodesRef<'_>) -> Option<RoxygenCodeBlock> {
+    if nodes.len() < 3 {
         return None;
-    };
+    }
+    let opening = nodes.get(0)?;
+    let preformatted = nodes.get(1)?;
+    let closing = nodes.get(2)?;
 
     let language = extract_language_from_div(&conditional_out_text(opening)?)?;
 
-    let tagged = preformatted.as_tagged()?;
+    let tagged = preformatted.node().as_tagged()?;
     if tagged.tag() != &RdTag::Preformatted {
         return None;
     }
@@ -30,9 +41,8 @@ pub(crate) fn try_match_roxygen_code_block(nodes: &[RdNode]) -> Option<RoxygenCo
     Some(RoxygenCodeBlock { language, code })
 }
 
-fn conditional_out_text(node: &RdNode) -> Option<String> {
-    let base_path = RdPath::new(Vec::new());
-    let conditional = node.inspect_conditional(&base_path).ok()??;
+fn conditional_out_text(node: RdNodeRef<'_>) -> Option<String> {
+    let conditional = node.inspect_conditional().ok()??;
     if conditional.kind() != RdConditionalKind::If
         || conditional.format() != "html"
         || conditional.else_branch().is_some()
@@ -40,10 +50,9 @@ fn conditional_out_text(node: &RdNode) -> Option<String> {
         return None;
     }
 
-    let [out] = conditional.then_branch() else {
-        return None;
-    };
-    let tagged = out.as_tagged()?;
+    let branch = conditional.then_branch_ref();
+    let out = branch.get(0).filter(|_| branch.len() == 1)?;
+    let tagged = out.node().as_tagged()?;
     (tagged.tag() == &RdTag::Out).then(|| recover_out_text(tagged.children()))
 }
 

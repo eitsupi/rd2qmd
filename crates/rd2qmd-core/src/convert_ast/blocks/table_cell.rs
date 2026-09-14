@@ -1,19 +1,20 @@
 //! Flattening arbitrary block content down to inline nodes safe for a GFM
 //! pipe-table cell.
 
-use rd_ast::RdNode;
+use rd_ast::RdNodesRef;
 use rd2qmd_mdast::{Html, Node};
 
 use super::markdown_text::node_to_markdown_string;
-use super::{BlockConversionContext, convert_block_content, replace_line_endings_with_space};
+use super::{BlockConversionContext, convert_block_content_ref, replace_line_endings_with_space};
 
-/// Flatten block content to inline nodes for GFM table cells.
-/// Uses `<br>` for paragraph breaks and flattens lists with bullet markers.
-pub(super) fn flatten_for_table_cell(
-    content: &[RdNode],
+pub(super) fn flatten_for_table_cell_ref(
+    content: RdNodesRef<'_>,
     context: &BlockConversionContext<'_>,
 ) -> Vec<Node> {
-    let block_nodes = convert_block_content(content, context);
+    flatten_block_nodes(convert_block_content_ref(content, context))
+}
+
+fn flatten_block_nodes(block_nodes: Vec<Node>) -> Vec<Node> {
     let mut result = Vec::new();
 
     for (i, node) in block_nodes.iter().enumerate() {

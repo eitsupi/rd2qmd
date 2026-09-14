@@ -1,14 +1,14 @@
 //! Source-order block-content scanning for rd_ast sibling nodes.
 
-use rd_ast::RdTag;
+use rd_ast::{RdNodeRef, RdNodesRef, RdTag};
 
 use super::is_usermacro_definition;
-use super::roxygen::{RoxygenCodeBlock, try_match_roxygen_code_block};
+use super::roxygen::{RoxygenCodeBlock, try_match_roxygen_code_block_ref};
 
 /// A borrowed piece of source content belonging to one paragraph.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ParagraphItem<'a> {
-    Node(&'a rd_ast::RdNode),
+    Node(RdNodeRef<'a>),
     Text(&'a str),
 }
 
@@ -16,7 +16,7 @@ pub(crate) enum ParagraphItem<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum BlockContentItem<'a> {
     Paragraph(Vec<ParagraphItem<'a>>),
-    Block(&'a rd_ast::RdNode),
+    Block(RdNodeRef<'a>),
     RoxygenCode(RoxygenCodeBlock),
 }
 
@@ -25,7 +25,7 @@ pub(crate) enum BlockContentItem<'a> {
 /// Whitespace is held until the next visible item. A boundary requires at
 /// least two newlines in whitespace/comments after visible content. Tagged
 /// nodes are atomic and are not inspected for internal newlines.
-pub(crate) fn scan_block_content(nodes: &[rd_ast::RdNode]) -> Vec<BlockContentItem<'_>> {
+pub(crate) fn scan_block_content(nodes: RdNodesRef<'_>) -> Vec<BlockContentItem<'_>> {
     let mut items = Vec::new();
     let mut state = ScanState::default();
     scan(nodes, &mut state, &mut items);
@@ -42,21 +42,24 @@ struct ScanState<'a> {
 }
 
 fn scan<'a>(
-    nodes: &'a [rd_ast::RdNode],
+    nodes: RdNodesRef<'a>,
     state: &mut ScanState<'a>,
     items: &mut Vec<BlockContentItem<'a>>,
 ) {
     let mut cursor = 0;
     while cursor < nodes.len() {
-        if let Some(block) = try_match_roxygen_code_block(&nodes[cursor..]) {
+        let remaining = nodes
+            .slice(cursor..nodes.len())
+            .expect("cursor range is in bounds");
+        if let Some(block) = try_match_roxygen_code_block_ref(remaining) {
             flush(state, items);
             items.push(BlockContentItem::RoxygenCode(block));
             cursor += 3;
             continue;
         }
 
-        let node = &nodes[cursor];
-        match node {
+        let node = nodes.get(cursor).expect("cursor is in bounds");
+        match node.node() {
             rd_ast::RdNode::Text(value) => {
                 for part in value.split_inclusive(char::is_whitespace) {
                     if part.chars().all(char::is_whitespace) {
@@ -69,14 +72,14 @@ fn scan<'a>(
                 }
             }
             rd_ast::RdNode::Comment(_) => {}
-            rd_ast::RdNode::Group(group) => scan(group.children(), state, items),
-            rd_ast::RdNode::Raw(raw) if !is_usermacro_definition(node) => {
-                scan(raw.children(), state, items)
+            rd_ast::RdNode::Group(_) => scan(node.children(), state, items),
+            rd_ast::RdNode::Raw(_) if !is_usermacro_definition(node.node()) => {
+                scan(node.children(), state, items)
             }
             rd_ast::RdNode::Tagged(tagged) if matches!(tagged.tag(), RdTag::Unknown(_)) => {
-                scan(tagged.children(), state, items)
+                scan(node.children(), state, items)
             }
-            rd_ast::RdNode::Tagged(_) if is_block_level(node) => {
+            rd_ast::RdNode::Tagged(_) if is_block_level(node.node()) => {
                 flush(state, items);
                 items.push(BlockContentItem::Block(node));
             }
@@ -150,7 +153,7 @@ fn is_block_level(node: &rd_ast::RdNode) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use rd_ast::{RdNode, RdTag, producer};
+    use rd_ast::{RdDocument, RdNode, RdTag, producer};
 
     use super::{BlockContentItem, ParagraphItem, scan_block_content};
 
@@ -159,9 +162,10 @@ mod tests {
             .iter()
             .map(|item| match item {
                 ParagraphItem::Text(text) => *text,
-                ParagraphItem::Node(rd_ast::RdNode::RCode(text))
-                | ParagraphItem::Node(rd_ast::RdNode::Verb(text)) => text,
-                ParagraphItem::Node(node) => panic!("unexpected whole node: {node:?}"),
+                ParagraphItem::Node(node) => match node.node() {
+                    rd_ast::RdNode::RCode(text) | rd_ast::RdNode::Verb(text) => text,
+                    node => panic!("unexpected whole node: {node:?}"),
+                },
             })
             .collect()
     }
@@ -169,7 +173,8 @@ mod tests {
     #[test]
     fn finds_two_paragraphs() {
         let nodes = vec![RdNode::Text("first\n\nsecond".into())];
-        let items = scan_block_content(&nodes);
+        let document = RdDocument::new(nodes);
+        let items = scan_block_content(document.top_level());
         let [
             BlockContentItem::Paragraph(first),
             BlockContentItem::Paragraph(second),
@@ -188,7 +193,8 @@ mod tests {
             RdNode::Comment("% comment".into()),
             RdNode::Text("\nsecond".into()),
         ];
-        let items = scan_block_content(&nodes);
+        let document = RdDocument::new(nodes);
+        let items = scan_block_content(document.top_level());
         let [
             BlockContentItem::Paragraph(first),
             BlockContentItem::Paragraph(second),
@@ -203,7 +209,8 @@ mod tests {
     #[test]
     fn whitespace_only_input_has_no_paragraphs() {
         let nodes = vec![RdNode::Text(" \n\n\t".into())];
-        assert!(scan_block_content(&nodes).is_empty());
+        let document = RdDocument::new(nodes);
+        assert!(scan_block_content(document.top_level()).is_empty());
     }
 
     #[test]
@@ -214,7 +221,8 @@ mod tests {
             rd_ast::RdNode::Text(" after".to_string()),
         ];
 
-        let items = scan_block_content(&nodes);
+        let document = RdDocument::new(nodes);
+        let items = scan_block_content(document.top_level());
         let [BlockContentItem::Paragraph(paragraph)] = items.as_slice() else {
             panic!("expected one paragraph");
         };
@@ -228,7 +236,8 @@ mod tests {
             rd_ast::RdNode::RCode("same".to_string()),
         ];
 
-        let items = scan_block_content(&nodes);
+        let document = RdDocument::new(nodes);
+        let items = scan_block_content(document.top_level());
         let [BlockContentItem::Paragraph(paragraph)] = items.as_slice() else {
             panic!("expected one paragraph");
         };
@@ -237,7 +246,8 @@ mod tests {
         assert!(matches!(
             paragraph.as_slice(),
             [ParagraphItem::Node(first), ParagraphItem::Node(second)]
-                if std::ptr::eq(*first, &nodes[0]) && std::ptr::eq(*second, &nodes[1])
+                if std::ptr::eq(first.node(), &document.nodes()[0])
+                    && std::ptr::eq(second.node(), &document.nodes()[1])
         ));
     }
 
@@ -249,7 +259,8 @@ mod tests {
             RdNode::Text("\n\nafter".to_owned()),
         ];
 
-        let items = scan_block_content(&nodes);
+        let document = RdDocument::new(nodes);
+        let items = scan_block_content(document.top_level());
         assert!(matches!(
             items.as_slice(),
             [
@@ -257,7 +268,7 @@ mod tests {
                 BlockContentItem::Block(block),
                 BlockContentItem::Paragraph(after),
             ] if paragraph_text(before) == "before"
-                && std::ptr::eq(*block, &nodes[1])
+                && std::ptr::eq(block.node(), &document.nodes()[1])
                 && paragraph_text(after) == "after"
         ));
     }
@@ -269,7 +280,8 @@ mod tests {
             None,
             vec![RdNode::Text("first\n\nsecond".into())],
         )];
-        let items = scan_block_content(&nodes);
+        let document = RdDocument::new(nodes);
+        let items = scan_block_content(document.top_level());
         let [
             BlockContentItem::Paragraph(first),
             BlockContentItem::Paragraph(second),
@@ -296,11 +308,12 @@ mod tests {
                 )],
             )],
         )];
-        let items = scan_block_content(&nodes);
+        let document = RdDocument::new(nodes);
+        let items = scan_block_content(document.top_level());
         let [BlockContentItem::Block(block)] = items.as_slice() else {
             panic!("expected the nested itemize to surface as a block, got {items:?}");
         };
-        assert_eq!(block.as_tagged().unwrap().tag(), &RdTag::Itemize);
+        assert_eq!(block.node().as_tagged().unwrap().tag(), &RdTag::Itemize);
     }
 
     #[test]
@@ -318,12 +331,13 @@ mod tests {
             )),
         ];
 
-        let items = scan_block_content(&nodes);
+        let document = RdDocument::new(nodes);
+        let items = scan_block_content(document.top_level());
         assert!(matches!(
             items.as_slice(),
             [BlockContentItem::Block(first), BlockContentItem::Block(second)]
-                if first.as_tagged().unwrap().tag() == &RdTag::Preformatted
-                    && second.as_tagged().unwrap().tag() == &RdTag::Deqn
+                if first.node().as_tagged().unwrap().tag() == &RdTag::Preformatted
+                    && second.node().as_tagged().unwrap().tag() == &RdTag::Deqn
         ));
     }
 }
