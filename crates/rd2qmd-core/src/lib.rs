@@ -66,6 +66,12 @@ pub struct RdConvertOptions {
 
 /// Extract plain text while preserving the legacy public helper's fallback spellings.
 pub fn extract_text(nodes: &[RdNode]) -> String {
+    let document = RdDocument::new(nodes.to_vec());
+    extract_text_ref(document.top_level())
+}
+
+/// Extract plain text from a positioned node sequence without cloning its AST.
+pub fn extract_text_ref(nodes: rd_ast::RdNodesRef<'_>) -> String {
     fn visit(nodes: rd_ast::RdNodesRef<'_>, out: &mut String) {
         for node in nodes {
             match node.node() {
@@ -136,9 +142,8 @@ pub fn extract_text(nodes: &[RdNode]) -> String {
             }
         }
     }
-    let document = RdDocument::new(nodes.to_vec());
     let mut result = String::new();
-    visit(document.top_level(), &mut result);
+    visit(nodes, &mut result);
     result.trim().to_owned()
 }
 
@@ -171,8 +176,12 @@ pub fn convert_rd_document(doc: &RdDocument, options: &RdConvertOptions) -> Stri
         prefer_ascii_math: options.prefer_ascii_math,
     };
     let mdast = convert_ast::convert_document(doc, &converter_options);
-    let title = doc.title_lossy().map(|field| extract_text(field.body()));
-    let name = doc.name_lossy().map(|field| extract_text(field.body()));
+    let title = doc
+        .title_lossy()
+        .map(|field| extract_text_ref(field.body_ref()));
+    let name = doc
+        .name_lossy()
+        .map(|field| extract_text_ref(field.body_ref()));
     let pagetitle = options
         .frontmatter
         .pagetitle

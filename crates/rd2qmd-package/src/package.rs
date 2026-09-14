@@ -1,6 +1,6 @@
 //! Package discovery: locating and loading an R package's documentation files
 
-use rd2qmd_core::{RdAstEnvelope, RdDocument, extract_rd_metadata, extract_text};
+use rd2qmd_core::{RdAstEnvelope, RdDocument, extract_rd_metadata, extract_text_ref};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -183,7 +183,7 @@ pub(crate) fn build_alias_index(
 
         // Also add \name{} as an alias (it's always a valid reference)
         if let Some(name_field) = doc.name_lossy() {
-            let name = extract_text(name_field.body()).trim().to_string();
+            let name = extract_text_ref(name_field.body_ref()).trim().to_string();
             if !name.is_empty() {
                 index.insert(name, basename.clone());
             }

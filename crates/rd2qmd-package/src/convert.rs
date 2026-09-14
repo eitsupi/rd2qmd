@@ -3,7 +3,7 @@
 use rayon::prelude::*;
 use rd2qmd_core::{
     ArgumentsFormat, Frontmatter, RdAstEnvelope, RdToMdastOptions, WriterOptions,
-    extract_rd_metadata, extract_text, mdast_to_qmd, rd_to_mdast_with_options,
+    extract_rd_metadata, extract_text_ref, mdast_to_qmd, rd_to_mdast_with_options,
 };
 use std::collections::HashMap;
 use std::fs;
@@ -390,8 +390,12 @@ pub(crate) fn convert_single_file(
             let mdast = rd_to_mdast_with_options(&doc, &converter_options);
 
             // Extract title and name for frontmatter
-            let title = doc.title_lossy().map(|field| extract_text(field.body()));
-            let name = doc.name_lossy().map(|field| extract_text(field.body()));
+            let title = doc
+                .title_lossy()
+                .map(|field| extract_text_ref(field.body_ref()));
+            let name = doc
+                .name_lossy()
+                .map(|field| extract_text_ref(field.body_ref()));
 
             // Build pagetitle in pkgdown style: "<title> — <name>"
             let pagetitle = if options.pagetitle {

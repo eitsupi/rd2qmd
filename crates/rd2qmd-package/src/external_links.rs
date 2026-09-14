@@ -18,8 +18,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::{FallbackReason, RdPackage};
-use rd_ast::{RdLinkDestination, RdNodesRef, RdTag};
-use rd2qmd_core::RdNode;
+use rd_ast::RdLinkDestination;
 
 /// Result of resolving external package URLs
 #[derive(Debug, Clone, Default)]
@@ -292,39 +291,28 @@ pub fn collect_external_packages(package: &RdPackage) -> HashSet<String> {
 
     for file in &package.files {
         if let Ok((doc, _, _)) = crate::load_document(file, package.format) {
-            collect_packages_from_nodes(doc.top_level(), &mut packages);
+            collect_packages_from_document(&doc, &mut packages);
         }
     }
 
     packages
 }
 
-/// Recursively collect external package names from Rd nodes
-fn collect_packages_from_nodes(nodes: RdNodesRef<'_>, packages: &mut HashSet<String>) {
-    for node in nodes {
-        if let Some(tagged) = node.node().as_tagged() {
-            if tagged.tag() == &RdTag::Link {
-                if let Ok(Some(link)) = node.inspect_link() {
-                    if let RdLinkDestination::Package { package, topic: _ } = link.destination() {
-                        packages.insert(package.split(':').next().unwrap_or(package).to_owned());
-                    }
-                    collect_packages_from_nodes(link.display_ref(), packages);
-                }
-            } else if tagged.tag() == &RdTag::LinkS4Class
-                && let Some(link) = node.s4_class_link_lossy()
-                && let Some(package) = link.package_text()
-            {
-                packages.insert(package.split(':').next().unwrap_or(&package).to_owned());
-            }
-            if let Some(option) = node.option() {
-                collect_packages_from_nodes(option.nodes_ref(), packages);
-            }
-            collect_packages_from_nodes(node.children(), packages);
-        } else if matches!(node.node(), RdNode::Group(_) | RdNode::Raw(_)) {
-            if let Some(option) = node.option() {
-                collect_packages_from_nodes(option.nodes_ref(), packages);
-            }
-            collect_packages_from_nodes(node.children(), packages);
+/// Collect external package names from every stored AST node.
+fn collect_packages_from_document(
+    document: &rd2qmd_core::RdDocument,
+    packages: &mut HashSet<String>,
+) {
+    for node in document.walk() {
+        if let Ok(Some(link)) = node.inspect_link()
+            && let RdLinkDestination::Package { package, topic: _ } = link.destination()
+        {
+            packages.insert(package.split(':').next().unwrap_or(package).to_owned());
+        }
+        if let Some(link) = node.s4_class_link_lossy()
+            && let Some(package) = link.package_text()
+        {
+            packages.insert(package.split(':').next().unwrap_or(&package).to_owned());
         }
     }
 }
@@ -332,6 +320,7 @@ fn collect_packages_from_nodes(nodes: RdNodesRef<'_>, packages: &mut HashSet<Str
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rd_ast::{RdDocument, RdNode, RdTag, producer};
     use tempfile::tempdir;
 
     #[test]
@@ -470,6 +459,52 @@ See \linkS4class[methods]{envRefClass} and \linkS4class{LocalClass}.
         );
         // Unqualified \linkS4class links do not
         assert_eq!(external.len(), 1);
+    }
+
+    #[test]
+    fn document_walk_collects_links_in_options_raw_nodes_and_link_displays() {
+        fn link(package: &str, topic: &str) -> RdNode {
+            RdNode::tagged(
+                RdTag::Link,
+                Some(vec![RdNode::Text(package.to_owned())]),
+                vec![RdNode::Text(topic.to_owned())],
+            )
+        }
+
+        let nested_display = RdNode::tagged(
+            RdTag::Link,
+            Some(vec![RdNode::Text("=outer".to_owned())]),
+            vec![link("displaypkg", "topic")],
+        );
+        let raw = RdNode::Raw(producer::raw_node(
+            None,
+            Some(vec![RdNode::tagged(
+                RdTag::LinkS4Class,
+                Some(vec![RdNode::Text("s4pkg".to_owned())]),
+                vec![RdNode::Text("Class".to_owned())],
+            )]),
+            vec![link("rawpkg", "topic")],
+            None,
+            vec![],
+        ));
+        let document = RdDocument::new(vec![RdNode::tagged(
+            RdTag::Unknown(r"\wrapper".to_owned()),
+            Some(vec![link("optionpkg", "topic")]),
+            vec![nested_display, raw],
+        )]);
+        let mut packages = HashSet::new();
+
+        collect_packages_from_document(&document, &mut packages);
+
+        assert_eq!(
+            packages,
+            HashSet::from([
+                "displaypkg".to_owned(),
+                "optionpkg".to_owned(),
+                "rawpkg".to_owned(),
+                "s4pkg".to_owned(),
+            ])
+        );
     }
 
     #[test]
