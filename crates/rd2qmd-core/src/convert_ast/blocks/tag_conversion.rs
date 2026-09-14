@@ -1,14 +1,14 @@
 //! The actual Rd-tag-to-block-node conversion: turning a scanned paragraph or
 //! tagged block node into mdast [`Node`]s.
 
-use rd_ast::{RdListItem, RdListKind, RdNode, RdPath, RdTag};
+use rd_ast::{RdListItem, RdListKind, RdNodeRef, RdTag};
 use rd2qmd_mdast::{Align, Node};
 
 use crate::convert_ast::inline::{self, InlineConversionContext};
 use crate::convert_ast::traversal::ParagraphItem;
 
 use super::table_cell::sanitize_table_cell_inline_nodes;
-use super::{BlockConversionContext, convert_block_content, recover_verbatim};
+use super::{BlockConversionContext, recover_verbatim};
 
 pub(super) fn convert_paragraph(
     items: Vec<ParagraphItem<'_>>,
@@ -18,24 +18,26 @@ pub(super) fn convert_paragraph(
         .into_iter()
         .flat_map(|item| match item {
             ParagraphItem::Text(text) => vec![inline::convert_text(text)],
-            ParagraphItem::Node(node) => {
-                inline::convert_inline_nodes(std::slice::from_ref(node), &context.inline)
-            }
+            ParagraphItem::Node(node) => inline::convert_inline_node_ref(node, &context.inline)
+                .into_iter()
+                .collect(),
         })
         .collect();
 
     (!children.is_empty()).then(|| Node::paragraph(children))
 }
 
-pub(super) fn convert_block(node: &RdNode, context: &BlockConversionContext<'_>) -> Vec<Node> {
-    let Some(tagged) = node.as_tagged() else {
+pub(super) fn convert_block(
+    node: RdNodeRef<'_>,
+    context: &BlockConversionContext<'_>,
+) -> Vec<Node> {
+    let Some(tagged) = node.node().as_tagged() else {
         return Vec::new();
     };
-    let base_path = RdPath::new(Vec::new());
 
     match tagged.tag() {
         RdTag::Itemize | RdTag::Enumerate => {
-            let Some(list) = tagged.inspect_list(&base_path).ok() else {
+            let Some(list) = node.inspect_list().ok().flatten() else {
                 return Vec::new();
             };
             let ordered = match list.kind() {
@@ -49,16 +51,16 @@ pub(super) fn convert_block(node: &RdNode, context: &BlockConversionContext<'_>)
             let items = list
                 .items()
                 .filter_map(|item| match item.ok()? {
-                    RdListItem::Delimited(item) => {
-                        Some(Node::list_item(convert_block_content(item.body(), context)))
-                    }
+                    RdListItem::Delimited(item) => Some(Node::list_item(
+                        super::convert_block_content_ref(item.body_ref(), context),
+                    )),
                     _ => None,
                 })
                 .collect();
             vec![Node::list(ordered, items)]
         }
         RdTag::Describe => {
-            let Some(list) = tagged.inspect_list(&base_path).ok() else {
+            let Some(list) = node.inspect_list().ok().flatten() else {
                 return Vec::new();
             };
             if list.kind() != RdListKind::Describe {
@@ -72,22 +74,21 @@ pub(super) fn convert_block(node: &RdNode, context: &BlockConversionContext<'_>)
                 let Ok(RdListItem::Described(item)) = item else {
                     continue;
                 };
-                children.push(Node::definition_term(inline::convert_inline_nodes(
-                    item.label(),
+                children.push(Node::definition_term(inline::convert_inline_nodes_ref(
+                    item.label_ref(),
                     &context.inline,
                 )));
                 // Unlike the legacy inline-only description, preserve arbitrary
                 // block children such as multiple paragraphs and nested lists.
-                children.push(Node::definition_description(convert_block_content(
-                    item.body(),
-                    context,
-                )));
+                children.push(Node::definition_description(
+                    super::convert_block_content_ref(item.body_ref(), context),
+                ));
             }
             vec![Node::definition_list(children)]
         }
         RdTag::Preformatted => vec![Node::code(None, recover_verbatim(tagged.children()))],
         RdTag::Deqn => {
-            let Some(equation) = tagged.inspect_equation(&base_path).ok() else {
+            let Some(equation) = node.inspect_equation().ok().flatten() else {
                 return Vec::new();
             };
             if context.prefer_ascii_math
@@ -98,20 +99,19 @@ pub(super) fn convert_block(node: &RdNode, context: &BlockConversionContext<'_>)
                     return vec![Node::code(None, ascii)];
                 }
             }
-            vec![Node::math(equation_text(equation.latex(), &context.inline))]
+            vec![Node::math(equation_text_ref(
+                equation.latex_ref(),
+                &context.inline,
+            ))]
         }
-        RdTag::Tabular => convert_tabular(tagged, context).into_iter().collect(),
-        RdTag::Section | RdTag::Subsection => convert_section_like_block(tagged, context),
+        RdTag::Tabular => convert_tabular(node, context).into_iter().collect(),
+        RdTag::Section | RdTag::Subsection => convert_section_like_block(node, context),
         _ => Vec::new(),
     }
 }
 
-fn convert_tabular(
-    tagged: &rd_ast::RdTagged,
-    context: &BlockConversionContext<'_>,
-) -> Option<Node> {
-    let base_path = RdPath::new(Vec::new());
-    let table = tagged.inspect_tabular(&base_path).ok()?;
+fn convert_tabular(node: RdNodeRef<'_>, context: &BlockConversionContext<'_>) -> Option<Node> {
+    let table = node.inspect_tabular().ok()??;
     // rd-ast skips unrecognized colspec characters, whereas legacy conversion
     // retained an unaligned placeholder. This can shift alignment for malformed
     // specs; rows remain recovery-safe because the GFM writer pads ragged rows.
@@ -129,16 +129,16 @@ fn convert_tabular(
         .rows()
         .iter()
         .map(|row| {
-            let cells =
-                row.cells()
-                    .iter()
-                    .map(|cell| {
-                        let children = sanitize_table_cell_inline_nodes(
-                            &inline::convert_inline_nodes(cell.nodes(), &context.inline),
-                        );
-                        Node::table_cell(children)
-                    })
-                    .collect();
+            let cells = row
+                .cells()
+                .iter()
+                .map(|cell| {
+                    let children = sanitize_table_cell_inline_nodes(
+                        &inline::convert_inline_nodes_ref(cell.nodes_ref(), &context.inline),
+                    );
+                    Node::table_cell(children)
+                })
+                .collect();
             Node::table_row(cells)
         })
         .collect();
@@ -146,31 +146,38 @@ fn convert_tabular(
 }
 
 fn convert_section_like_block(
-    tagged: &rd_ast::RdTagged,
+    node: RdNodeRef<'_>,
     context: &BlockConversionContext<'_>,
 ) -> Vec<Node> {
+    let tagged = node.node().as_tagged().expect("section node is tagged");
     if tagged.option().is_some() {
         return Vec::new();
     }
     let [title, body] = tagged.children() else {
         return Vec::new();
     };
-    let (Some(title), Some(body)) = (title.as_group(), body.as_group()) else {
+    if title.as_group().is_none() || body.as_group().is_none() {
         return Vec::new();
-    };
+    }
     let depth = context.enclosing_heading_depth.saturating_add(1).min(6);
+    let children = node.children();
+    let title_ref = children.get(0).expect("section title exists").children();
+    let body_ref = children.get(1).expect("section body exists").children();
     let mut nodes = vec![Node::heading(
         depth,
-        inline::convert_inline_nodes(title.children(), &context.inline),
+        inline::convert_inline_nodes_ref(title_ref, &context.inline),
     )];
     let child_context = BlockConversionContext {
         enclosing_heading_depth: depth,
         ..*context
     };
-    nodes.extend(convert_block_content(body.children(), &child_context));
+    nodes.extend(super::convert_block_content_ref(body_ref, &child_context));
     nodes
 }
 
-fn equation_text(nodes: &[RdNode], context: &InlineConversionContext<'_>) -> String {
-    inline::extract_plain_text(&inline::convert_inline_nodes(nodes, context))
+fn equation_text_ref(
+    nodes: rd_ast::RdNodesRef<'_>,
+    context: &InlineConversionContext<'_>,
+) -> String {
+    inline::extract_plain_text(&inline::convert_inline_nodes_ref(nodes, context))
 }

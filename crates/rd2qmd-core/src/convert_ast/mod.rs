@@ -24,10 +24,10 @@ pub(crate) fn is_usermacro_definition(node: &rd_ast::RdNode) -> bool {
 pub(crate) use assembly::convert_document;
 #[allow(unused_imports)]
 pub(crate) use blocks::{
-    BlockConversionContext, convert_arguments, convert_block_content, convert_custom_section,
+    BlockConversionContext, convert_arguments, convert_block_content_ref, convert_custom_section,
 };
 #[allow(unused_imports)]
-pub(crate) use code::{ExampleOptions, convert_examples, convert_usage};
+pub(crate) use code::{ExampleOptions, convert_examples_ref, convert_usage_ref};
 #[allow(unused_imports)]
 pub(crate) use document::{
     CustomSection, DocumentMetadata, DocumentSection, DocumentStructure, FixedSection,
@@ -35,11 +35,8 @@ pub(crate) use document::{
     extract_document_metadata,
 };
 #[allow(unused_imports)]
-pub(crate) use inline::{
-    InlineConversionContext, LinkResolutionContext, convert_inline_node, convert_inline_nodes,
-    extract_plain_text,
-};
+pub(crate) use inline::{InlineConversionContext, LinkResolutionContext, extract_plain_text};
 #[allow(unused_imports)]
-pub(crate) use roxygen::{RoxygenCodeBlock, try_match_roxygen_code_block};
+pub(crate) use roxygen::RoxygenCodeBlock;
 #[allow(unused_imports)]
 pub(crate) use traversal::{BlockContentItem, ParagraphItem, scan_block_content};

@@ -18,7 +18,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::{FallbackReason, RdPackage};
-use rd_ast::{RdLinkDestination, RdPath, RdTag};
+use rd_ast::{RdLinkDestination, RdNodesRef, RdTag};
 use rd2qmd_core::RdNode;
 
 /// Result of resolving external package URLs
@@ -292,7 +292,7 @@ pub fn collect_external_packages(package: &RdPackage) -> HashSet<String> {
 
     for file in &package.files {
         if let Ok((doc, _, _)) = crate::load_document(file, package.format) {
-            collect_packages_from_nodes(doc.nodes(), &mut packages);
+            collect_packages_from_nodes(doc.top_level(), &mut packages);
         }
     }
 
@@ -300,33 +300,31 @@ pub fn collect_external_packages(package: &RdPackage) -> HashSet<String> {
 }
 
 /// Recursively collect external package names from Rd nodes
-fn collect_packages_from_nodes(nodes: &[RdNode], packages: &mut HashSet<String>) {
+fn collect_packages_from_nodes(nodes: RdNodesRef<'_>, packages: &mut HashSet<String>) {
     for node in nodes {
-        let path = RdPath::new(Vec::new());
-        if let Some(tagged) = node.as_tagged() {
+        if let Some(tagged) = node.node().as_tagged() {
             if tagged.tag() == &RdTag::Link {
-                if let Ok(link) = tagged.inspect_link(&path) {
-                    if let RdLinkDestination::Package { package, topic } = link.destination() {
+                if let Ok(Some(link)) = node.inspect_link() {
+                    if let RdLinkDestination::Package { package, topic: _ } = link.destination() {
                         packages.insert(package.split(':').next().unwrap_or(package).to_owned());
-                        if let rd_ast::RdLinkTopic::DisplayText(display) = topic {
-                            collect_packages_from_nodes(display, packages);
-                        }
                     }
-                    collect_packages_from_nodes(link.display(), packages);
+                    collect_packages_from_nodes(link.display_ref(), packages);
                 }
             } else if tagged.tag() == &RdTag::LinkS4Class
-                && let Some(link) = node.s4_class_link(&path)
+                && let Some(link) = node.s4_class_link_lossy()
                 && let Some(package) = link.package_text()
             {
                 packages.insert(package.split(':').next().unwrap_or(&package).to_owned());
             }
-            collect_packages_from_nodes(tagged.option().unwrap_or_default(), packages);
-            collect_packages_from_nodes(tagged.children(), packages);
-        } else if let Some(group) = node.as_group() {
-            collect_packages_from_nodes(group.children(), packages);
-        } else if let Some(raw) = node.as_raw() {
-            collect_packages_from_nodes(raw.option().unwrap_or_default(), packages);
-            collect_packages_from_nodes(raw.children(), packages);
+            if let Some(option) = node.option() {
+                collect_packages_from_nodes(option.nodes_ref(), packages);
+            }
+            collect_packages_from_nodes(node.children(), packages);
+        } else if matches!(node.node(), RdNode::Group(_) | RdNode::Raw(_)) {
+            if let Some(option) = node.option() {
+                collect_packages_from_nodes(option.nodes_ref(), packages);
+            }
+            collect_packages_from_nodes(node.children(), packages);
         }
     }
 }

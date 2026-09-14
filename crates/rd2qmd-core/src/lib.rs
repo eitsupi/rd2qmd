@@ -66,19 +66,17 @@ pub struct RdConvertOptions {
 
 /// Extract plain text while preserving the legacy public helper's fallback spellings.
 pub fn extract_text(nodes: &[RdNode]) -> String {
-    fn visit(nodes: &[RdNode], out: &mut String) {
-        let path = rd_ast::RdPath::new(Vec::new());
+    fn visit(nodes: rd_ast::RdNodesRef<'_>, out: &mut String) {
         for node in nodes {
-            match node {
+            match node.node() {
                 RdNode::Text(value) | RdNode::RCode(value) | RdNode::Verb(value) => {
                     out.push_str(value)
                 }
                 RdNode::Comment(_) => {}
-                RdNode::Group(group) => visit(group.children(), out),
-                RdNode::Raw(raw) => visit(raw.children(), out),
+                RdNode::Group(_) | RdNode::Raw(_) => visit(node.children(), out),
                 RdNode::Tagged(tagged) => {
                     if tagged.tag() == &rd_ast::RdTag::Link {
-                        if let Ok(link) = tagged.inspect_link(&path) {
+                        if let Ok(Some(link)) = node.inspect_link() {
                             // Mirrors convert_ast::inline::convert_link's display
                             // logic: `\link[pkg]{topic}` (no explicit override)
                             // shows "pkg::topic", but every other form (bare
@@ -88,25 +86,25 @@ pub fn extract_text(nodes: &[RdNode]) -> String {
                             match link.destination() {
                                 rd_ast::RdLinkDestination::Package {
                                     package,
-                                    topic: rd_ast::RdLinkTopic::DisplayText(nodes),
+                                    topic: rd_ast::RdLinkTopic::DisplayText(_),
                                 } => {
                                     out.push_str(package);
                                     out.push_str("::");
-                                    visit(nodes, out);
+                                    visit(link.display_ref(), out);
                                 }
-                                _ => visit(link.display(), out),
+                                _ => visit(link.display_ref(), out),
                             }
                         } else {
-                            visit(tagged.children(), out);
+                            visit(node.children(), out);
                         }
                     } else if tagged.tag() == &rd_ast::RdTag::Href {
-                        if let Ok(href) = tagged.inspect_href(&path) {
-                            visit(href.display(), out)
+                        if let Ok(Some(href)) = node.inspect_href() {
+                            visit(href.display_ref(), out)
                         } else {
-                            visit(tagged.children(), out);
+                            visit(node.children(), out);
                         }
                     } else if tagged.tag() == &rd_ast::RdTag::LinkS4Class {
-                        if let Some(link) = node.s4_class_link(&path)
+                        if let Some(link) = node.s4_class_link_lossy()
                             && let Some(class) = link.class_text()
                         {
                             if let Some(package) = link.package_text() {
@@ -120,26 +118,27 @@ pub fn extract_text(nodes: &[RdNode]) -> String {
                             out.push_str("doi:");
                             out.push_str(id);
                         } else {
-                            visit(tagged.children(), out);
+                            visit(node.children(), out);
                         }
                     } else if tagged.tag() == &rd_ast::RdTag::Enc {
-                        if let Some(enc) = node.enc(&path) {
-                            visit(enc.encoded(), out);
+                        if let Some(enc) = node.enc_lossy() {
+                            visit(enc.encoded_ref(), out);
                         }
-                    } else if let Some(span) = node.inline_span(&path) {
-                        visit(span.body(), out);
-                    } else if let Some(symbol) = node.text_symbol(&path) {
+                    } else if let Some(span) = node.inline_span_lossy() {
+                        visit(span.body_ref(), out);
+                    } else if let Some(symbol) = node.text_symbol_lossy() {
                         out.push_str(symbol.fallback_text());
                     } else {
-                        visit(tagged.children(), out);
+                        visit(node.children(), out);
                     }
                 }
                 _ => {}
             }
         }
     }
+    let document = RdDocument::new(nodes.to_vec());
     let mut result = String::new();
-    visit(nodes, &mut result);
+    visit(document.top_level(), &mut result);
     result.trim().to_owned()
 }
 
@@ -172,8 +171,8 @@ pub fn convert_rd_document(doc: &RdDocument, options: &RdConvertOptions) -> Stri
         prefer_ascii_math: options.prefer_ascii_math,
     };
     let mdast = convert_ast::convert_document(doc, &converter_options);
-    let title = doc.title().map(extract_text);
-    let name = doc.name().map(extract_text);
+    let title = doc.title_lossy().map(|field| extract_text(field.body()));
+    let name = doc.name_lossy().map(|field| extract_text(field.body()));
     let pagetitle = options
         .frontmatter
         .pagetitle
@@ -267,9 +266,9 @@ mod tests {
             ),
             RdNode::Text(".".into()),
         ]);
-        let description = doc.description().unwrap();
+        let description = doc.description_lossy().unwrap();
         assert_eq!(
-            extract_text(description),
+            extract_text(description.body()),
             "Use foo() and bar. pkg::topic plain pkg::Class doi:10.1000/xyz."
         );
     }
@@ -292,7 +291,7 @@ mod tests {
             RdNode::Text(".".into()),
         ]);
         assert_eq!(
-            extract_text(doc.description().unwrap()),
+            extract_text(doc.description_lossy().unwrap().body()),
             "See explicit label and qualified label."
         );
     }
@@ -311,7 +310,10 @@ mod tests {
             ),
             RdNode::Text(".".into()),
         ]);
-        assert_eq!(extract_text(doc.description().unwrap()), "Visit the site.");
+        assert_eq!(
+            extract_text(doc.description_lossy().unwrap().body()),
+            "Visit the site."
+        );
     }
 
     #[test]
@@ -387,7 +389,7 @@ mod tests {
             RdNode::Text(".".into()),
         ]);
         assert_eq!(
-            extract_text(doc.description().unwrap()),
+            extract_text(doc.description_lossy().unwrap().body()),
             "Using café and R."
         );
     }

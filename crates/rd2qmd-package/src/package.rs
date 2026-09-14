@@ -174,7 +174,7 @@ pub(crate) fn build_alias_index(
 
         let (doc, _source_files, _diagnostics) = load_document(file, format)?;
 
-        for alias in doc.aliases() {
+        for alias in doc.aliases_lossy() {
             let alias = alias.trim().to_string();
             if !alias.is_empty() {
                 index.insert(alias, basename.clone());
@@ -182,8 +182,8 @@ pub(crate) fn build_alias_index(
         }
 
         // Also add \name{} as an alias (it's always a valid reference)
-        if let Some(name_nodes) = doc.name() {
-            let name = extract_text(name_nodes).trim().to_string();
+        if let Some(name_field) = doc.name_lossy() {
+            let name = extract_text(name_field.body()).trim().to_string();
             if !name.is_empty() {
                 index.insert(name, basename.clone());
             }

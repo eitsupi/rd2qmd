@@ -1,6 +1,8 @@
 //! Conversion of R-like Usage and Examples sections from rd_ast nodes.
 
-use rd_ast::{RdExampleControlKind, RdMethodKind, RdNode, RdPath};
+#[cfg(test)]
+use rd_ast::RdDocument;
+use rd_ast::{RdExampleControlKind, RdMethodKind, RdNode, RdNodesRef};
 use rd2qmd_mdast::Node;
 
 use super::leaf_text::flatten_verbatim_leaves;
@@ -13,23 +15,30 @@ pub(crate) struct ExampleOptions {
 }
 
 /// Flatten a Usage section while preserving its source whitespace.
+#[cfg(test)]
 pub(crate) fn convert_usage(nodes: &[RdNode]) -> String {
+    let document = RdDocument::new(nodes.to_vec());
     let mut output = String::new();
-    append_rcode(nodes, &mut output);
+    append_rcode(document.top_level(), &mut output);
     output
 }
 
 /// Convert an Examples section into separately fenced code blocks.
+#[cfg(test)]
 pub(crate) fn convert_examples(nodes: &[RdNode], options: &ExampleOptions) -> Vec<Node> {
+    let document = RdDocument::new(nodes.to_vec());
+    convert_examples_ref(document.top_level(), options)
+}
+
+pub(crate) fn convert_examples_ref(nodes: RdNodesRef<'_>, options: &ExampleOptions) -> Vec<Node> {
     let mut result = Vec::new();
     let mut current_code = String::new();
     let mut has_executable = false;
-    let base_path = RdPath::new(Vec::new());
 
     for node in nodes {
-        let Some(control) = node.example_control(&base_path) else {
+        let Some(control) = node.example_control_lossy() else {
             has_executable = true;
-            append_rcode(std::slice::from_ref(node), &mut current_code);
+            append_rcode_single(node, &mut current_code);
             continue;
         };
 
@@ -46,12 +55,12 @@ pub(crate) fn convert_examples(nodes: &[RdNode], options: &ExampleOptions) -> Ve
                 has_executable = false;
 
                 let mut code = String::new();
-                append_rcode(control.body(), &mut code);
+                append_rcode(control.body_ref(), &mut code);
                 push_code(&mut result, &code, options.exec_donttest);
             }
             RdExampleControlKind::DontShow | RdExampleControlKind::TestOnly => {
                 let mut code = String::new();
-                append_rcode(control.body(), &mut code);
+                append_rcode(control.body_ref(), &mut code);
                 let trimmed = code.trim();
                 let open_braces = trimmed
                     .chars()
@@ -78,11 +87,11 @@ pub(crate) fn convert_examples(nodes: &[RdNode], options: &ExampleOptions) -> Ve
             }
             RdExampleControlKind::DontDiff => {
                 has_executable = true;
-                append_rcode(control.body(), &mut current_code);
+                append_rcode(control.body_ref(), &mut current_code);
             }
             _ => {
                 has_executable = true;
-                append_rcode(control.body(), &mut current_code);
+                append_rcode(control.body_ref(), &mut current_code);
             }
         }
     }
@@ -94,6 +103,12 @@ pub(crate) fn convert_examples(nodes: &[RdNode], options: &ExampleOptions) -> Ve
     }
 
     result
+}
+
+pub(crate) fn convert_usage_ref(nodes: RdNodesRef<'_>) -> String {
+    let mut output = String::new();
+    append_rcode(nodes, &mut output);
+    output
 }
 
 fn recover_verbatim(nodes: &[RdNode]) -> String {
@@ -125,48 +140,32 @@ fn flush_code(code: &mut String, result: &mut Vec<Node>, executable: bool) {
     code.clear();
 }
 
-fn append_rcode(nodes: &[RdNode], output: &mut String) {
+fn append_rcode(nodes: RdNodesRef<'_>, output: &mut String) {
     let mut index = 0;
-    let base_path = RdPath::new(Vec::new());
 
     while index < nodes.len() {
-        match &nodes[index] {
+        let node = nodes.get(index).expect("index is in bounds");
+        match node.node() {
             RdNode::RCode(code) => output.push_str(code),
             RdNode::Comment(_) => {}
-            RdNode::Group(group) => append_rcode(group.children(), output),
-            RdNode::Raw(raw) => append_rcode(raw.children(), output),
-            node => {
-                if let Some(symbol) = node.text_symbol(&base_path) {
+            RdNode::Group(_) | RdNode::Raw(_) => append_rcode(node.children(), output),
+            _ => {
+                if let Some(symbol) = node.text_symbol_lossy() {
                     output.push_str(symbol.fallback_text());
                     index += 1;
                     continue;
                 }
 
-                let Some(method) = node.method(&base_path) else {
+                let Some(method) = node.method_lossy() else {
                     index += 1;
                     continue;
                 };
 
-                match method.kind() {
-                    RdMethodKind::Method | RdMethodKind::S3Method => {
-                        if method.qualifier() == "default" {
-                            output.push_str("# Default S3 method\n");
-                        } else {
-                            output.push_str(&format!(
-                                "# S3 method for class '{}'\n",
-                                method.qualifier()
-                            ));
-                        }
-                    }
-                    RdMethodKind::S4Method => output.push_str(&format!(
-                        "# S4 method for signature '{}'\n",
-                        method.qualifier()
-                    )),
-                    _ => {}
-                }
+                append_method_header(&method, output);
 
                 if is_infix_operator(method.generic())
-                    && let Some(RdNode::RCode(call_text)) = nodes.get(index + 1)
+                    && let Some(next) = nodes.get(index + 1)
+                    && let RdNode::RCode(call_text) = next.node()
                     && let Some(formatted) = try_format_infix_call(method.generic(), call_text)
                 {
                     output.push_str(&formatted);
@@ -178,6 +177,39 @@ fn append_rcode(nodes: &[RdNode], output: &mut String) {
             }
         }
         index += 1;
+    }
+}
+
+fn append_rcode_single(node: rd_ast::RdNodeRef<'_>, output: &mut String) {
+    match node.node() {
+        RdNode::RCode(code) => output.push_str(code),
+        RdNode::Comment(_) => {}
+        RdNode::Group(_) | RdNode::Raw(_) => append_rcode(node.children(), output),
+        _ => {
+            if let Some(symbol) = node.text_symbol_lossy() {
+                output.push_str(symbol.fallback_text());
+            } else if let Some(method) = node.method_lossy() {
+                append_method_header(&method, output);
+                output.push_str(method.generic());
+            }
+        }
+    }
+}
+
+fn append_method_header(method: &rd_ast::RdMethod<'_>, output: &mut String) {
+    match method.kind() {
+        RdMethodKind::Method | RdMethodKind::S3Method => {
+            if method.qualifier() == "default" {
+                output.push_str("# Default S3 method\n");
+            } else {
+                output.push_str(&format!("# S3 method for class '{}'\n", method.qualifier()));
+            }
+        }
+        RdMethodKind::S4Method => output.push_str(&format!(
+            "# S4 method for signature '{}'\n",
+            method.qualifier()
+        )),
+        _ => {}
     }
 }
 

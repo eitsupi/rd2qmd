@@ -5,8 +5,8 @@ use rd2qmd_mdast::{Node, Root};
 use super::{
     BlockConversionContext, DocumentSection, ExampleOptions, FixedSection, FixedSectionBody,
     FixedSectionKind, InlineConversionContext, LinkResolutionContext, build_document_structure,
-    convert_arguments, convert_block_content, convert_custom_section, convert_examples,
-    convert_usage,
+    convert_arguments, convert_block_content_ref, convert_custom_section, convert_examples_ref,
+    convert_usage_ref,
 };
 
 /// Convert one rd-ast document into a complete mdast root.
@@ -71,17 +71,20 @@ fn convert_fixed_section(
         )),
         FixedSectionBody::Nodes(body) => match section.kind {
             FixedSectionKind::Usage => {
-                nodes.push(Node::code(Some("r".to_owned()), convert_usage(body).trim()));
+                nodes.push(Node::code(
+                    Some("r".to_owned()),
+                    convert_usage_ref(body.clone()).trim(),
+                ));
             }
-            FixedSectionKind::Examples => nodes.extend(convert_examples(
-                body,
+            FixedSectionKind::Examples => nodes.extend(convert_examples_ref(
+                body.clone(),
                 &ExampleOptions {
                     exec_dontrun: options.exec_dontrun,
                     exec_donttest: options.exec_donttest,
                     quarto_code_blocks: options.quarto_code_blocks,
                 },
             )),
-            _ => nodes.extend(convert_block_content(body, context)),
+            _ => nodes.extend(convert_block_content_ref(body.clone(), context)),
         },
     }
 

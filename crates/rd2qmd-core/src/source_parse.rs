@@ -5,7 +5,7 @@ use rd_ast::RdDocument;
 /// Extract owned source paths from a recognized generation header.
 pub(crate) fn extract_source_files(document: &RdDocument) -> Vec<String> {
     document
-        .generation_header()
+        .generation_header_lossy()
         .map(|header| {
             header
                 .source_files()
