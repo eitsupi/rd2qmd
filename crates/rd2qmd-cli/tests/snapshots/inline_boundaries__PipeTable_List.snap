@@ -1,0 +1,33 @@
+---
+source: crates/rd2qmd-cli/tests/inline_boundaries.rs
+expression: visible_spaces
+---
+# Spaces
+
+## Description
+
+A _foo_ B.
+
+A **bar** B.
+
+A **_nested_** B.
+
+A[ _linked_ ](https://example.com)B.
+
+A _`x | y`_ B.
+
+A B.
+
+- **_label_**
+
+  Label body.
+
+-␠
+
+  Empty label body.
+
+## Arguments
+
+| Argument | Description |
+|:---|:---|
+| `x` | A _foo_ B. <br>A **_nested_** B. <br>- **_term_** <br>Argument body. |

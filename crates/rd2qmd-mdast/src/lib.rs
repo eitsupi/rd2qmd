@@ -18,6 +18,9 @@
 //! assert!(qmd.contains("# Hello"));
 //! ```
 
+mod inline_boundaries;
+pub use inline_boundaries::normalize_inline_boundaries;
+
 pub mod mdast;
 pub mod writer;
 

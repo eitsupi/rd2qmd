@@ -140,6 +140,10 @@ fn nodes_to_markdown(nodes: &[Node]) -> String {
 }
 
 pub(super) fn inline_nodes_to_markdown(nodes: &[Node]) -> String {
+    normalized_inline_nodes_to_markdown(&rd2qmd_mdast::normalize_inline_boundaries(nodes))
+}
+
+fn normalized_inline_nodes_to_markdown(nodes: &[Node]) -> String {
     let mut result = String::new();
 
     for node in nodes {
@@ -151,17 +155,17 @@ pub(super) fn inline_nodes_to_markdown(nodes: &[Node]) -> String {
             )),
             Node::Emphasis(emphasis) => {
                 result.push('*');
-                result.push_str(&inline_nodes_to_markdown(&emphasis.children));
+                result.push_str(&normalized_inline_nodes_to_markdown(&emphasis.children));
                 result.push('*');
             }
             Node::Strong(strong) => {
                 result.push_str("**");
-                result.push_str(&inline_nodes_to_markdown(&strong.children));
+                result.push_str(&normalized_inline_nodes_to_markdown(&strong.children));
                 result.push_str("**");
             }
             Node::Link(link) => {
                 result.push('[');
-                result.push_str(&inline_nodes_to_markdown(&link.children));
+                result.push_str(&normalized_inline_nodes_to_markdown(&link.children));
                 result.push_str("](");
                 result.push_str(&rd2qmd_mdast::format_link_destination(&link.url));
                 if let Some(title) = &link.title {

@@ -57,7 +57,9 @@ pub struct RdMetadata {
 /// Convert mdast to Quarto Markdown
 pub fn mdast_to_qmd(root: &Root, options: &WriterOptions) -> String {
     let mut writer = Writer::new(options);
-    writer.write_root(root)
+    writer.write_root(&Root::new(crate::normalize_inline_boundaries(
+        &root.children,
+    )))
 }
 
 /// Format the identified CommonMark-unsafe URL cases as a link destination.

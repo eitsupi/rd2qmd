@@ -145,7 +145,8 @@ pub(super) fn convert_block(
 
 /// Add visual emphasis without turning an empty term into a thematic break or
 /// putting whitespace immediately inside Markdown emphasis delimiters.
-fn describe_list_label(mut label: Vec<Node>) -> Node {
+fn describe_list_label(label: Vec<Node>) -> Node {
+    let mut label = rd2qmd_mdast::normalize_inline_boundaries(&label);
     while let Some(Node::Text(text)) = label.first_mut() {
         text.value = text.value.trim_start().to_owned();
         if !text.value.is_empty() {
