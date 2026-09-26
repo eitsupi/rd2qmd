@@ -1200,7 +1200,7 @@ dependencies = [
 
 [[package]]
 name = "rd2qmd"
-version = "0.5.3"
+version = "0.6.0-alpha.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1217,7 +1217,7 @@ dependencies = [
 
 [[package]]
 name = "rd2qmd-core"
-version = "0.5.3"
+version = "0.6.0-alpha.1"
 dependencies = [
  "insta",
  "rd-ast",
@@ -1230,7 +1230,7 @@ dependencies = [
 
 [[package]]
 name = "rd2qmd-mdast"
-version = "0.5.3"
+version = "0.6.0-alpha.1"
 dependencies = [
  "insta",
  "serde",
@@ -1239,7 +1239,7 @@ dependencies = [
 
 [[package]]
 name = "rd2qmd-package"
-version = "0.5.3"
+version = "0.6.0-alpha.1"
 dependencies = [
  "r-description",
  "rayon",
@@ -1257,7 +1257,7 @@ dependencies = [
 
 [[package]]
 name = "rd2qmd-source"
-version = "0.5.3"
+version = "0.6.0-alpha.1"
 dependencies = [
  "rd-ast",
  "rd-source",
