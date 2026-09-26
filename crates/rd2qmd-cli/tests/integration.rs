@@ -253,6 +253,15 @@ fn test_arguments_rich_list_table() {
 fn test_arguments_rich_grid_table() {
     let output = convert_fixture("arguments_rich", &["--arguments-format", "grid-table"]);
     insta::assert_snapshot!("arguments_rich_grid_table", output);
+
+    // Configuration files must retain grid support in the ordinary CLI build.
+    let root = unique_temp_dir("grid_config");
+    fs::create_dir_all(&root).unwrap();
+    let config = root.join("rd2qmd.toml");
+    fs::write(&config, "[output]\narguments_format = \"grid-table\"\n").unwrap();
+    let configured = convert_fixture("arguments_rich", &["--config", config.to_str().unwrap()]);
+    fs::remove_dir_all(&root).unwrap();
+    assert_eq!(configured, output);
 }
 
 /// Same rich `\arguments{}` content, rendered with `--arguments-format list`.

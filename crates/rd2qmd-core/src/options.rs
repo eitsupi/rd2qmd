@@ -4,6 +4,8 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum ArgumentsFormat {
     PipeTable,
+    /// Pandoc grid table; requires the `grid-table` Cargo feature.
+    #[cfg(feature = "grid-table")]
     GridTable,
     #[default]
     ListTable,

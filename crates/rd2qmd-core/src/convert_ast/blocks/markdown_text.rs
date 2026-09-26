@@ -4,9 +4,11 @@
 
 #[cfg(test)]
 use rd_ast::RdNode;
+#[cfg(feature = "grid-table")]
 use rd_ast::RdNodesRef;
 use rd2qmd_mdast::{Node, Root, WriterOptions, mdast_to_qmd};
 
+#[cfg(any(test, feature = "grid-table"))]
 use super::BlockConversionContext;
 #[cfg(test)]
 use super::convert_block_content;
@@ -25,6 +27,7 @@ pub(super) fn convert_to_markdown_text(
     nodes_to_markdown(&convert_block_content(content, context))
 }
 
+#[cfg(feature = "grid-table")]
 pub(super) fn convert_to_markdown_text_ref(
     content: RdNodesRef<'_>,
     context: &BlockConversionContext<'_>,
@@ -32,6 +35,7 @@ pub(super) fn convert_to_markdown_text_ref(
     nodes_to_markdown(&super::convert_block_content_ref(content, context))
 }
 
+#[cfg(any(test, feature = "grid-table"))]
 fn nodes_to_markdown(nodes: &[Node]) -> String {
     let mut result = String::new();
 

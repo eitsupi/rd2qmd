@@ -79,6 +79,26 @@ for (pkg, reason) in &result.fallbacks {
 
 - `external-links` - Enable external package link resolution. Resolves cross-package `\link[pkg]{topic}` references using installed package metadata and pkgdown URL conventions.
 
+## Grid table feature
+
+No Cargo features are enabled by default. `ListTable` (the default), `PipeTable`,
+and `List` are always available. Enable `grid-table` to use
+`ArgumentsFormat::GridTable` and include the optional `tabled` dependency:
+
+```toml
+rd2qmd-package = { version = "0.6", features = ["grid-table"] }
+```
+
+This feature forwards to `rd2qmd-core/grid-table`; the Arguments format is set
+through `PackageConvertOptions::arguments_format`.
+
+Migration for 0.6: `GridTable` no longer exists in the enum when the feature is
+disabled. Enable the feature for code that references that variant, including
+exhaustive matches, or remove those arms when targeting the default configuration.
+Cargo features are additive: another dependency can enable grid support for the
+same core crate. The CLI always enables it, preserving
+`--arguments-format grid-table` and `output.arguments_format = "grid-table"` in configuration files.
+
 ## License
 
 MIT

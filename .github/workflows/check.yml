@@ -107,3 +107,34 @@ jobs:
           --all-features
           --workspace
           --locked
+
+  library-features:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [rd2qmd-core, rd2qmd-package]
+        features: [default, none, grid-table]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Test isolated library features and dependency tree
+        env:
+          PACKAGE: ${{ matrix.package }}
+          FEATURES: ${{ matrix.features }}
+        run: |
+          args=()
+          case "$FEATURES" in
+            none) args+=(--no-default-features) ;;
+            grid-table) args+=(--no-default-features --features grid-table) ;;
+          esac
+          cargo test -p "$PACKAGE" "${args[@]}" --locked
+          cargo clippy -p "$PACKAGE" --all-targets "${args[@]}" --locked -- -D warnings
+          cargo tree -p "$PACKAGE" "${args[@]}" --locked --edges normal --prefix none > dependencies.txt
+          if [[ "$FEATURES" == grid-table ]]; then
+            grep -q '^tabled v' dependencies.txt
+          elif grep -q '^tabled v' dependencies.txt; then
+            echo 'Unexpected tabled dependency with grid-table disabled'
+            exit 1
+          fi

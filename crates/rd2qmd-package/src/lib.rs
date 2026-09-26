@@ -9,6 +9,13 @@
 //!
 //! ## Features
 //!
+//! No features are enabled by default.
+//!
+//! - `grid-table`: Forward to `rd2qmd-core/grid-table`, enabling the optional
+//!   `tabled` dependency and `rd2qmd_core::ArgumentsFormat::GridTable` for
+//!   `PackageConvertOptions::arguments_format`. ListTable remains the default.
+//!   Since 0.6, callers referencing GridTable (including exhaustive matches)
+//!   must enable this feature or remove those references. The CLI enables it.
 //! - `external-links`: Enable external package link resolution (requires network access)
 
 #[cfg(feature = "external-links")]

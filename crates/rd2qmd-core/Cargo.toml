@@ -11,12 +11,16 @@ readme = "README.md"
 keywords.workspace = true
 categories = ["text-processing"]
 
+[features]
+default = []
+grid-table = ["dep:tabled"]
+
 [dependencies]
 rd2qmd-mdast.workspace = true
 rd-ast.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tabled.workspace = true
+tabled = { workspace = true, optional = true }
 thiserror.workspace = true
 
 [dev-dependencies]

@@ -81,6 +81,23 @@ This crate builds on:
 - [`rd-ast`](https://crates.io/crates/rd-ast) - the canonical, producer-neutral Rd document representation
 - [`rd2qmd-mdast`](https://crates.io/crates/rd2qmd-mdast) - mdast types and Quarto Markdown writer
 
+## Grid table feature
+
+No Cargo features are enabled by default. `ListTable` (the default), `PipeTable`,
+and `List` are always available. Enable `grid-table` to use
+`ArgumentsFormat::GridTable` and include the optional `tabled` dependency:
+
+```toml
+rd2qmd-core = { version = "0.6", features = ["grid-table"] }
+```
+
+Migration for 0.6: `GridTable` no longer exists in the enum when the feature is
+disabled. Enable the feature for code that references that variant, including
+exhaustive matches, or remove those arms when targeting the default configuration.
+Cargo features are additive: another dependency can enable grid support for the
+same core crate. The CLI always enables it, preserving
+`--arguments-format grid-table` and `output.arguments_format = "grid-table"` in configuration files.
+
 ## License
 
 MIT
