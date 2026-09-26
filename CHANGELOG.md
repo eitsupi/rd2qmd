@@ -2,21 +2,29 @@
 
 ## [Unreleased]
 
+## [0.6.0-alpha.1] - 2026-09-26
+
 ### Added
 
-- Add `--describe-format definition-list|list|headings` (config: `output.describe_format`) and `DescribeFormat` in the core API. The `list` format preserves description-list paragraphs, code examples, and nesting for CommonMark/GFM consumers. The `headings` format uses section-relative headings with a bullet-list fallback below H6. The default remains Pandoc definition lists; `arguments_format` continues to control the Arguments section independently.
+- Add configurable description-list output via `--describe-format definition-list|list|headings`, `output.describe_format`, and the core `DescribeFormat` API. (#86)
+  - `list` preserves paragraphs, code examples, and nesting for CommonMark/GFM consumers.
+  - `headings` uses section-relative headings, falling back to lists below H6 and inside Arguments pipe tables.
+  - The default remains Pandoc definition lists; `arguments_format` controls the Arguments section independently.
 
 ### Changed
 
-- **Breaking:** Gate `ArgumentsFormat::GridTable` and the `tabled` dependency behind the default-disabled `grid-table` Cargo feature in `rd2qmd-core`, with a forwarding feature in `rd2qmd-package`. Library callers referencing the variant must enable this feature or remove those references for 0.6.0. `ArgumentsFormat` is now non-exhaustive: all downstream matches must include a wildcard, so feature unification can add grid support without breaking those matches. The CLI always enables grid tables; its arguments, configuration, and default list-table output are unchanged.
-
-- **Breaking:** Add the `describe_format` field to `RdConvertOptions`, `RdToMdastOptions`, and `PackageConvertOptions`. Callers using exhaustive struct literals must supply the field or use `..Default::default()`. This requires a 0.6.0 release rather than a 0.5.x patch.
+- **Breaking:** Make grid-table generation optional for library consumers. (#88)
+  - Enable the default-disabled `grid-table` Cargo feature in `rd2qmd-core` or `rd2qmd-package` to use `ArgumentsFormat::GridTable` and its `tabled` dependency.
+  - `ArgumentsFormat` is now non-exhaustive; all downstream matches must include a wildcard, regardless of enabled features.
+  - The CLI continues to support grid tables, with unchanged arguments, configuration, and default list-table output.
+- **Breaking:** Add `describe_format` to `RdConvertOptions`, `RdToMdastOptions`, and `PackageConvertOptions`. Exhaustive struct literals must supply the field or use `..Default::default()`. (#86)
+- Update `rd-ast` and `rd-source` to `0.5.0-rc.2`. (#83, #85)
 
 ### Fixed
 
-- Preserve boundary whitespace outside emphasis and strong spans so padded Rd text and description labels render correctly. Empty formatting spans no longer emit stray Markdown delimiters. Empty description labels retain their list membership using a zero-width character reference; the headings format retains an empty heading. The same normalization applies to ordinary output and argument tables.
-
-- Fall back from describe headings to list labels inside Arguments pipe tables, avoiding literal heading markers in inline-only cells. Descriptions outside the table retain their selected format.
+- Preserve boundary whitespace outside emphasis and strong spans in ordinary output and argument tables. (#87)
+  - Padded Rd text and description labels render correctly, and empty formatting spans no longer emit stray Markdown delimiters.
+  - Empty description labels retain their list membership using a zero-width character reference; the headings format retains an empty heading.
 
 ## [0.5.3] - 2026-08-30
 
