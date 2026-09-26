@@ -12,7 +12,7 @@
 
 ### Fixed
 
-- Preserve boundary whitespace outside emphasis and strong spans so padded Rd text and description labels render correctly. Empty formatting spans no longer emit stray Markdown delimiters. The same normalization applies to ordinary output and argument tables.
+- Preserve boundary whitespace outside emphasis and strong spans so padded Rd text and description labels render correctly. Empty formatting spans no longer emit stray Markdown delimiters. Empty description labels retain their list membership using a zero-width character reference; the headings format retains an empty heading. The same normalization applies to ordinary output and argument tables.
 
 - Fall back from describe headings to list labels inside Arguments pipe tables, avoiding literal heading markers in inline-only cells. Descriptions outside the table retain their selected format.
 

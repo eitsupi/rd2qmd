@@ -161,7 +161,14 @@ fn describe_list_label(label: Vec<Node>) -> Node {
         }
         label.pop();
     }
-    if !label.is_empty() && !matches!(label.as_slice(), [Node::Strong(_)]) {
+    if label.is_empty() {
+        // A blank list marker followed by a blank line closes the item before
+        // its body. A zero-width term preserves membership without visible text.
+        return Node::paragraph(vec![Node::Html(rd2qmd_mdast::Html {
+            value: "&#8203;".to_owned(),
+        })]);
+    }
+    if !matches!(label.as_slice(), [Node::Strong(_)]) {
         label = vec![Node::strong(label)];
     }
     Node::paragraph(label)

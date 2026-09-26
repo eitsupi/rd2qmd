@@ -6,7 +6,10 @@ use crate::Node;
 /// it. Empty formatting spans disappear. Links retain their boundary whitespace
 /// inside the link; code, math, HTML, images and breaks are opaque.
 ///
-/// Block containers are traversed without changing their structure. This makes
+/// Empty definition terms use a zero-width character reference so their
+/// descriptions remain inside the definition list after parsing Markdown.
+/// Leading empty list-item paragraphs likewise retain a nonempty placeholder.
+/// Block containers are traversed without changing their membership. This makes
 /// the same operation usable for a complete document or an isolated inline
 /// sequence. The input is borrowed, and normalization is idempotent.
 ///
@@ -74,10 +77,37 @@ fn normalize_owned(nodes: Vec<Node>) -> Vec<Node> {
                 }
             }
         }
+        match &mut node {
+            Node::DefinitionTerm(term) if blank_text(&term.children) => {
+                term.children = vec![empty_term()];
+            }
+            Node::ListItem(item) if item.children.len() > 1 => {
+                if let Node::Paragraph(first) = &mut item.children[0]
+                    && blank_text(&first.children)
+                {
+                    first.children = vec![empty_term()];
+                }
+            }
+            _ => {}
+        }
         append(&mut result, node);
         append(&mut result, Node::text(suffix));
     }
     result
+}
+
+fn blank_text(nodes: &[Node]) -> bool {
+    nodes
+        .iter()
+        .all(|node| matches!(node, Node::Text(text) if text.value.chars().all(is_whitespace)))
+}
+
+fn empty_term() -> Node {
+    // Character references work in Pandoc and CommonMark without raw HTML
+    // support. U+200B supplies a term without inventing a visible label.
+    Node::Html(crate::Html {
+        value: "&#8203;".to_owned(),
+    })
 }
 
 fn append(nodes: &mut Vec<Node>, node: Node) {

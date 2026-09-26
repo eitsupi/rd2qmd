@@ -18,25 +18,32 @@ A _`x | y`_ B.
 
 A B.
 
-- **_label_**
+###  _label_␠
 
-  Label body.
+Label body.
 
-- &#8203;
+###␠␠
 
-  Empty label body.
+Empty label body.
 
 ## Arguments
 
-- **`x`**
+::: {.list-table header-rows=1}
 
-  A *foo* B.
+- - Argument
+  - Description
 
-  A ***nested*** B.
+- - `x`
+  - A *foo* B.
 
-  - ***term***
+    A ***nested*** B.
+
+    ###  _term_
 
     Argument body.
-  - &#8203;
+
+    ###
 
     Empty argument label body.
+
+:::

@@ -100,7 +100,19 @@ fn writer_handles_direct_ast_spans_in_all_inline_containers() {
     ]);
     let original = root.clone();
     let output = crate::mdast_to_qmd(&root, &crate::WriterOptions::default());
-    assert_eq!(output.matches("A _**foo**_ B").count(), 6, "{output}");
+    insta::assert_snapshot!(output, @"
+    A _**foo**_ B
+
+    ## A _**foo**_ B
+
+    - A _**foo**_ B
+
+    A _**foo**_ B
+    :   A _**foo**_ B
+
+    | A _**foo**_ B |
+    |----|
+    ");
     assert_eq!(root, original);
 }
 
@@ -135,4 +147,34 @@ fn one_sided_spaces_internal_spaces_and_breaks_are_preserved() {
         crate::mdast_to_qmd(&root, &crate::WriterOptions::default()),
         "_a  \nb_\n"
     );
+}
+
+#[test]
+fn empty_container_labels_keep_a_nonempty_markdown_term() {
+    let empty = vec![Node::strong(vec![Node::emphasis(vec![Node::text(" ")])])];
+    let root = crate::Root::new(vec![
+        Node::definition_list(vec![
+            Node::definition_term(empty.clone()),
+            Node::definition_description(vec![Node::paragraph(vec![Node::text(
+                "Definition body.",
+            )])]),
+        ]),
+        Node::list(
+            false,
+            vec![Node::list_item(vec![
+                Node::paragraph(empty),
+                Node::paragraph(vec![Node::text("List body.")]),
+            ])],
+        ),
+    ]);
+    let normalized = normalize_inline_boundaries(&root.children);
+    assert_eq!(normalize_inline_boundaries(&normalized), normalized);
+    insta::assert_snapshot!(crate::mdast_to_qmd(&root, &crate::WriterOptions::default()), @"
+    &#8203;
+    :   Definition body.
+
+    - &#8203;
+
+      List body.
+    ");
 }

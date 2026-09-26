@@ -18,25 +18,16 @@ A _`x | y`_ B.
 
 A B.
 
-- **_label_**
+###  _label_␠
 
-  Label body.
+Label body.
 
-- &#8203;
+###␠␠
 
-  Empty label body.
+Empty label body.
 
 ## Arguments
 
-- **`x`**
-
-  A *foo* B.
-
-  A ***nested*** B.
-
-  - ***term***
-
-    Argument body.
-  - &#8203;
-
-    Empty argument label body.
+| Argument | Description |
+|:---|:---|
+| `x` | A _foo_ B. <br>A **_nested_** B. <br>- **_term_** <br>Argument body. <br>- &#8203; <br>Empty argument label body. |

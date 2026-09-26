@@ -22,7 +22,7 @@ A B.
 
   Label body.
 
--␠
+- &#8203;
 
   Empty label body.
 
@@ -41,5 +41,8 @@ A B.
     - ***term***
 
       Argument body.
+    - &#8203;
+
+      Empty argument label body.
 
 :::

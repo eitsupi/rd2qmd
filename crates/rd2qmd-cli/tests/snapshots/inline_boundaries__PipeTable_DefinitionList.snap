@@ -26,14 +26,6 @@ A B.
 
 ## Arguments
 
-- **`x`**
-
-  A *foo* B.
-
-  A ***nested*** B.
-
-  _term_␠
-  :   Argument body.
-
-  &#8203;
-  :   Empty argument label body.
+| Argument | Description |
+|:---|:---|
+| `x` | A _foo_ B. <br>A **_nested_** B. <br> _term_ : Argument body. <br> : Empty argument label body. |

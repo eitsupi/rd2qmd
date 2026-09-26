@@ -26,14 +26,20 @@ A B.
 
 ## Arguments
 
-- **`x`**
+::: {.list-table header-rows=1}
 
-  A *foo* B.
+- - Argument
+  - Description
 
-  A ***nested*** B.
+- - `x`
+  - A *foo* B.
 
-  _term_␠
-  :   Argument body.
+    A ***nested*** B.
 
-  &#8203;
-  :   Empty argument label body.
+    _term_␠
+    :   Argument body.
+
+    &#8203;
+    :   Empty argument label body.
+
+:::
