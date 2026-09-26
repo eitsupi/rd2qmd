@@ -420,6 +420,10 @@ terms with bullet markers and `<br>` separators. Pipe tables cannot preserve
 block headings, nested list structure, or code blocks. Descriptions outside
 the table keep the selected format.
 
+Empty description labels use a zero-width space (`&#8203;`) in definition lists
+and bullet lists so the body stays in its item. In `headings` format, an empty
+heading is retained to separate the description from the preceding entry.
+
 `--arguments-format` controls the top-level `\arguments{}` section independently.
 For a Markdown viewer without definition-list or Quarto extensions, use both:
 
