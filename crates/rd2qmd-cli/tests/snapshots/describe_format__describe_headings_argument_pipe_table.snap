@@ -1,0 +1,17 @@
+---
+source: crates/rd2qmd-cli/tests/describe_format.rs
+expression: output
+---
+# Formats
+
+## Description
+
+### outside
+
+Outside body.
+
+## Arguments
+
+| Argument | Description |
+|:---|:---|
+| `x` | - **[term](https://example.com)** <br>First paragraph. <br>Second paragraph. <br>- **nested** <br>Nested body. <br>`x \| y` |

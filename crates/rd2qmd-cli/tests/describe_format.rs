@@ -523,3 +523,87 @@ fn describe_headings_below_h6_preserve_nesting_as_lists() {
     }
     assert!(deep_prose && deep_code);
 }
+
+#[test]
+fn describe_arguments_format_combinations() {
+    let parsed = rd2qmd_source::parse(
+        r"\name{formats}\title{Formats}
+\description{\describe{\item{outside}{Outside body.}}}
+\arguments{\item{x}{\describe{
+\item{\href{https://example.com}{term}}{First paragraph.
+
+Second paragraph.
+\describe{\item{nested}{Nested body.}}
+\preformatted{x | y}
+}}}}",
+    )
+    .unwrap();
+    for arguments_format in [
+        ArgumentsFormat::PipeTable,
+        ArgumentsFormat::GridTable,
+        ArgumentsFormat::ListTable,
+        ArgumentsFormat::List,
+    ] {
+        for describe_format in [
+            DescribeFormat::DefinitionList,
+            DescribeFormat::List,
+            DescribeFormat::Headings,
+        ] {
+            let output = rd2qmd_core::convert_rd_document(
+                parsed.document(),
+                &RdConvertOptions {
+                    arguments_format: arguments_format.clone(),
+                    describe_format,
+                    ..Default::default()
+                },
+            );
+            for text in [
+                "Outside body.",
+                "First paragraph.",
+                "Second paragraph.",
+                "Nested body.",
+                "nested",
+                "https://example.com",
+            ] {
+                assert!(
+                    output.contains(text),
+                    "{arguments_format:?}/{describe_format:?}: {output}"
+                );
+            }
+            if describe_format == DescribeFormat::Headings {
+                assert!(output.contains("### outside"));
+                if arguments_format != ArgumentsFormat::PipeTable {
+                    assert!(output.contains("### [term](https://example.com)"));
+                    assert!(output.contains("#### nested"));
+                    assert!(output.contains("x | y"));
+                }
+            }
+            if arguments_format == ArgumentsFormat::PipeTable {
+                let mut in_cell = false;
+                let mut strong = 0;
+                let mut link = false;
+                let mut code = false;
+                for event in Parser::new_ext(&output, Options::ENABLE_TABLES) {
+                    match event {
+                        Event::Start(Tag::TableCell) => in_cell = true,
+                        Event::End(TagEnd::TableCell) => in_cell = false,
+                        Event::Start(Tag::Strong) if in_cell => strong += 1,
+                        Event::Start(Tag::Link { dest_url, .. }) if in_cell => {
+                            link |= dest_url.as_ref() == "https://example.com";
+                        }
+                        Event::Code(value) if in_cell => code |= value.as_ref() == "x | y",
+                        Event::Text(value) if in_cell => assert!(!value.contains("###")),
+                        _ => {}
+                    }
+                }
+                assert!(link && code, "{output}");
+                if describe_format != DescribeFormat::DefinitionList {
+                    assert_eq!(strong, 2, "{output}");
+                }
+                if describe_format == DescribeFormat::Headings {
+                    insta::assert_snapshot!("describe_headings_argument_pipe_table", output);
+                }
+            }
+        }
+    }
+}

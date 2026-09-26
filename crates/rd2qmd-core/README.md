@@ -65,6 +65,10 @@ let options = RdConvertOptions {
 Use `DescribeFormat::Headings` to render terms as headings one level below their
 enclosing section. Nested descriptions increase the heading level; descriptions
 below H6 switch to bullet lists to preserve further nesting.
+Inside `ArgumentsFormat::PipeTable`, headings also fall back to lists, which
+are flattened to bold terms, bullet markers, and `<br>` separators. Pipe-table
+cells cannot preserve block structure; descriptions outside the table are
+unaffected.
 
 `RdToMdastOptions` and `rd2qmd_package::PackageConvertOptions` also expose
 `describe_format`. It applies recursively, preserving the terms' inline

@@ -415,6 +415,11 @@ representation, including nested descriptions:
   next heading level; descriptions below H6 use ordinary bullet lists instead.
   Useful for long method descriptions.
 
+Inside Arguments pipe tables, `headings` falls back to `list`: cells use bold
+terms with bullet markers and `<br>` separators. Pipe tables cannot preserve
+block headings, nested list structure, or code blocks. Descriptions outside
+the table keep the selected format.
+
 `--arguments-format` controls the top-level `\arguments{}` section independently.
 For a Markdown viewer without definition-list or Quarto extensions, use both:
 

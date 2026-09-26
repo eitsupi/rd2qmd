@@ -19,6 +19,7 @@ pub enum DescribeFormat {
     /// CommonMark-compatible bullet list with emphasized terms.
     List,
     /// Terms become headings below their enclosing section; beyond H6, use lists.
+    /// Arguments pipe-table cells also fall back to lists, flattened with `<br>`.
     Headings,
 }
 
