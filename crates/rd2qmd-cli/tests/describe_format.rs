@@ -273,6 +273,52 @@ fn describe_format_snapshots() {
     }
 }
 
+#[test]
+fn describe_headings_in_default_argument_list_table() {
+    let scratch = Scratch::new();
+    fs::write(
+        scratch.0.join("arguments.Rd"),
+        r"\name{options}\title{Options}
+\arguments{
+\item{x}{\describe{\item{\code{first}}{First body.
+\describe{\item{nested}{Nested body.}}
+\preformatted{first(x)}
+}\item{second}{Second body.}}}
+\item{y}{Introductory prose.
+\describe{\item{third}{Third body.}}}
+}",
+    )
+    .unwrap();
+    run_cli(
+        &scratch.0,
+        &[
+            "convert",
+            "arguments.Rd",
+            "--no-config",
+            "--no-frontmatter",
+            "--describe-format",
+            "headings",
+            "-o",
+            "arguments.qmd",
+        ],
+    );
+    let output = fs::read_to_string(scratch.0.join("arguments.qmd")).unwrap();
+    assert!(output.contains("{.list-table header-rows=1}"));
+    for heading in ["### `first`", "#### nested", "### second", "### third"] {
+        assert!(output.contains(heading), "Missing {heading}: {output}");
+    }
+    for body in [
+        "First body.",
+        "Nested body.",
+        "Second body.",
+        "Third body.",
+        "first(x)",
+    ] {
+        assert!(output.contains(body), "Missing {body}: {output}");
+    }
+    insta::assert_snapshot!("describe_headings_default_argument_list_table", output);
+}
+
 fn assert_describe_output(path: &Path, format: &str) {
     let output = fs::read_to_string(path).unwrap();
     let term = if format == "headings" {
