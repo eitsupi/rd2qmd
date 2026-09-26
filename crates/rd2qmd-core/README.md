@@ -92,8 +92,11 @@ rd2qmd-core = { version = "0.6", features = ["grid-table"] }
 ```
 
 Migration for 0.6: `GridTable` no longer exists in the enum when the feature is
-disabled. Enable the feature for code that references that variant, including
-exhaustive matches, or remove those arms when targeting the default configuration.
+disabled. Enable the feature for code that references that variant, or remove
+those references when targeting the default configuration. `ArgumentsFormat` is
+also non-exhaustive: downstream matches must include a wildcard (`_ => ...`),
+even with grid support enabled. This preserves compilation when another
+dependency enables additional formats through Cargo feature unification.
 Cargo features are additive: another dependency can enable grid support for the
 same core crate. The CLI always enables it, preserving
 `--arguments-format grid-table` and `output.arguments_format = "grid-table"` in configuration files.

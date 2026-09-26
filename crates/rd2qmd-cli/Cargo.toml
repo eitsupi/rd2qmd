@@ -17,7 +17,7 @@ path = "src/main.rs"
 
 [dependencies]
 rd2qmd-core = { workspace = true, features = ["grid-table"] }
-rd2qmd-package = { workspace = true, features = ["external-links"] }
+rd2qmd-package = { workspace = true, features = ["external-links", "grid-table"] }
 rd2qmd-source.workspace = true
 clap.workspace = true
 anyhow.workspace = true

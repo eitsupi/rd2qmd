@@ -1,6 +1,34 @@
 use std::collections::HashMap;
 
 /// Format for the Arguments section output.
+///
+/// This enum is non-exhaustive: downstream matches must include a wildcard,
+/// even when every currently enabled format is handled. This keeps matches
+/// valid when another dependency enables the `grid-table` feature.
+///
+/// ```
+/// use rd2qmd_core::ArgumentsFormat;
+/// let format = ArgumentsFormat::default();
+/// let is_list_table = match format {
+///     ArgumentsFormat::ListTable => true,
+///     _ => false,
+/// };
+/// assert!(is_list_table);
+/// ```
+///
+/// Omitting the wildcard is rejected with or without grid support:
+///
+/// ```compile_fail,E0004
+/// use rd2qmd_core::ArgumentsFormat;
+/// match ArgumentsFormat::default() {
+///     ArgumentsFormat::PipeTable => {},
+///     ArgumentsFormat::ListTable => {},
+///     ArgumentsFormat::List => {},
+///     #[cfg(feature = "grid-table")]
+///     ArgumentsFormat::GridTable => {},
+/// }
+/// ```
+#[non_exhaustive]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum ArgumentsFormat {
     PipeTable,
