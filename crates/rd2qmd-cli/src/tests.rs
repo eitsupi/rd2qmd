@@ -32,6 +32,7 @@ fn default_convert_args() -> ConvertArgs {
         include_html_output: false,
         prefer_ascii_math: false,
         arguments_format: None,
+        describe_format: None,
         topic_index: None,
         config: None,
         no_config: false,

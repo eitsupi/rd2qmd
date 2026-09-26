@@ -4,8 +4,10 @@
 use anyhow::{Context, Result};
 
 use crate::cli::{ConvertArgs, ExternalLinkOptions, OutputFormat};
-use crate::config::{ArgumentsFormat as CliArgumentsFormat, Config};
-use rd2qmd_core::ArgumentsFormat;
+use crate::config::{
+    ArgumentsFormat as CliArgumentsFormat, Config, DescribeFormat as CliDescribeFormat,
+};
+use rd2qmd_core::{ArgumentsFormat, DescribeFormat};
 
 /// Default URL template for qualified links (`\link[pkg]{topic}`) whose
 /// package has no known documentation URL
@@ -106,6 +108,19 @@ pub(crate) fn merge_arguments_format(args: &ConvertArgs, config: &Config) -> Arg
         CliArgumentsFormat::GridTable => ArgumentsFormat::GridTable,
         CliArgumentsFormat::ListTable => ArgumentsFormat::ListTable,
         CliArgumentsFormat::List => ArgumentsFormat::List,
+    }
+}
+
+/// Merge describe format: explicit CLI > config > default (definition-list).
+pub(crate) fn merge_describe_format(args: &ConvertArgs, config: &Config) -> DescribeFormat {
+    match args
+        .describe_format
+        .or(config.output.describe_format)
+        .unwrap_or_default()
+    {
+        CliDescribeFormat::DefinitionList => DescribeFormat::DefinitionList,
+        CliDescribeFormat::List => DescribeFormat::List,
+        CliDescribeFormat::Headings => DescribeFormat::Headings,
     }
 }
 

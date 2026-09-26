@@ -25,6 +25,21 @@ pub enum ArgumentsFormat {
     List,
 }
 
+/// Output format for Rd description lists
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, JsonSchema, clap::ValueEnum,
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum DescribeFormat {
+    /// Pandoc definition list (default) - requires definition-list support
+    #[default]
+    DefinitionList,
+    /// Markdown bullet list - supports CommonMark and GFM, including nested descriptions
+    List,
+    /// Terms become headings below their enclosing section; beyond H6, use bullet lists
+    Headings,
+}
+
 /// Default configuration file name (following Quarto's `_quarto.yml` convention)
 pub const CONFIG_FILE_NAME: &str = "_rd2qmd.toml";
 
@@ -65,6 +80,9 @@ pub struct OutputConfig {
     /// Output format for Arguments section (default: list-table)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub arguments_format: Option<ArgumentsFormat>,
+    /// Output format for description lists (default: definition-list)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub describe_format: Option<DescribeFormat>,
     /// Include topics with \keyword{internal} (default: false)
     /// By default, internal topics are skipped (matching pkgdown behavior).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -82,6 +100,7 @@ impl OutputConfig {
             && self.frontmatter.is_none()
             && self.pagetitle.is_none()
             && self.arguments_format.is_none()
+            && self.describe_format.is_none()
             && self.include_internal.is_none()
             && self.prefer_ascii_math.is_none()
     }
@@ -216,6 +235,7 @@ impl Config {
                 frontmatter: Some(true),
                 pagetitle: Some(true),
                 arguments_format: Some(ArgumentsFormat::ListTable),
+                describe_format: Some(DescribeFormat::DefinitionList),
                 include_internal: Some(false),
                 prefer_ascii_math: None, // enable for renderers without math support
             },
@@ -444,5 +464,30 @@ mod tests {
         let toml = toml::to_string_pretty(&config).unwrap();
         let parsed: Config = toml::from_str(&toml).unwrap();
         assert_eq!(config.output.format, parsed.output.format);
+    }
+}
+
+#[cfg(test)]
+mod describe_format_tests {
+    use super::*;
+
+    #[test]
+    fn describe_only_config_survives_serialization() {
+        for format in [
+            DescribeFormat::DefinitionList,
+            DescribeFormat::List,
+            DescribeFormat::Headings,
+        ] {
+            let config = Config {
+                output: OutputConfig {
+                    describe_format: Some(format),
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let serialized = config.to_toml_with_schema().unwrap();
+            let parsed: Config = toml::from_str(&serialized).unwrap();
+            assert_eq!(parsed.output.describe_format, Some(format));
+        }
     }
 }

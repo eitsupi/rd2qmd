@@ -67,6 +67,25 @@ pub(super) fn convert_block(
                 return Vec::new();
             }
 
+            // Headings must remain below the enclosing section. Once H6 is
+            // reached, preserve further nesting with ordinary lists instead.
+            let format = if context.describe_format == crate::DescribeFormat::Headings
+                && context.enclosing_heading_depth >= 6
+            {
+                crate::DescribeFormat::List
+            } else {
+                context.describe_format
+            };
+            let body_context = BlockConversionContext {
+                describe_format: format,
+                enclosing_heading_depth: if format == crate::DescribeFormat::Headings {
+                    context.enclosing_heading_depth + 1
+                } else {
+                    context.enclosing_heading_depth
+                },
+                ..*context
+            };
+
             // Recovery-first: malformed described items are skipped while
             // subsequent structurally valid entries are still converted.
             let mut children = Vec::new();
@@ -74,17 +93,31 @@ pub(super) fn convert_block(
                 let Ok(RdListItem::Described(item)) = item else {
                     continue;
                 };
-                children.push(Node::definition_term(inline::convert_inline_nodes_ref(
-                    item.label_ref(),
-                    &context.inline,
-                )));
-                // Unlike the legacy inline-only description, preserve arbitrary
-                // block children such as multiple paragraphs and nested lists.
-                children.push(Node::definition_description(
-                    super::convert_block_content_ref(item.body_ref(), context),
-                ));
+                let label = inline::convert_inline_nodes_ref(item.label_ref(), &context.inline);
+                let body = super::convert_block_content_ref(item.body_ref(), &body_context);
+                match format {
+                    crate::DescribeFormat::DefinitionList => {
+                        children.push(Node::definition_term(label));
+                        children.push(Node::definition_description(body));
+                    }
+                    crate::DescribeFormat::Headings => {
+                        children.push(Node::heading(body_context.enclosing_heading_depth, label));
+                        children.extend(body);
+                    }
+                    crate::DescribeFormat::List => {
+                        // Keep the label's inline semantics (code, links, emphasis),
+                        // and preserve all body blocks, including nested describes.
+                        let mut blocks = vec![describe_list_label(label)];
+                        blocks.extend(body);
+                        children.push(Node::list_item(blocks));
+                    }
+                }
             }
-            vec![Node::definition_list(children)]
+            match format {
+                crate::DescribeFormat::Headings => children,
+                crate::DescribeFormat::DefinitionList => vec![Node::definition_list(children)],
+                crate::DescribeFormat::List => vec![Node::list(false, children)],
+            }
         }
         RdTag::Preformatted => vec![Node::code(None, recover_verbatim(tagged.children()))],
         RdTag::Deqn => {
@@ -108,6 +141,29 @@ pub(super) fn convert_block(
         RdTag::Section | RdTag::Subsection => convert_section_like_block(node, context),
         _ => Vec::new(),
     }
+}
+
+/// Add visual emphasis without turning an empty term into a thematic break or
+/// putting whitespace immediately inside Markdown emphasis delimiters.
+fn describe_list_label(mut label: Vec<Node>) -> Node {
+    while let Some(Node::Text(text)) = label.first_mut() {
+        text.value = text.value.trim_start().to_owned();
+        if !text.value.is_empty() {
+            break;
+        }
+        label.remove(0);
+    }
+    while let Some(Node::Text(text)) = label.last_mut() {
+        text.value = text.value.trim_end().to_owned();
+        if !text.value.is_empty() {
+            break;
+        }
+        label.pop();
+    }
+    if !label.is_empty() && !matches!(label.as_slice(), [Node::Strong(_)]) {
+        label = vec![Node::strong(label)];
+    }
+    Node::paragraph(label)
 }
 
 fn convert_tabular(node: RdNodeRef<'_>, context: &BlockConversionContext<'_>) -> Option<Node> {

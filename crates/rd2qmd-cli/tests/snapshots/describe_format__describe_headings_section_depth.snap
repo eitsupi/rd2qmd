@@ -1,0 +1,35 @@
+---
+source: crates/rd2qmd-cli/tests/describe_format.rs
+expression: output
+---
+# Headings
+
+## Details
+
+### detail
+
+Detail body.
+
+## Methods
+
+### `method()`
+
+Method body.
+
+#### [argument](https://example.com)
+
+Argument body.
+
+```
+method(x)
+```
+
+### second
+
+Second body.
+
+### Advanced
+
+#### option
+
+Option body.

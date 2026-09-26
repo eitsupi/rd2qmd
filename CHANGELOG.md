@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- Add `--describe-format definition-list|list|headings` (config: `output.describe_format`) and `DescribeFormat` in the core API. The `list` format preserves description-list paragraphs, code examples, and nesting for CommonMark/GFM consumers. The `headings` format uses section-relative headings with a bullet-list fallback below H6. The default remains Pandoc definition lists; `arguments_format` continues to control the Arguments section independently.
+
+### Changed
+
+- Add the `describe_format` field to `RdConvertOptions`, `RdToMdastOptions`, and `PackageConvertOptions`. Callers using exhaustive struct literals must supply the field or use `..Default::default()`.
+
 ## [0.5.3] - 2026-08-30
 
 ### Changed

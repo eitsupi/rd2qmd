@@ -6,7 +6,7 @@ mod options;
 mod source_parse;
 
 pub use ast_io::{AST_FORMAT_VERSION, AstIoError, RdAstEnvelope};
-pub use options::{ArgumentsFormat, RdToMdastOptions};
+pub use options::{ArgumentsFormat, DescribeFormat, RdToMdastOptions};
 pub use rd_ast::{RdDocument, RdNode};
 pub use rd2qmd_mdast::{Frontmatter, RdMetadata, WriterOptions, mdast_to_qmd};
 
@@ -52,6 +52,8 @@ pub struct RdConvertOptions {
     pub code: CodeExecutionOptions,
     pub links: LinkOptions,
     pub arguments_format: ArgumentsFormat,
+    /// Output format for description lists, including nested lists.
+    pub describe_format: DescribeFormat,
     pub include_html_output: bool,
     pub prefer_ascii_math: bool,
     /// Overrides the AST-derived `source_files` metadata.
@@ -172,6 +174,7 @@ pub fn convert_rd_document(doc: &RdDocument, options: &RdConvertOptions) -> Stri
         exec_donttest: options.code.exec_donttest,
         quarto_code_blocks: options.code.quarto_code_blocks,
         arguments_format: options.arguments_format.clone(),
+        describe_format: options.describe_format,
         include_html_output: options.include_html_output,
         prefer_ascii_math: options.prefer_ascii_math,
     };

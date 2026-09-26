@@ -27,6 +27,7 @@ use markdown_text::{render_block_content, render_list_table_cell};
 pub(crate) struct BlockConversionContext<'a> {
     pub(crate) inline: InlineConversionContext<'a>,
     pub(crate) prefer_ascii_math: bool,
+    pub(crate) describe_format: crate::DescribeFormat,
     pub(crate) enclosing_heading_depth: u8,
 }
 

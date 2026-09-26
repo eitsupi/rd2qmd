@@ -10,6 +10,18 @@ pub enum ArgumentsFormat {
     List,
 }
 
+/// Format for Rd description lists (`\describe{}`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum DescribeFormat {
+    /// Pandoc definition list, requiring a definition-list extension.
+    #[default]
+    DefinitionList,
+    /// CommonMark-compatible bullet list with emphasized terms.
+    List,
+    /// Terms become headings below their enclosing section; beyond H6, use lists.
+    Headings,
+}
+
 /// Options for converting an Rd document to mdast.
 #[derive(Debug, Clone)]
 pub struct RdToMdastOptions {
@@ -23,6 +35,7 @@ pub struct RdToMdastOptions {
     pub exec_donttest: bool,
     pub quarto_code_blocks: bool,
     pub arguments_format: ArgumentsFormat,
+    pub describe_format: DescribeFormat,
     pub include_html_output: bool,
     pub prefer_ascii_math: bool,
 }
@@ -40,6 +53,7 @@ impl Default for RdToMdastOptions {
             exec_donttest: true,
             quarto_code_blocks: true,
             arguments_format: ArgumentsFormat::default(),
+            describe_format: DescribeFormat::default(),
             include_html_output: false,
             prefer_ascii_math: false,
         }

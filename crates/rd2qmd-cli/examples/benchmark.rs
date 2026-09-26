@@ -202,6 +202,7 @@ fn run_single_benchmark(
         include_html_output: false,
         prefer_ascii_math: false,
         arguments_format: rd2qmd_core::ArgumentsFormat::default(),
+        describe_format: rd2qmd_core::DescribeFormat::default(),
     };
 
     convert_package(package, &options)?;
