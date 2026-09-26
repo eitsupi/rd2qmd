@@ -877,6 +877,7 @@ fn pipe_table_escapes_literal_pipes_in_resolved_links() {
     }));
 }
 
+#[cfg(feature = "grid-table")]
 #[test]
 fn converts_arguments_to_grid_table_with_header_separator() {
     let document = argument_document();
@@ -896,6 +897,7 @@ fn converts_arguments_to_grid_table_with_header_separator() {
     );
 }
 
+#[cfg(feature = "grid-table")]
 #[test]
 fn grid_table_preserves_block_equations() {
     let document = argument_document_with_description(vec![equation("x^2 + y^2", None)]);
@@ -907,6 +909,7 @@ fn grid_table_preserves_block_equations() {
     assert!(table.contains("x^2 + y^2"));
 }
 
+#[cfg(feature = "grid-table")]
 #[test]
 fn grid_table_preserves_nested_definition_lists() {
     let describe = tagged(
@@ -1051,6 +1054,7 @@ fn pipe_table_preserves_both_paragraphs_of_a_multi_paragraph_list_item() {
     assert!(row.contains("second paragraph"), "got: {row:?}");
 }
 
+#[cfg(feature = "grid-table")]
 #[test]
 fn grid_table_preserves_tabular_content() {
     // Regression test for Bug A: `Node::Table` used to be silently
@@ -1070,6 +1074,7 @@ fn grid_table_preserves_tabular_content() {
     );
 }
 
+#[cfg(feature = "grid-table")]
 #[test]
 fn grid_table_preserves_both_paragraphs_of_a_multi_paragraph_list_item() {
     // Regression test for Bug B (grid-table location): only the first
@@ -1288,6 +1293,7 @@ fn pipe_table_math_pipe_preserves_backslash() {
     );
 }
 
+#[cfg(feature = "grid-table")]
 #[test]
 fn grid_table_escapes_list_marker_lookalikes_after_cr_break() {
     // Regression test for Bug C: `\cr`-separated continuation lines that

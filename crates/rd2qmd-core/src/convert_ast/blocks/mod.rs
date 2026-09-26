@@ -4,7 +4,9 @@
 use rd_ast::RdDocument;
 use rd_ast::{RdArgument, RdNode, RdNodesRef};
 use rd2qmd_mdast::{Align, Html, Node};
+#[cfg(feature = "grid-table")]
 use tabled::settings::Style;
+#[cfg(feature = "grid-table")]
 use tabled::settings::style::HorizontalLine;
 
 use super::{
@@ -111,6 +113,7 @@ pub(crate) fn convert_arguments(
 ) -> Vec<Node> {
     match format {
         crate::ArgumentsFormat::PipeTable => convert_arguments_pipe(arguments, context),
+        #[cfg(feature = "grid-table")]
         crate::ArgumentsFormat::GridTable => convert_arguments_grid(arguments, context),
         crate::ArgumentsFormat::ListTable => convert_arguments_list_table(arguments, context),
         crate::ArgumentsFormat::List => convert_arguments_list(arguments, context),
@@ -164,6 +167,7 @@ fn convert_arguments_pipe(
 
 /// Convert arguments to Pandoc grid table format.
 /// Grid tables support block elements (lists, paragraphs) within cells.
+#[cfg(feature = "grid-table")]
 fn convert_arguments_grid(
     arguments: &[RdArgument<'_>],
     context: &BlockConversionContext<'_>,

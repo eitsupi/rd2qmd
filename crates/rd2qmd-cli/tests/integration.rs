@@ -253,6 +253,36 @@ fn test_arguments_rich_list_table() {
 fn test_arguments_rich_grid_table() {
     let output = convert_fixture("arguments_rich", &["--arguments-format", "grid-table"]);
     insta::assert_snapshot!("arguments_rich_grid_table", output);
+
+    // Configuration files must retain grid support in the ordinary CLI build.
+    let root = unique_temp_dir("grid_config");
+    fs::create_dir_all(&root).unwrap();
+    let config = root.join("rd2qmd.toml");
+    fs::write(&config, "[output]\narguments_format = \"grid-table\"\n").unwrap();
+    let configured = convert_fixture("arguments_rich", &["--config", config.to_str().unwrap()]);
+    assert_eq!(configured, output);
+
+    // Exercise the package conversion path, with the same snapshot-backed output.
+    let input_dir = root.join("man");
+    let output_dir = root.join("out");
+    fs::create_dir_all(&input_dir).unwrap();
+    fs::copy(
+        fixtures_dir().join("arguments_rich.Rd"),
+        input_dir.join("arguments_rich.Rd"),
+    )
+    .unwrap();
+    let result = Command::new(rd2qmd_binary())
+        .arg("convert")
+        .arg(&input_dir)
+        .arg("-o")
+        .arg(&output_dir)
+        .args(["--no-config", "--arguments-format", "grid-table"])
+        .output()
+        .unwrap();
+    assert!(result.status.success(), "{result:?}");
+    let directory_output = fs::read_to_string(output_dir.join("arguments_rich.qmd")).unwrap();
+    assert_eq!(directory_output, output);
+    fs::remove_dir_all(&root).unwrap();
 }
 
 /// Same rich `\arguments{}` content, rendered with `--arguments-format list`.

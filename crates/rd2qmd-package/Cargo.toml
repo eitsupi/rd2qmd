@@ -13,6 +13,7 @@ categories = ["text-processing"]
 
 [features]
 default = []
+grid-table = ["rd2qmd-core/grid-table"]
 external-links = ["dep:r-description", "dep:saphyr", "dep:reqwest", "dep:url"]
 
 [dependencies]

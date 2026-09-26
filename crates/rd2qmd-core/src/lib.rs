@@ -1,4 +1,13 @@
 //! Core conversion from the canonical `rd-ast` representation to Quarto Markdown.
+//!
+//! # Cargo features
+//!
+//! No features are enabled by default. Enable `grid-table` to include `tabled`
+//! and expose `ArgumentsFormat::GridTable`. ListTable (default), PipeTable, and
+//! List remain available without it. The CLI always enables grid support.
+//! When migrating to 0.6, enable this feature if your code references GridTable
+//! or remove those references. `ArgumentsFormat` is non-exhaustive: downstream
+//! matches must include a wildcard, regardless of the enabled features.
 
 pub mod ast_io;
 mod convert_ast;

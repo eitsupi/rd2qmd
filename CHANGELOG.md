@@ -8,6 +8,8 @@
 
 ### Changed
 
+- **Breaking:** Gate `ArgumentsFormat::GridTable` and the `tabled` dependency behind the default-disabled `grid-table` Cargo feature in `rd2qmd-core`, with a forwarding feature in `rd2qmd-package`. Library callers referencing the variant must enable this feature or remove those references for 0.6.0. `ArgumentsFormat` is now non-exhaustive: all downstream matches must include a wildcard, so feature unification can add grid support without breaking those matches. The CLI always enables grid tables; its arguments, configuration, and default list-table output are unchanged.
+
 - **Breaking:** Add the `describe_format` field to `RdConvertOptions`, `RdToMdastOptions`, and `PackageConvertOptions`. Callers using exhaustive struct literals must supply the field or use `..Default::default()`. This requires a 0.6.0 release rather than a 0.5.x patch.
 
 ### Fixed
