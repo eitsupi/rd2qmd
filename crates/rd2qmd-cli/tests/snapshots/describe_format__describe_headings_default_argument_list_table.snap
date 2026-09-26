@@ -1,0 +1,38 @@
+---
+source: crates/rd2qmd-cli/tests/describe_format.rs
+expression: output
+---
+# Options
+
+## Arguments
+
+::: {.list-table header-rows=1}
+
+- - Argument
+  - Description
+
+- - `x`
+  - ### `first`
+
+    First body.
+
+    #### nested
+
+    Nested body.
+
+    ```
+    first(x)
+    ```
+
+    ### second
+
+    Second body.
+
+- - `y`
+  - Introductory prose.
+
+    ### third
+
+    Third body.
+
+:::

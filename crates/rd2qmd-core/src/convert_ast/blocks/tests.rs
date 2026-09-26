@@ -16,6 +16,7 @@ fn context(prefer_ascii_math: bool) -> BlockConversionContext<'static> {
     BlockConversionContext {
         inline: InlineConversionContext::default(),
         prefer_ascii_math,
+        describe_format: crate::DescribeFormat::default(),
         enclosing_heading_depth: 2,
     }
 }
@@ -847,6 +848,7 @@ fn pipe_table_escapes_literal_pipes_in_resolved_links() {
             prefer_ascii_math: false,
         },
         prefer_ascii_math: false,
+        describe_format: crate::DescribeFormat::default(),
         enclosing_heading_depth: 2,
     };
     let converted = convert_arguments(&arguments, ArgumentsFormat::PipeTable, &context);

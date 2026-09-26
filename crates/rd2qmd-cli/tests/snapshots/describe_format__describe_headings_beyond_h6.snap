@@ -1,0 +1,27 @@
+---
+source: crates/rd2qmd-cli/tests/describe_format.rs
+expression: output
+---
+# Deep
+
+## Methods
+
+### level0
+
+#### level1
+
+##### level2
+
+###### level3
+
+- **level4**
+
+  - **level5**
+
+    - **level6**
+
+      Deep prose.
+
+      ```
+      deep(x)
+      ```

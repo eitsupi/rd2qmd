@@ -5,8 +5,8 @@ use std::fs;
 use std::path::Path;
 
 use rd2qmd_core::{
-    ArgumentsFormat, CodeExecutionOptions, FrontmatterOptions, LinkOptions, RdAstEnvelope,
-    RdConvertOptions, convert_rd_document,
+    ArgumentsFormat, CodeExecutionOptions, DescribeFormat, FrontmatterOptions, LinkOptions,
+    RdAstEnvelope, RdConvertOptions, convert_rd_document,
 };
 use rd2qmd_package::{
     ExternalLinkOptions as PackageExternalLinkOptions, FallbackReason, FullConvertResult,
@@ -16,8 +16,9 @@ use rd2qmd_package::{
 use super::display_diagnostic;
 use crate::cli::{ConvertArgs, ExternalLinkOptions, InputFormat, OutputFormat};
 use crate::config_merge::{
-    load_config, merge_arguments_format, merge_external_link_options, merge_external_link_url,
-    merge_format, merge_frontmatter, merge_pagetitle, merge_unqualified_link_url,
+    load_config, merge_arguments_format, merge_describe_format, merge_external_link_options,
+    merge_external_link_url, merge_format, merge_frontmatter, merge_pagetitle,
+    merge_unqualified_link_url,
 };
 
 /// Run the convert subcommand: convert Rd files to Markdown
@@ -65,8 +66,9 @@ pub(crate) fn run_convert_command(args: &ConvertArgs, verbose: bool, quiet: bool
         config.code.exec_donttest.unwrap_or(true)
     };
 
-    // Convert arguments table format: CLI > Config > Grid
+    // Convert list formats: explicit CLI > Config > Default
     let arguments_format = merge_arguments_format(args, &config);
+    let describe_format = merge_describe_format(args, &config);
 
     // include_internal: CLI > Config > false (skip internal by default)
     let include_internal = if args.include_internal {
@@ -102,6 +104,7 @@ pub(crate) fn run_convert_command(args: &ConvertArgs, verbose: bool, quiet: bool
             include_html_output,
             prefer_ascii_math,
             arguments_format,
+            describe_format,
             verbose,
             quiet,
         )?;
@@ -130,6 +133,7 @@ pub(crate) fn run_convert_command(args: &ConvertArgs, verbose: bool, quiet: bool
             include_html_output,
             prefer_ascii_math,
             arguments_format,
+            describe_format,
             args.topic_index.as_deref(),
             verbose,
             quiet,
@@ -160,6 +164,7 @@ fn convert_single_file(
     include_html_output: bool,
     prefer_ascii_math: bool,
     arguments_format: ArgumentsFormat,
+    describe_format: DescribeFormat,
     verbose: bool,
     quiet: bool,
 ) -> Result<()> {
@@ -206,6 +211,7 @@ fn convert_single_file(
                 package_urls,
             },
             arguments_format,
+            describe_format,
             include_html_output,
             prefer_ascii_math,
             // The envelope's own `source_files` (set explicitly by whatever
@@ -245,6 +251,7 @@ fn convert_single_file(
                 package_urls,
             },
             arguments_format,
+            describe_format,
             include_html_output,
             prefer_ascii_math,
             source_files_override: None,
@@ -289,6 +296,7 @@ fn convert_directory(
     include_html_output: bool,
     prefer_ascii_math: bool,
     arguments_format: ArgumentsFormat,
+    describe_format: DescribeFormat,
     topic_index_path: Option<&Path>,
     verbose: bool,
     quiet: bool,
@@ -353,6 +361,7 @@ fn convert_directory(
         include_html_output,
         prefer_ascii_math,
         arguments_format,
+        describe_format,
     };
 
     // Convert external link options

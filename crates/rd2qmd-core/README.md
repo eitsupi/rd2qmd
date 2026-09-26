@@ -45,6 +45,35 @@ let mdast = rd_to_mdast(&doc);
 let qmd = mdast_to_qmd(&mdast, &WriterOptions::default());
 ```
 
+## Description list output
+
+`DescribeFormat` controls `\describe{}` independently of `ArgumentsFormat`, which
+controls the top-level `\arguments{}` section. The default is
+`DescribeFormat::DefinitionList` for Pandoc-compatible renderers. For CommonMark
+or GFM consumers, select ordinary bullet lists:
+
+```rust
+use rd2qmd_core::{ArgumentsFormat, DescribeFormat, RdConvertOptions};
+
+let options = RdConvertOptions {
+    arguments_format: ArgumentsFormat::List,
+    describe_format: DescribeFormat::List,
+    ..Default::default()
+};
+```
+
+Use `DescribeFormat::Headings` to render terms as headings one level below their
+enclosing section. Nested descriptions increase the heading level; descriptions
+below H6 switch to bullet lists to preserve further nesting.
+Inside `ArgumentsFormat::PipeTable`, headings also fall back to lists, which
+are flattened to bold terms, bullet markers, and `<br>` separators. Pipe-table
+cells cannot preserve block structure; descriptions outside the table are
+unaffected.
+
+`RdToMdastOptions` and `rd2qmd_package::PackageConvertOptions` also expose
+`describe_format`. It applies recursively, preserving the terms' inline
+formatting and the descriptions' paragraphs, code blocks, and nested lists.
+
 ## Dependencies
 
 This crate builds on:

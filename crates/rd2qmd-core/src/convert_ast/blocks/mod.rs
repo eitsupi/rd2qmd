@@ -27,6 +27,7 @@ use markdown_text::{render_block_content, render_list_table_cell};
 pub(crate) struct BlockConversionContext<'a> {
     pub(crate) inline: InlineConversionContext<'a>,
     pub(crate) prefer_ascii_math: bool,
+    pub(crate) describe_format: crate::DescribeFormat,
     pub(crate) enclosing_heading_depth: u8,
 }
 
@@ -123,6 +124,16 @@ fn convert_arguments_pipe(
     arguments: &[RdArgument<'_>],
     context: &BlockConversionContext<'_>,
 ) -> Vec<Node> {
+    // Pipe-table cells cannot contain block headings. Use list labels so the
+    // existing flattener preserves their emphasis instead of literal `###`.
+    // Keep this context local: descriptions outside this table retain headings.
+    let context = &BlockConversionContext {
+        describe_format: match context.describe_format {
+            crate::DescribeFormat::Headings => crate::DescribeFormat::List,
+            format => format,
+        },
+        ..*context
+    };
     if arguments.is_empty() {
         return Vec::new();
     }

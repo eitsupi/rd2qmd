@@ -3,7 +3,7 @@
 use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
-use crate::config::ArgumentsFormat as CliArgumentsFormat;
+use crate::config::{ArgumentsFormat as CliArgumentsFormat, DescribeFormat as CliDescribeFormat};
 use rd2qmd_package::InputFormat as PackageInputFormat;
 
 /// Options for external package link resolution
@@ -205,6 +205,10 @@ pub(crate) struct ConvertArgs {
     /// (Pandoc grid table), pipe-table (GFM pipe table, inline only), or list (Markdown loose list).
     #[arg(long, value_enum)]
     pub(crate) arguments_format: Option<CliArgumentsFormat>,
+
+    /// Output format for \describe lists, including nested descriptions: definition-list (Pandoc, default), list, or headings (CommonMark/GFM). Independent of --arguments-format
+    #[arg(long, value_enum)]
+    pub(crate) describe_format: Option<CliDescribeFormat>,
 
     /// Generate topic index JSON file (directory mode only)
     /// Contains topic names, files, titles, aliases, and lifecycle stages

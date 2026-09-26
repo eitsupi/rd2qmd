@@ -52,6 +52,7 @@ fn block_context<'a>(options: &'a crate::RdToMdastOptions) -> BlockConversionCon
             prefer_ascii_math: options.prefer_ascii_math,
         },
         prefer_ascii_math: options.prefer_ascii_math,
+        describe_format: options.describe_format,
         enclosing_heading_depth: 2,
     }
 }

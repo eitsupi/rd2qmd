@@ -376,6 +376,7 @@ fn test_package_converter_basic() {
         include_html_output: false,
         prefer_ascii_math: false,
         arguments_format: ArgumentsFormat::default(),
+        describe_format: rd2qmd_core::DescribeFormat::default(),
     };
 
     let result = PackageConverter::new(&package, options).convert().unwrap();
@@ -436,6 +437,7 @@ fn test_package_converter_with_alias_resolution() {
         include_html_output: false,
         prefer_ascii_math: false,
         arguments_format: ArgumentsFormat::default(),
+        describe_format: rd2qmd_core::DescribeFormat::default(),
     };
 
     let result = PackageConverter::new(&package, options).convert().unwrap();
@@ -483,6 +485,7 @@ x <- 1
         include_html_output: false,
         prefer_ascii_math: false,
         arguments_format: ArgumentsFormat::default(),
+        describe_format: rd2qmd_core::DescribeFormat::default(),
     };
 
     let result = PackageConverter::new(&package, options).convert().unwrap();
@@ -555,6 +558,7 @@ fn test_package_converter_with_unqualified_link_url() {
         include_html_output: false,
         prefer_ascii_math: false,
         arguments_format: ArgumentsFormat::default(),
+        describe_format: rd2qmd_core::DescribeFormat::default(),
     };
 
     let result = PackageConverter::new(&package, options).convert().unwrap();
@@ -595,6 +599,7 @@ fn test_package_converter_with_external_link_url() {
         include_html_output: false,
         prefer_ascii_math: false,
         arguments_format: ArgumentsFormat::default(),
+        describe_format: rd2qmd_core::DescribeFormat::default(),
     };
 
     let result = PackageConverter::new(&package, options).convert().unwrap();
@@ -649,6 +654,7 @@ fn test_package_converter_with_package_urls() {
         include_html_output: false,
         prefer_ascii_math: false,
         arguments_format: ArgumentsFormat::default(),
+        describe_format: rd2qmd_core::DescribeFormat::default(),
     };
 
     let result = PackageConverter::new(&package, options).convert().unwrap();
@@ -826,6 +832,7 @@ fn test_package_converter_empty_directory() {
         include_html_output: false,
         prefer_ascii_math: false,
         arguments_format: ArgumentsFormat::default(),
+        describe_format: rd2qmd_core::DescribeFormat::default(),
     };
 
     let result = PackageConverter::new(&package, options).convert().unwrap();
@@ -865,6 +872,7 @@ fn test_full_convert_result_structure() {
         include_html_output: false,
         prefer_ascii_math: false,
         arguments_format: ArgumentsFormat::default(),
+        describe_format: rd2qmd_core::DescribeFormat::default(),
     };
 
     let result = PackageConverter::new(&package, options).convert().unwrap();
@@ -922,6 +930,7 @@ fn test_internal_topics_skipped_by_default() {
         include_html_output: false,
         prefer_ascii_math: false,
         arguments_format: ArgumentsFormat::default(),
+        describe_format: rd2qmd_core::DescribeFormat::default(),
     };
 
     let result = PackageConverter::new(&package, options).convert().unwrap();
@@ -982,6 +991,7 @@ fn test_internal_topics_included_when_requested() {
         include_html_output: false,
         prefer_ascii_math: false,
         arguments_format: ArgumentsFormat::default(),
+        describe_format: rd2qmd_core::DescribeFormat::default(),
     };
 
     let result = PackageConverter::new(&package, options).convert().unwrap();

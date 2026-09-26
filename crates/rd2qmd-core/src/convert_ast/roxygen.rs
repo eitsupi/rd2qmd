@@ -212,6 +212,7 @@ mod tests {
             &BlockConversionContext {
                 inline: InlineConversionContext::default(),
                 prefer_ascii_math: false,
+                describe_format: crate::DescribeFormat::default(),
                 enclosing_heading_depth: 2,
             },
         );
@@ -240,6 +241,7 @@ mod tests {
             &BlockConversionContext {
                 inline: InlineConversionContext::default(),
                 prefer_ascii_math: false,
+                describe_format: crate::DescribeFormat::default(),
                 enclosing_heading_depth: 2,
             },
         );

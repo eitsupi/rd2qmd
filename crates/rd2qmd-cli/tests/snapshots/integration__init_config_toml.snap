@@ -9,6 +9,7 @@ format = "qmd"
 frontmatter = true
 pagetitle = true
 arguments_format = "list-table"
+describe_format = "definition-list"
 include_internal = false
 
 [code]

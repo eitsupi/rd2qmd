@@ -328,6 +328,17 @@ pub(super) fn render_block_content(nodes: &[Node], indent: u8) -> String {
                 result.push_str(&fence);
                 first_block = false;
             }
+            Node::Heading(_) => {
+                if !first_block {
+                    result.push_str("\n\n");
+                    result.push_str(indent);
+                }
+                result.push_str(&indent_cell_continuation(
+                    &node_to_markdown_string(node),
+                    indent,
+                ));
+                first_block = false;
+            }
             Node::Math(_) | Node::DefinitionList(_) | Node::Table(_) => {
                 let text = node_to_markdown_string(node);
                 if text.is_empty() {

@@ -2,7 +2,7 @@
 
 use rayon::prelude::*;
 use rd2qmd_core::{
-    ArgumentsFormat, Frontmatter, RdAstEnvelope, RdToMdastOptions, WriterOptions,
+    ArgumentsFormat, DescribeFormat, Frontmatter, RdAstEnvelope, RdToMdastOptions, WriterOptions,
     extract_rd_metadata, extract_text_ref, mdast_to_qmd, rd_to_mdast_with_options,
 };
 use std::collections::HashMap;
@@ -82,6 +82,8 @@ pub struct PackageConvertOptions {
     pub prefer_ascii_math: bool,
     /// Table format for the Arguments section
     pub arguments_format: ArgumentsFormat,
+    /// Output format for description lists, including nested lists.
+    pub describe_format: DescribeFormat,
 }
 
 impl Default for PackageConvertOptions {
@@ -103,6 +105,7 @@ impl Default for PackageConvertOptions {
             include_html_output: false,
             prefer_ascii_math: false,
             arguments_format: ArgumentsFormat::default(),
+            describe_format: DescribeFormat::default(),
         }
     }
 }
@@ -382,6 +385,7 @@ pub(crate) fn convert_single_file(
                 exec_donttest: options.exec_donttest,
                 quarto_code_blocks: options.quarto_code_blocks,
                 arguments_format: options.arguments_format.clone(),
+                describe_format: options.describe_format,
                 include_html_output: options.include_html_output,
                 prefer_ascii_math: options.prefer_ascii_math,
             };

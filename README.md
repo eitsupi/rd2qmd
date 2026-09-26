@@ -87,6 +87,7 @@ rd2qmd convert man/ -o docs/ -j4
 | `--no-frontmatter` | Disable YAML frontmatter; use this for a visible body `# Title` in Markdown consumers that do not render YAML titles |
 | `--no-pagetitle` | Skip pkgdown-style `pagetitle` metadata (`"<title> — <name>"`) |
 | `--quarto-code-blocks <BOOL>` | Use `{r}` code blocks (auto-set based on format) |
+| `--describe-format <FORMAT>` | Description list format: `definition-list` (default, Pandoc), `list`, or `headings` (CommonMark/GFM) |
 | `--arguments-format <FORMAT>` | Arguments format: `list-table` (default), `grid-table`, `pipe-table`, or `list` |
 | `--input-format <FORMAT>` | Input format: `rd` (default) or `ast` (see [AST JSON I/O](#ast-json-io)) |
 | `-v, --verbose` | Verbose output |
@@ -397,6 +398,46 @@ The Arguments section is rendered using `--arguments-format`. Rd argument descri
 
   - option A
   - option B
+```
+
+### Description list format
+
+Rd `\describe{}` lists appear in glossaries and in ggproto/R6 method documentation,
+including ggplot2's `Coord` and `Facet`. Use `--describe-format` to select their
+representation, including nested descriptions:
+
+- `definition-list` (default): Pandoc definition lists. Requires a renderer with
+  definition-list support.
+- `list`: ordinary Markdown bullet lists with bold terms. Preserves paragraphs,
+  inline formatting, links, code examples, and nested lists in CommonMark/GFM.
+- `headings`: terms become headings one level below their enclosing section
+  (for example, H3 under an H2 Methods section). Nested descriptions use the
+  next heading level; descriptions below H6 use ordinary bullet lists instead.
+  Useful for long method descriptions.
+
+Inside Arguments pipe tables, `headings` falls back to `list`: cells use bold
+terms with bullet markers and `<br>` separators. Pipe tables cannot preserve
+block headings, nested list structure, or code blocks. Descriptions outside
+the table keep the selected format.
+
+`--arguments-format` controls the top-level `\arguments{}` section independently.
+For a Markdown viewer without definition-list or Quarto extensions, use both:
+
+```sh
+rd2qmd convert man/ -o docs/ -f md --no-frontmatter \
+  --arguments-format list --describe-format list
+```
+
+Selecting `-f md` alone does not change these list-format defaults. Other Rd
+constructs, such as tables and math, may still require renderer-specific options.
+
+The configuration file supports the same setting, with explicit CLI values
+(including `--describe-format definition-list`) taking precedence:
+
+```toml
+[output]
+arguments_format = "list"
+describe_format = "list"
 ```
 
 ## Examples
