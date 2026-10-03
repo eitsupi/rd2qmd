@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-## [0.6.0-alpha.1] - 2026-09-26
+## [0.6.0] - 2026-10-03
 
 ### Added
 
@@ -10,6 +10,7 @@
   - `list` preserves paragraphs, code examples, and nesting for CommonMark/GFM consumers.
   - `headings` uses section-relative headings, falling back to lists below H6 and inside Arguments pipe tables.
   - The default remains Pandoc definition lists; `arguments_format` controls the Arguments section independently.
+  - **Breaking:** Add `describe_format` to `RdConvertOptions`, `RdToMdastOptions`, and `PackageConvertOptions`. Exhaustive struct literals must supply the field or use `..Default::default()`.
 
 ### Changed
 
@@ -17,8 +18,7 @@
   - Enable the default-disabled `grid-table` Cargo feature in `rd2qmd-core` or `rd2qmd-package` to use `ArgumentsFormat::GridTable` and its `tabled` dependency.
   - `ArgumentsFormat` is now non-exhaustive; all downstream matches must include a wildcard, regardless of enabled features.
   - The CLI continues to support grid tables, with unchanged arguments, configuration, and default list-table output.
-- **Breaking:** Add `describe_format` to `RdConvertOptions`, `RdToMdastOptions`, and `PackageConvertOptions`. Exhaustive struct literals must supply the field or use `..Default::default()`. (#86)
-- Update `rd-ast` and `rd-source` to `0.5.0-rc.2`. (#83, #85)
+- Update `rd-ast` and `rd-source` to `0.5.0`. (#83, #85, #93)
 
 ### Fixed
 
