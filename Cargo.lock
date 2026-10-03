@@ -379,7 +379,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1094,7 +1094,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1182,18 +1182,18 @@ dependencies = [
 
 [[package]]
 name = "rd-ast"
-version = "0.5.0-rc.2"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0131d929d280f631d1710c953a69455748feba04c24bf88d219d089aa5716b7"
+checksum = "dbf9b3d8c86288e343f8640cba93442fae76065e5f93414933dfab513a913417"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "rd-source"
-version = "0.5.0-rc.2"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9cd41dd2231b04009ad8ec9b63d7e3286c9e90020ffe763a7c390716cb4c1444"
+checksum = "49f7a57652bc837dd27763c0a76b8db27d4020fcacc765d2f09073501e388a3d"
 dependencies = [
  "rd-ast",
 ]
@@ -1406,7 +1406,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1463,7 +1463,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1778,7 +1778,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2195,7 +2195,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
