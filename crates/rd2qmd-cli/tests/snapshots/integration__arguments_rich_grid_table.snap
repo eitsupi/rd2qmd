@@ -51,7 +51,6 @@ arguments_rich(x, method, describe_arg, table_arg, pre_only, pre_with_intro,
 | `pre_only`                | ```                                                          |
 |                           | result <- foo(x)                                             |
 |                           | print(result)                                                |
-|                           |                                                              |
 |                           | ```                                                          |
 +---------------------------+--------------------------------------------------------------+
 | `pre_with_intro`          | Example usage:                                               |
@@ -59,7 +58,6 @@ arguments_rich(x, method, describe_arg, table_arg, pre_only, pre_with_intro,
 |                           | ```                                                          |
 |                           | result <- foo(x)                                             |
 |                           | print(result)                                                |
-|                           |                                                              |
 |                           | ```                                                          |
 +---------------------------+--------------------------------------------------------------+
 | `backtick_code`           | Use `` `a` `` or ``` ``nested`` ``` for non-syntactic names. |
@@ -70,7 +68,6 @@ arguments_rich(x, method, describe_arg, table_arg, pre_only, pre_with_intro,
 |                           | ```r                                                         |
 |                           | x <- 1                                                       |
 |                           | ```                                                          |
-|                           |                                                              |
 |                           | ````                                                         |
 +---------------------------+--------------------------------------------------------------+
 | `cr_break`                | First line.                                                  |
@@ -92,6 +89,7 @@ arguments_rich(x, method, describe_arg, table_arg, pre_only, pre_with_intro,
 |                           | - First paragraph.                                           |
 |                           |                                                              |
 |                           |   Second paragraph of this item.                             |
+|                           |                                                              |
 |                           | - Another item.                                              |
 +---------------------------+--------------------------------------------------------------+
 

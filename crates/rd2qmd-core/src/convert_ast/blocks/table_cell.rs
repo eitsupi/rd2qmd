@@ -4,7 +4,7 @@
 use rd_ast::RdNodesRef;
 use rd2qmd_mdast::{Html, Node};
 
-use super::markdown_text::node_to_markdown_string;
+use super::cell::node_to_markdown_string;
 use super::{BlockConversionContext, convert_block_content_ref, replace_line_endings_with_space};
 
 pub(super) fn flatten_for_table_cell_ref(

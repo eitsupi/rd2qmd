@@ -31,13 +31,14 @@ A B.
 +----------+------------------------------+
 | Argument | Description                  |
 +==========+==============================+
-| `x`      | A *foo* B.                   |
+| `x`      | A _foo_ B.                   |
 |          |                              |
-|          | A ***nested*** B.            |
+|          | A **_nested_** B.            |
 |          |                              |
-|          | - ***term***                 |
+|          | - **_term_**                 |
 |          |                              |
 |          |   Argument body.             |
+|          |                              |
 |          | - &#8203;                    |
 |          |                              |
 |          |   Empty argument label body. |

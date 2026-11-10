@@ -16,17 +16,15 @@ use super::{
 };
 use tag_conversion::{convert_block, convert_paragraph};
 
-mod markdown_text;
+mod cell;
 mod table_cell;
 mod tag_conversion;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod tests_arguments;
-#[cfg(test)]
-mod tests_markdown_text;
 
-use markdown_text::{render_block_content, render_list_table_cell};
+use cell::render_cell;
 
 /// Borrowed configuration used while converting general block content.
 #[derive(Clone, Copy)]
@@ -188,8 +186,8 @@ fn convert_arguments_grid(
     for argument in arguments {
         let term_text = argument_name(argument, context);
         let arg_text = rd2qmd_mdast::format_inline_code(term_text.trim(), false);
-        let desc_text =
-            markdown_text::convert_to_markdown_text_ref(argument.description_ref(), context);
+        let desc_nodes = convert_block_content_ref(argument.description_ref(), context);
+        let desc_text = render_cell(&desc_nodes, 0);
         builder.push_record([arg_text, desc_text]);
     }
 
@@ -222,7 +220,7 @@ fn convert_arguments_list_table(
             let term_text = argument_name(argument, context);
             let arg_text = rd2qmd_mdast::format_inline_code(term_text.trim(), false);
             let desc_nodes = convert_block_content_ref(argument.description_ref(), context);
-            let desc_text = render_list_table_cell(&desc_nodes);
+            let desc_text = render_cell(&desc_nodes, 4);
             (arg_text, desc_text)
         })
         .collect();
@@ -260,7 +258,7 @@ fn convert_arguments_list(
             let term_text = argument_name(argument, context);
             let arg_code = rd2qmd_mdast::format_inline_code(term_text.trim(), false);
             let desc_nodes = convert_block_content_ref(argument.description_ref(), context);
-            let desc_text = render_block_content(&desc_nodes, 2);
+            let desc_text = render_cell(&desc_nodes, 2);
             (arg_code, desc_text)
         })
         .collect();
