@@ -10,8 +10,8 @@ use rd_ast::{
 };
 use rd2qmd_mdast::{Html, Image, Node};
 
-use super::is_usermacro_definition;
 use super::leaf_text::flatten_verbatim_leaves;
+use super::{is_brace_group, is_usermacro_definition};
 
 /// Borrowed configuration used to resolve Rd links without cloning converter options.
 #[derive(Debug, Clone, Copy, Default)]
@@ -208,7 +208,7 @@ pub(super) fn convert_inline_nodes_ref(
 ) -> Vec<Node> {
     let mut converted = Vec::new();
     for node in nodes {
-        if matches!(node.node(), RdNode::Group(_)) {
+        if matches!(node.node(), RdNode::Group(_)) || is_brace_group(node.node()) {
             converted.extend(convert_inline_nodes_ref(node.children(), context));
         } else if is_usermacro_definition(node.node()) {
             // RDS help databases retain user-macro definitions as a Raw

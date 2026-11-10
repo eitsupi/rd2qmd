@@ -9,6 +9,7 @@
 
 ### Fixed
 
+- Bare brace groups in Rd text (for example `{ a, b } text`) no longer drop their content. The group is now rendered in place without the braces, as R does. Braces inside `\code{}`, `\verb{}` and `\preformatted{}` are unchanged.
 - Arguments cells that start with a code block or display equation now render validly in the `list-table` and `list` formats. Previously the `list-table` form failed to parse in Quarto 2.
 - Remove a spurious blank line before the closing fence of code blocks in `grid-table` Arguments cells.
 - Indent lines after a hard line break (`\cr`) inside a list item under the item, so they stay inside it instead of relying on lazy continuation.

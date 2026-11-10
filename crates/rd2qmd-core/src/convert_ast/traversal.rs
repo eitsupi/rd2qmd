@@ -76,6 +76,9 @@ fn scan<'a>(
             rd_ast::RdNode::Raw(_) if !is_usermacro_definition(node.node()) => {
                 scan(node.children(), state, items)
             }
+            rd_ast::RdNode::Tagged(_) if super::is_brace_group(node.node()) => {
+                scan(node.children(), state, items)
+            }
             rd_ast::RdNode::Tagged(tagged) if matches!(tagged.tag(), RdTag::Unknown(_)) => {
                 scan(node.children(), state, items)
             }
@@ -184,6 +187,21 @@ mod tests {
         };
         assert_eq!(paragraph_text(first), "first");
         assert_eq!(paragraph_text(second), "second");
+    }
+
+    #[test]
+    fn brace_group_content_joins_surrounding_paragraph() {
+        let nodes = vec![
+            RdNode::Text("a ".into()),
+            RdNode::tagged(RdTag::List, None, vec![RdNode::Text("b".into())]),
+            RdNode::Text(" c".into()),
+        ];
+        let document = RdDocument::new(nodes);
+        let items = scan_block_content(document.top_level());
+        let [BlockContentItem::Paragraph(paragraph)] = items.as_slice() else {
+            panic!("expected one paragraph, got {items:?}");
+        };
+        assert_eq!(paragraph_text(paragraph), "a b c");
     }
 
     #[test]
