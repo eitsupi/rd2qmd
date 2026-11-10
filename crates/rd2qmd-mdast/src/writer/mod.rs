@@ -9,6 +9,10 @@ mod block;
 mod inline;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_boundary;
+#[cfg(test)]
+mod tests_dl_list;
 
 /// Options for the QMD writer
 #[derive(Debug, Clone, Default)]

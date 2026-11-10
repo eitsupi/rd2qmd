@@ -21,6 +21,10 @@ mod table_cell;
 mod tag_conversion;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_arguments;
+#[cfg(test)]
+mod tests_markdown_text;
 
 use markdown_text::{render_block_content, render_list_table_cell};
 
