@@ -57,3 +57,17 @@ fn honors_quarto_code_blocks_and_empty_input() {
     );
     assert_eq!(render_blocks_fragment(&[], &on), "");
 }
+
+#[test]
+fn hard_break_in_list_item_keeps_continuation_indented() {
+    let list = Node::list(
+        false,
+        vec![Node::list_item(vec![Node::paragraph(vec![
+            Node::text("a"),
+            Node::Break,
+            Node::text("b"),
+        ])])],
+    );
+    let out = render_blocks_fragment(&[list], &WriterOptions::default());
+    assert_eq!(out, "- a  \n  b");
+}
