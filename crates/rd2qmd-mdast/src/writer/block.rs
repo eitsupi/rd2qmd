@@ -42,27 +42,32 @@ impl<'a> Writer<'a> {
     }
 
     pub(super) fn write_list(&mut self, l: &crate::mdast::List) {
-        self.write_list_at_indent(l, 0);
+        self.write_list_impl(l, 0, ListContext::Flow);
     }
 
-    fn write_list_at_indent(&mut self, l: &crate::mdast::List, base_indent: usize) {
-        self.ensure_newline();
-        // A list is "loose" when any item contains more than one block child.
-        // Loose lists require blank lines between items and between blocks within an item.
-        let is_loose = l.children.iter().any(|child| {
-            if let Node::ListItem(li) = child {
-                li.children.len() > 1
-            } else {
-                false
-            }
-        });
+    /// Single list renderer shared by document-flow lists and lists inside
+    /// definition descriptions. The two contexts intentionally differ in a few
+    /// places; see [`ListContext`].
+    fn write_list_impl(&mut self, l: &crate::mdast::List, base_indent: usize, ctx: ListContext) {
+        let flow = ctx == ListContext::Flow;
+        if flow {
+            self.ensure_newline();
+        }
+        // A flow list is "loose" when any item contains more than one block child.
+        // Loose lists require blank lines between items and before nested lists.
+        // Lists inside definition descriptions are never loose (preserved as-is).
+        let is_loose = flow
+            && l.children.iter().any(|child| {
+                if let Node::ListItem(li) = child {
+                    li.children.len() > 1
+                } else {
+                    false
+                }
+            });
         let mut num = l.start.unwrap_or(1);
         for child in &l.children {
             if let Node::ListItem(li) = child {
-                // Write indent for this list item
-                for _ in 0..base_indent {
-                    self.output.push(' ');
-                }
+                self.output.push_str(&" ".repeat(base_indent));
                 // Build the marker first so item_indent matches the actual marker width.
                 // "- " is always 2 chars, but "10. " is 4 — a fixed +2 would mis-indent
                 // continuation lines for ordered lists with wide numbers.
@@ -75,65 +80,74 @@ impl<'a> Writer<'a> {
                 };
                 self.output.push_str(&marker);
                 let item_indent = base_indent + marker.len();
+                let item_indent_str = " ".repeat(item_indent);
 
                 for (i, item_child) in li.children.iter().enumerate() {
                     match item_child {
                         Node::Paragraph(p) => {
                             if i > 0 {
                                 // Subsequent paragraphs in a loose item need a blank line
-                                self.output.push('\n');
-                                self.output.push('\n');
-                                for _ in 0..item_indent {
-                                    self.output.push(' ');
-                                }
+                                self.output.push_str("\n\n");
+                                self.output.push_str(&item_indent_str);
                             }
                             for c in &p.children {
                                 self.write_node(c);
                             }
                         }
-                        Node::List(nested) => {
-                            // Nested list - write with increased indent.
-                            // Do not manually pre-indent here; write_list_at_indent already
-                            // emits base_indent spaces per item, so pre-indenting would double it.
+                        Node::List(nested) if flow => {
+                            // Nested list: write with increased indent. Do not pre-indent
+                            // here; the recursive call already emits the indent per item.
                             self.output.push('\n');
                             if is_loose {
                                 self.output.push('\n');
                             }
-                            self.write_list_at_indent(nested, item_indent);
-                            continue; // Skip the newline at the end since nested list handles it
+                            self.write_list_impl(nested, item_indent, ctx);
+                            continue; // The nested list already ends its own lines.
                         }
                         _ => {
-                            let indent_str = " ".repeat(item_indent);
-                            if i > 0 {
-                                self.output.push('\n');
-                                self.output.push('\n');
-                                self.output.push_str(&indent_str);
-                            }
-                            // Capture the block output, then re-indent every continuation line
-                            // so multi-line blocks (code fences, tables) stay inside the item.
-                            let start = self.output.len();
-                            self.write_node(item_child);
-                            let raw = self.output[start..].to_string();
-                            self.output.truncate(start);
-                            for (j, part) in raw.split('\n').enumerate() {
-                                if j > 0 {
-                                    self.output.push('\n');
-                                    if !part.is_empty() {
-                                        self.output.push_str(&indent_str);
-                                    }
+                            // Block children (code fences, tables, and in descriptions also
+                            // nested lists) have every continuation line re-indented to
+                            // `item_indent` so they stay inside the list item.
+                            if flow {
+                                if i > 0 {
+                                    self.output.push_str("\n\n");
+                                    self.output.push_str(&item_indent_str);
                                 }
-                                self.output.push_str(part);
+                            } else {
+                                // In descriptions the block always starts on its own line,
+                                // separated from preceding content by a blank line.
+                                self.output.push('\n');
+                                if i > 0 {
+                                    self.output.push('\n');
+                                }
+                                self.output.push_str(&item_indent_str);
                             }
+                            self.write_reindented_block(item_child, item_indent);
                         }
                     }
                 }
-                self.output.push('\n');
-                if is_loose {
-                    self.output.push('\n');
+                match ctx {
+                    ListContext::Flow => {
+                        self.output.push('\n');
+                        if is_loose {
+                            self.output.push('\n');
+                        }
+                    }
+                    ListContext::Description => {
+                        // Block children (e.g. a code fence) already end with their own
+                        // newline; avoid stacking a second one, which would become a
+                        // spurious blank line once write_definition_list adds its
+                        // own separator newline.
+                        if !self.output.ends_with('\n') {
+                            self.output.push('\n');
+                        }
+                    }
                 }
             }
         }
-        self.at_line_start = true;
+        if flow {
+            self.at_line_start = true;
+        }
     }
 
     pub(super) fn write_list_item(&mut self, _li: &crate::mdast::ListItem) {
@@ -287,7 +301,7 @@ impl<'a> Writer<'a> {
                                     }
                                     Node::List(l) => {
                                         // List items indented by 4 spaces
-                                        self.write_indented_list(l, 4);
+                                        self.write_list_impl(l, 4, ListContext::Description);
                                         self.output.push('\n');
                                         after_first = true;
                                     }
@@ -352,62 +366,19 @@ impl<'a> Writer<'a> {
             self.output.push_str(line);
         }
     }
+}
 
-    fn write_indented_list(&mut self, l: &crate::mdast::List, indent: usize) {
-        let indent_str = " ".repeat(indent);
-        let mut num = l.start.unwrap_or(1);
-        for child in &l.children {
-            if let Node::ListItem(li) = child {
-                self.output.push_str(&indent_str);
-                // Build the marker first so item_indent matches the actual marker width.
-                // "- " is always 2 chars, but "10. " is 4 — a fixed +2 would mis-indent
-                // continuation lines for ordered lists with wide numbers.
-                let marker = if l.ordered {
-                    let m = format!("{}. ", num);
-                    num += 1;
-                    m
-                } else {
-                    "- ".to_string()
-                };
-                self.output.push_str(&marker);
-                let item_indent = indent + marker.len();
-                let item_indent_str = " ".repeat(item_indent);
-                for (i, item_child) in li.children.iter().enumerate() {
-                    match item_child {
-                        Node::Paragraph(p) => {
-                            if i > 0 {
-                                self.output.push('\n');
-                                self.output.push('\n');
-                                self.output.push_str(&item_indent_str);
-                            }
-                            for c in &p.children {
-                                self.write_node(c);
-                            }
-                        }
-                        _ => {
-                            // Block children (code fences, nested lists, tables, ...) must
-                            // start on their own line, separated from preceding content by
-                            // a blank line, with every continuation line re-indented to
-                            // `item_indent` so they stay inside the list item.
-                            self.output.push('\n');
-                            if i > 0 {
-                                self.output.push('\n');
-                            }
-                            self.output.push_str(&item_indent_str);
-                            self.write_reindented_block(item_child, item_indent);
-                        }
-                    }
-                }
-                // Block children (e.g. a code fence) already end with their own
-                // trailing newline; avoid stacking a second one here, which would
-                // otherwise turn into a spurious extra blank line once the caller
-                // (e.g. write_definition_list) adds its own separator newline.
-                if !self.output.ends_with('\n') {
-                    self.output.push('\n');
-                }
-            }
-        }
-    }
+/// Where a list is being rendered. The contexts have diverged historically and
+/// their differing output is preserved on purpose for now.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ListContext {
+    /// Top level or inside another list item: supports loose lists, recurses
+    /// into nested lists directly, and always terminates items with a newline.
+    Flow,
+    /// Inside a definition description: never loose, nested lists are rendered
+    /// as ordinary re-indented blocks, and no extra newline follows an item
+    /// that already ends with one.
+    Description,
 }
 
 /// Calculate the minimum fence length needed for a code block.

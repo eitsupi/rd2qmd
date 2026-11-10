@@ -11,6 +11,8 @@ mod inline;
 mod tests;
 #[cfg(test)]
 mod tests_boundary;
+#[cfg(test)]
+mod tests_dl_list;
 
 /// Options for the QMD writer
 #[derive(Debug, Clone, Default)]
