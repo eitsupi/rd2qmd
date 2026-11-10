@@ -13,6 +13,10 @@ mod tests;
 mod tests_boundary;
 #[cfg(test)]
 mod tests_dl_list;
+#[cfg(test)]
+mod tests_emphasis;
+#[cfg(test)]
+mod tests_fragment;
 
 /// Options for the QMD writer
 #[derive(Debug, Clone, Default)]
@@ -66,6 +70,22 @@ pub fn mdast_to_qmd(root: &Root, options: &WriterOptions) -> String {
     )))
 }
 
+/// Render block nodes as a standalone Markdown fragment.
+///
+/// Behaves like [`mdast_to_qmd`] with `options.frontmatter` ignored, and trims
+/// all leading and trailing whitespace from the result, so the fragment has
+/// no trailing newline and can be embedded in a larger construct (for example
+/// a table or list cell) that supplies its own indentation and separators.
+pub fn render_blocks_fragment(nodes: &[Node], options: &WriterOptions) -> String {
+    let options = WriterOptions {
+        frontmatter: None,
+        ..options.clone()
+    };
+    mdast_to_qmd(&Root::new(nodes.to_vec()), &options)
+        .trim()
+        .to_owned()
+}
+
 /// Format the identified CommonMark-unsafe URL cases as a link destination.
 ///
 /// Line endings are flattened to spaces. Destinations containing whitespace,
@@ -103,6 +123,8 @@ struct Writer<'a> {
     output: String,
     /// Whether we're at the start of a line
     at_line_start: bool,
+    /// First character of the inline sibling after the node being written
+    next_char: Option<char>,
 }
 
 impl<'a> Writer<'a> {
@@ -111,6 +133,7 @@ impl<'a> Writer<'a> {
             options,
             output: String::new(),
             at_line_start: true,
+            next_char: None,
         }
     }
 
@@ -206,7 +229,7 @@ impl<'a> Writer<'a> {
             Node::DefinitionTerm(_) => {} // Handled by write_definition_list
             Node::DefinitionDescription(_) => {} // Handled by write_definition_list
             Node::Text(t) => self.output.push_str(&t.value),
-            Node::Emphasis(e) => self.write_emphasis(e),
+            Node::Emphasis(e) => self.write_emphasis(&e.children),
             Node::Strong(s) => self.write_strong(s),
             Node::InlineCode(c) => self.write_inline_code(c),
             Node::Break => self.write_break(),

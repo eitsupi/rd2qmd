@@ -55,9 +55,7 @@ arguments_rich(x, method, describe_arg, table_arg, pre_only, pre_with_intro,
     |   b  |  2  |
 
 - - `pre_only`
-  - 
-
-    ```
+  - ```
     result <- foo(x)
     print(result)
     ```
@@ -106,6 +104,7 @@ arguments_rich(x, method, describe_arg, table_arg, pre_only, pre_with_intro,
     - First paragraph.
 
       Second paragraph of this item.
+
     - Another item.
 
 :::

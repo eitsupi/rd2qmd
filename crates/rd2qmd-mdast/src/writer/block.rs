@@ -10,19 +10,17 @@ impl<'a> Writer<'a> {
         for _ in 0..h.depth {
             self.output.push('#');
         }
-        self.output.push(' ');
-        for child in &h.children {
-            self.write_node(child);
+        if !h.children.is_empty() {
+            self.output.push(' ');
         }
+        self.write_inlines(&h.children, None);
         self.output.push('\n');
         self.at_line_start = true;
     }
 
     pub(super) fn write_paragraph(&mut self, p: &crate::mdast::Paragraph) {
         self.ensure_newline();
-        for child in &p.children {
-            self.write_node(child);
-        }
+        self.write_inlines(&p.children, None);
         self.output.push('\n');
         self.at_line_start = true;
     }
@@ -90,9 +88,14 @@ impl<'a> Writer<'a> {
                                 self.output.push_str("\n\n");
                                 self.output.push_str(&item_indent_str);
                             }
-                            for c in &p.children {
-                                self.write_node(c);
-                            }
+                            // Indent lines after a hard break under the item so they
+                            // stay inside it rather than relying on lazy
+                            // continuation. Line starts are not escaped, so a
+                            // line that looks like a list marker still starts
+                            // a nested list.
+                            let start = self.output.len();
+                            self.write_inlines(&p.children, None);
+                            self.reindent_since(start, item_indent);
                         }
                         Node::List(nested) if flow => {
                             // Nested list: write with increased indent. Do not pre-indent
@@ -237,9 +240,7 @@ impl<'a> Writer<'a> {
             }
             if let Node::TableCell(c) = cell {
                 self.output.push(' ');
-                for child in &c.children {
-                    self.write_node(child);
-                }
+                self.write_inlines(&c.children, None);
                 self.output.push_str(" |");
             }
         }
@@ -257,9 +258,7 @@ impl<'a> Writer<'a> {
         while i < dl.children.len() {
             if let Node::DefinitionTerm(dt) = &dl.children[i] {
                 // Write term
-                for child in &dt.children {
-                    self.write_node(child);
-                }
+                self.write_inlines(&dt.children, None);
                 self.output.push('\n');
 
                 // Write description(s)
@@ -293,9 +292,7 @@ impl<'a> Writer<'a> {
                                             // Subsequent paragraphs need indentation
                                             self.output.push_str("    ");
                                         }
-                                        for c in &p.children {
-                                            self.write_node(c);
-                                        }
+                                        self.write_inlines(&p.children, None);
                                         self.output.push_str("\n\n");
                                         after_first = true;
                                     }
@@ -321,9 +318,7 @@ impl<'a> Writer<'a> {
                             for child in &dd.children {
                                 match child {
                                     Node::Paragraph(p) => {
-                                        for c in &p.children {
-                                            self.write_node(c);
-                                        }
+                                        self.write_inlines(&p.children, None);
                                     }
                                     _ => self.write_node(child),
                                 }
@@ -344,18 +339,15 @@ impl<'a> Writer<'a> {
         self.at_line_start = true;
     }
 
-    /// Render `node`, then re-indent every line after the first by `indent`
-    /// spaces. Used to keep multi-line block children (code fences, nested
-    /// lists, tables, ...) properly indented when nested inside a definition
-    /// description or a list item. The caller is responsible for indenting
-    /// the first line before calling this.
-    fn write_reindented_block(&mut self, node: &Node, indent: usize) {
+    /// Indent every non-empty line after the first of `self.output[start..]`
+    /// by `indent` spaces.
+    fn reindent_since(&mut self, start: usize, indent: usize) {
+        if !self.output[start..].contains('\n') {
+            return;
+        }
         let indent_str = " ".repeat(indent);
-        let start = self.output.len();
-        self.write_node(node);
         let raw = self.output[start..].to_string();
         self.output.truncate(start);
-
         for (i, line) in raw.split('\n').enumerate() {
             if i > 0 {
                 self.output.push('\n');
@@ -365,6 +357,17 @@ impl<'a> Writer<'a> {
             }
             self.output.push_str(line);
         }
+    }
+
+    /// Render `node`, then re-indent every line after the first by `indent`
+    /// spaces. Used to keep multi-line block children (code fences, nested
+    /// lists, tables, ...) properly indented when nested inside a definition
+    /// description or a list item. The caller is responsible for indenting
+    /// the first line before calling this.
+    fn write_reindented_block(&mut self, node: &Node, indent: usize) {
+        let start = self.output.len();
+        self.write_node(node);
+        self.reindent_since(start, indent);
     }
 }
 

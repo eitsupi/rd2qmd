@@ -1,6 +1,6 @@
-//! Characterization tests pinning the exact output of the hand-rolled
-//! Arguments cell renderer (`markdown_text`), which is separate from the
-//! mdast writer. The snapshots record current behavior, not desired behavior.
+//! Section-level tests pinning the exact output of the Arguments cell
+//! renderers in every format. Cells are rendered through the mdast writer; the
+//! snapshots record current behavior.
 
 use rd_ast::{RdDocument, RdNode, RdTag};
 use rd2qmd_mdast::{Node, Root, WriterOptions, mdast_to_qmd};
@@ -182,9 +182,7 @@ fn cell_starting_with_code_block() {
       - Description
 
     - - `value`
-      - 
-
-        ```
+      - ```
         x <- 1
         print(x)
         ```
@@ -195,8 +193,6 @@ fn cell_starting_with_code_block() {
 
     === list ===
     - **`value`**
-
-      
 
       ```
       x <- 1
@@ -329,6 +325,8 @@ fn cell_nested_itemize_and_enumerate() {
 
           1. inner one
           2. inner two
+
+
         - outer two
 
     :::
@@ -342,6 +340,8 @@ fn cell_nested_itemize_and_enumerate() {
 
         1. inner one
         2. inner two
+
+
       - outer two
     ");
 }
@@ -478,14 +478,14 @@ fn cell_inline_formatting() {
       - Description
 
     - - `value`
-      - Uses `f(x)`, *emphasis*, **strong**, [a link](https://example.com/a) and `` `tick` ``.
+      - Uses `f(x)`, _emphasis_, **strong**, [a link](https://example.com/a) and `` `tick` ``.
 
     :::
 
     === list ===
     - **`value`**
 
-      Uses `f(x)`, *emphasis*, **strong**, [a link](https://example.com/a) and `` `tick` ``.
+      Uses `f(x)`, _emphasis_, **strong**, [a link](https://example.com/a) and `` `tick` ``.
     ");
 }
 
@@ -737,7 +737,6 @@ fn cell_grid_table_cases() {
     |          | x <- 1      |
     |          |             |
     |          | y <- 2      |
-    |          |             |
     |          | ```         |
     +----------+-------------+
     === nested list ===
@@ -768,7 +767,7 @@ fn cell_grid_table_cases() {
     +----------+------------------+
     | Argument | Description      |
     +==========+==================+
-    | `value`  | `f(x)` *e* **s** |
+    | `value`  | `f(x)` _e_ **s** |
     +----------+------------------+
     === math ===
     +----------+-------------+

@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 
 use rd_ast::{RdDocument, RdNode, RdTag};
-use rd2qmd_mdast::{Node, Root, WriterOptions, mdast_to_qmd};
+use rd2qmd_mdast::{Node, Root, WriterOptions, mdast_to_qmd, render_blocks_fragment};
 
-use super::markdown_text::{convert_to_markdown_text, inline_nodes_to_markdown};
 use super::table_cell::sanitize_table_cell_inline_node;
 use super::{
     BlockConversionContext, convert_arguments, convert_block_content, convert_custom_section,
@@ -11,6 +10,28 @@ use super::{
 use crate::ArgumentsFormat;
 use crate::convert_ast::document::build_custom_sections;
 use crate::convert_ast::inline::{InlineConversionContext, LinkResolutionContext};
+
+/// Render an inline sequence through the writer as a single paragraph.
+fn inline_nodes_to_markdown(nodes: &[Node]) -> String {
+    render_blocks_fragment(
+        &[Node::paragraph(nodes.to_vec())],
+        &WriterOptions {
+            frontmatter: None,
+            quarto_code_blocks: true,
+        },
+    )
+}
+
+/// Render converted block content through the writer as a standalone fragment.
+fn convert_to_markdown_text(content: &[RdNode], context: &BlockConversionContext<'_>) -> String {
+    render_blocks_fragment(
+        &convert_block_content(content, context),
+        &WriterOptions {
+            frontmatter: None,
+            quarto_code_blocks: true,
+        },
+    )
+}
 
 fn context(prefer_ascii_math: bool) -> BlockConversionContext<'static> {
     BlockConversionContext {
@@ -949,7 +970,7 @@ fn list_table_preserves_indented_block_equations() {
     let converted = convert_arguments(&arguments, ArgumentsFormat::ListTable, &context(false));
     let table = html_value(&converted);
 
-    assert!(table.contains("  - \n\n    $$\n    x^2 + y^2\n    $$\n"));
+    assert!(table.contains("  - $$\n    x^2 + y^2\n    $$\n"));
 }
 
 #[test]
@@ -970,7 +991,7 @@ fn loose_list_preserves_indented_block_equations() {
     let converted = convert_arguments(&arguments, ArgumentsFormat::List, &context(false));
     let list = html_value(&converted);
 
-    assert!(list.contains("- **`value`**\n\n  \n\n  $$\n  x^2 + y^2\n  $$\n"));
+    assert!(list.contains("- **`value`**\n\n  $$\n  x^2 + y^2\n  $$\n"));
 }
 
 #[test]
