@@ -88,6 +88,24 @@ fn non_ascii_letters_count_as_alphanumeric() {
 fn skips_empty_text_when_looking_ahead() {
     let out = para(vec![em("x"), Node::text(""), Node::text("b")]);
     assert_eq!(out, "*x*b\n");
+    // Empty text between emphasis spans does not break the run.
+    let out = para(vec![
+        Node::text("a"),
+        em("x"),
+        Node::text(""),
+        em("y"),
+        Node::text("b"),
+    ]);
+    assert_eq!(out, "a*xy*b\n");
+    // Trailing empty text does not change the lookahead.
+    let out = para(vec![
+        Node::text("a "),
+        em("x"),
+        Node::text(""),
+        Node::text(" b"),
+    ]);
+    assert_eq!(out, "a _x_ b\n");
+    assert_eq!(para(vec![Node::text(""), Node::text("")]), "\n");
 }
 
 #[test]

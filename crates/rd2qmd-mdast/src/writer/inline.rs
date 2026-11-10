@@ -12,33 +12,37 @@ impl<'a> Writer<'a> {
     /// child (for example its closing delimiter), or `None` at the end of a
     /// block.
     pub(super) fn write_inlines(&mut self, nodes: &[crate::mdast::Node], trailing: Option<char>) {
+        use crate::mdast::Node;
         let mut i = 0;
         while i < nodes.len() {
             // Adjacent emphasis spans cannot both be delimited inside a word
             // without separation, so a run of them is written as one span.
-            let run = nodes[i..]
-                .iter()
-                .take_while(|n| matches!(n, crate::mdast::Node::Emphasis(_)))
-                .count()
-                .max(1);
-            let rest = &nodes[i + run..];
-            self.next_char = rest.iter().find_map(first_char).or(trailing);
-            match &nodes[i..i + run] {
-                [crate::mdast::Node::Emphasis(e)] => self.write_emphasis(&e.children),
-                [crate::mdast::Node::Emphasis(_), ..] => {
-                    let merged: Vec<_> = nodes[i..i + run]
-                        .iter()
-                        .flat_map(|n| match n {
-                            crate::mdast::Node::Emphasis(e) => e.children.clone(),
-                            _ => Vec::new(),
-                        })
-                        .collect();
-                    self.write_emphasis(&merged);
+            // Empty text nodes between spans emit nothing and are skipped.
+            let mut end = i;
+            if matches!(nodes[i], Node::Emphasis(_)) {
+                for (j, n) in nodes.iter().enumerate().skip(i) {
+                    match n {
+                        Node::Emphasis(_) => end = j,
+                        Node::Text(t) if t.value.is_empty() => {}
+                        _ => break,
+                    }
                 }
-                [node, ..] => self.write_node(node),
-                [] => unreachable!(),
             }
-            i += run;
+            self.next_char = nodes[end + 1..].iter().find_map(first_char).or(trailing);
+            if end == i {
+                self.write_node(&nodes[i]);
+            } else {
+                let merged: Vec<Node> = nodes[i..=end]
+                    .iter()
+                    .filter_map(|n| match n {
+                        Node::Emphasis(e) => Some(e.children.iter().cloned()),
+                        _ => None,
+                    })
+                    .flatten()
+                    .collect();
+                self.write_emphasis(&merged);
+            }
+            i = end + 1;
         }
         self.next_char = None;
     }
