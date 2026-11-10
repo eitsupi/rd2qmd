@@ -13,6 +13,8 @@ mod tests;
 mod tests_boundary;
 #[cfg(test)]
 mod tests_dl_list;
+#[cfg(test)]
+mod tests_fragment;
 
 /// Options for the QMD writer
 #[derive(Debug, Clone, Default)]
@@ -64,6 +66,22 @@ pub fn mdast_to_qmd(root: &Root, options: &WriterOptions) -> String {
     writer.write_root(&Root::new(crate::normalize_inline_boundaries(
         &root.children,
     )))
+}
+
+/// Render block nodes as a standalone Markdown fragment.
+///
+/// Behaves like [`mdast_to_qmd`] with `options.frontmatter` ignored, and trims
+/// all leading and trailing whitespace from the result, so the fragment has
+/// no trailing newline and can be embedded in a larger construct (for example
+/// a table or list cell) that supplies its own indentation and separators.
+pub fn render_blocks_fragment(nodes: &[Node], options: &WriterOptions) -> String {
+    let options = WriterOptions {
+        frontmatter: None,
+        ..options.clone()
+    };
+    mdast_to_qmd(&Root::new(nodes.to_vec()), &options)
+        .trim()
+        .to_owned()
 }
 
 /// Format the identified CommonMark-unsafe URL cases as a link destination.

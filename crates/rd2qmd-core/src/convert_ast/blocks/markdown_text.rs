@@ -6,7 +6,7 @@
 use rd_ast::RdNode;
 #[cfg(feature = "grid-table")]
 use rd_ast::RdNodesRef;
-use rd2qmd_mdast::{Node, Root, WriterOptions, mdast_to_qmd};
+use rd2qmd_mdast::{Node, WriterOptions, render_blocks_fragment};
 
 #[cfg(any(test, feature = "grid-table"))]
 use super::BlockConversionContext;
@@ -389,14 +389,13 @@ pub(super) fn render_block_content(nodes: &[Node], indent: u8) -> String {
 
 /// Serialize one mdast node through the real writer.
 pub(super) fn node_to_markdown_string(node: &Node) -> String {
-    let root = Root::new(vec![node.clone()]);
     let options = WriterOptions {
         frontmatter: None,
         // The migration context has no writer-format option yet. Preserve the
         // legacy call site's default until the document converter is wired.
         quarto_code_blocks: true,
     };
-    mdast_to_qmd(&root, &options).trim().to_owned()
+    render_blocks_fragment(std::slice::from_ref(node), &options)
 }
 
 /// Return a backtick fence long enough to wrap `code`.
