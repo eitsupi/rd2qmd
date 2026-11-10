@@ -21,6 +21,14 @@ pub(crate) fn is_usermacro_definition(node: &rd_ast::RdNode) -> bool {
     })
 }
 
+/// Whether a node is a bare brace group in prose (`{ ... }` with no macro name).
+/// The Rd parser represents it as a `List`-tagged node; R renders its content
+/// in place without the braces, so converters flatten it like a plain group.
+pub(crate) fn is_brace_group(node: &rd_ast::RdNode) -> bool {
+    node.as_tagged()
+        .is_some_and(|tagged| tagged.tag() == &rd_ast::RdTag::List && tagged.option().is_none())
+}
+
 pub(crate) use assembly::convert_document;
 #[allow(unused_imports)]
 pub(crate) use blocks::{
