@@ -3,19 +3,53 @@
 use super::{Writer, escape_link_title, format_link_destination};
 
 impl<'a> Writer<'a> {
-    pub(super) fn write_emphasis(&mut self, e: &crate::mdast::Emphasis) {
-        self.output.push('_');
-        for child in &e.children {
-            self.write_node(child);
+    /// Write a sequence of inline nodes.
+    ///
+    /// Each node is told the first character that will follow it, which
+    /// `write_emphasis` needs to pick a delimiter.
+    ///
+    /// `trailing` is the character the parent writes right after the last
+    /// child (for example its closing delimiter), or `None` at the end of a
+    /// block.
+    pub(super) fn write_inlines(&mut self, nodes: &[crate::mdast::Node], trailing: Option<char>) {
+        for (i, node) in nodes.iter().enumerate() {
+            self.next_char = nodes[i + 1..].iter().find_map(first_char).or(trailing);
+            self.write_node(node);
         }
-        self.output.push('_');
+        self.next_char = None;
+    }
+
+    /// Write emphasis, using `_` unless that would sit inside a word.
+    ///
+    /// CommonMark does not recognize `_` as an emphasis delimiter next to an
+    /// alphanumeric character (`before_em_after` is literal text), while `*`
+    /// works there. `*` is not used by default because it would make
+    /// `\strong{\emph{x}}` render as `***x***`, which Quarto rejects.
+    ///
+    /// `*` is also never placed directly next to another `*`, since runs such
+    /// as `**b*x***` do not parse. When an emphasis is intraword right at such
+    /// a boundary, neither delimiter works; `_` is kept there, matching the
+    /// previous output. Such rare cases may still be rejected by Quarto 2.
+    pub(super) fn write_emphasis(&mut self, e: &crate::mdast::Emphasis) {
+        let after = self.next_char;
+        let before = self.output.chars().next_back();
+        let intraword =
+            before.is_some_and(char::is_alphanumeric) || after.is_some_and(char::is_alphanumeric);
+        let star_adjacent = before == Some('*') || after == Some('*');
+        let delim = if intraword && !star_adjacent {
+            '*'
+        } else {
+            '_'
+        };
+        self.output.push(delim);
+        self.write_inlines(&e.children, Some(delim));
+        self.output.push(delim);
+        self.next_char = after;
     }
 
     pub(super) fn write_strong(&mut self, s: &crate::mdast::Strong) {
         self.output.push_str("**");
-        for child in &s.children {
-            self.write_node(child);
-        }
+        self.write_inlines(&s.children, Some('*'));
         self.output.push_str("**");
     }
 
@@ -43,9 +77,7 @@ impl<'a> Writer<'a> {
             return;
         }
         self.output.push('[');
-        for child in &l.children {
-            self.write_node(child);
-        }
+        self.write_inlines(&l.children, Some(']'));
         self.output.push_str("](");
         self.output.push_str(&format_link_destination(&l.url));
         if let Some(title) = &l.title {
@@ -84,6 +116,25 @@ impl<'a> Writer<'a> {
         self.output.push('$');
         self.output.push_str(&m.value);
         self.output.push('$');
+    }
+}
+
+/// The first character `node` will contribute to the output, if known.
+///
+/// Only the first character matters to the caller, so nodes that render
+/// nothing (empty text) yield `None` and the caller looks further.
+fn first_char(node: &crate::mdast::Node) -> Option<char> {
+    use crate::mdast::Node;
+    match node {
+        Node::Text(t) => t.value.chars().next(),
+        Node::Html(h) => h.value.chars().next(),
+        Node::InlineCode(_) => Some('`'),
+        Node::Emphasis(_) | Node::Strong(_) => Some('*'),
+        Node::Link(_) => Some('['),
+        Node::Image(_) => Some('!'),
+        Node::InlineMath(_) => Some('$'),
+        Node::Break => Some(' '),
+        _ => None,
     }
 }
 

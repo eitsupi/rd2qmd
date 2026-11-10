@@ -12,6 +12,7 @@
 - Arguments cells that start with a code block or display equation now render validly in the `list-table` and `list` formats. Previously the `list-table` form failed to parse in Quarto 2.
 - Remove a spurious blank line before the closing fence of code blocks in `grid-table` Arguments cells.
 - Keep lines after a hard line break (`\cr`) inside a list item indented under the item, so they cannot start a new list.
+- Emphasis inside a word (for example `before\emph{em}after`) is no longer lost. It is now written with `*` where `_` would not be recognized as an emphasis delimiter.
 
 ## [0.6.0] - 2026-10-03
 

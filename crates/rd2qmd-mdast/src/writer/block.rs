@@ -13,18 +13,14 @@ impl<'a> Writer<'a> {
         if !h.children.is_empty() {
             self.output.push(' ');
         }
-        for child in &h.children {
-            self.write_node(child);
-        }
+        self.write_inlines(&h.children, None);
         self.output.push('\n');
         self.at_line_start = true;
     }
 
     pub(super) fn write_paragraph(&mut self, p: &crate::mdast::Paragraph) {
         self.ensure_newline();
-        for child in &p.children {
-            self.write_node(child);
-        }
+        self.write_inlines(&p.children, None);
         self.output.push('\n');
         self.at_line_start = true;
     }
@@ -95,9 +91,7 @@ impl<'a> Writer<'a> {
                             // A hard break inside the paragraph must keep the
                             // following lines inside the list item.
                             let start = self.output.len();
-                            for c in &p.children {
-                                self.write_node(c);
-                            }
+                            self.write_inlines(&p.children, None);
                             self.reindent_since(start, item_indent);
                         }
                         Node::List(nested) if flow => {
@@ -243,9 +237,7 @@ impl<'a> Writer<'a> {
             }
             if let Node::TableCell(c) = cell {
                 self.output.push(' ');
-                for child in &c.children {
-                    self.write_node(child);
-                }
+                self.write_inlines(&c.children, None);
                 self.output.push_str(" |");
             }
         }
@@ -263,9 +255,7 @@ impl<'a> Writer<'a> {
         while i < dl.children.len() {
             if let Node::DefinitionTerm(dt) = &dl.children[i] {
                 // Write term
-                for child in &dt.children {
-                    self.write_node(child);
-                }
+                self.write_inlines(&dt.children, None);
                 self.output.push('\n');
 
                 // Write description(s)
@@ -299,9 +289,7 @@ impl<'a> Writer<'a> {
                                             // Subsequent paragraphs need indentation
                                             self.output.push_str("    ");
                                         }
-                                        for c in &p.children {
-                                            self.write_node(c);
-                                        }
+                                        self.write_inlines(&p.children, None);
                                         self.output.push_str("\n\n");
                                         after_first = true;
                                     }
@@ -327,9 +315,7 @@ impl<'a> Writer<'a> {
                             for child in &dd.children {
                                 match child {
                                     Node::Paragraph(p) => {
-                                        for c in &p.children {
-                                            self.write_node(c);
-                                        }
+                                        self.write_inlines(&p.children, None);
                                     }
                                     _ => self.write_node(child),
                                 }

@@ -14,6 +14,8 @@ mod tests_boundary;
 #[cfg(test)]
 mod tests_dl_list;
 #[cfg(test)]
+mod tests_emphasis;
+#[cfg(test)]
 mod tests_fragment;
 
 /// Options for the QMD writer
@@ -121,6 +123,8 @@ struct Writer<'a> {
     output: String,
     /// Whether we're at the start of a line
     at_line_start: bool,
+    /// First character of the inline sibling after the node being written
+    next_char: Option<char>,
 }
 
 impl<'a> Writer<'a> {
@@ -129,6 +133,7 @@ impl<'a> Writer<'a> {
             options,
             output: String::new(),
             at_line_start: true,
+            next_char: None,
         }
     }
 
