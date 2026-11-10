@@ -88,8 +88,11 @@ impl<'a> Writer<'a> {
                                 self.output.push_str("\n\n");
                                 self.output.push_str(&item_indent_str);
                             }
-                            // A hard break inside the paragraph must keep the
-                            // following lines inside the list item.
+                            // Indent lines after a hard break under the item so they
+                            // stay inside it rather than relying on lazy
+                            // continuation. Line starts are not escaped, so a
+                            // line that looks like a list marker still starts
+                            // a nested list.
                             let start = self.output.len();
                             self.write_inlines(&p.children, None);
                             self.reindent_since(start, item_indent);

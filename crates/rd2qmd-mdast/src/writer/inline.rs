@@ -57,7 +57,10 @@ impl<'a> Writer<'a> {
     /// `*` is also never placed directly next to another `*`, since runs such
     /// as `**b*x***` do not parse. When an emphasis is intraword right at such
     /// a boundary, neither delimiter works; `_` is kept there, matching the
-    /// previous output. Such rare cases may still be rejected by Quarto 2.
+    /// previous output. Such cases are not recognized as emphasis by
+    /// CommonMark (the delimiters end up as literal text), and may also be
+    /// rejected by Quarto 2. Nested emphasis or strong inside a word is not
+    /// handled in general.
     pub(super) fn write_emphasis(&mut self, children: &[crate::mdast::Node]) {
         let after = self.next_char;
         let before = self.output.chars().next_back();
