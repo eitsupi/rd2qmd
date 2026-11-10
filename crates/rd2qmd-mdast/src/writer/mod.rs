@@ -229,7 +229,7 @@ impl<'a> Writer<'a> {
             Node::DefinitionTerm(_) => {} // Handled by write_definition_list
             Node::DefinitionDescription(_) => {} // Handled by write_definition_list
             Node::Text(t) => self.output.push_str(&t.value),
-            Node::Emphasis(e) => self.write_emphasis(e),
+            Node::Emphasis(e) => self.write_emphasis(&e.children),
             Node::Strong(s) => self.write_strong(s),
             Node::InlineCode(c) => self.write_inline_code(c),
             Node::Break => self.write_break(),

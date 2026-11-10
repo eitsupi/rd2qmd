@@ -12,9 +12,33 @@ impl<'a> Writer<'a> {
     /// child (for example its closing delimiter), or `None` at the end of a
     /// block.
     pub(super) fn write_inlines(&mut self, nodes: &[crate::mdast::Node], trailing: Option<char>) {
-        for (i, node) in nodes.iter().enumerate() {
-            self.next_char = nodes[i + 1..].iter().find_map(first_char).or(trailing);
-            self.write_node(node);
+        let mut i = 0;
+        while i < nodes.len() {
+            // Adjacent emphasis spans cannot both be delimited inside a word
+            // without separation, so a run of them is written as one span.
+            let run = nodes[i..]
+                .iter()
+                .take_while(|n| matches!(n, crate::mdast::Node::Emphasis(_)))
+                .count()
+                .max(1);
+            let rest = &nodes[i + run..];
+            self.next_char = rest.iter().find_map(first_char).or(trailing);
+            match &nodes[i..i + run] {
+                [crate::mdast::Node::Emphasis(e)] => self.write_emphasis(&e.children),
+                [crate::mdast::Node::Emphasis(_), ..] => {
+                    let merged: Vec<_> = nodes[i..i + run]
+                        .iter()
+                        .flat_map(|n| match n {
+                            crate::mdast::Node::Emphasis(e) => e.children.clone(),
+                            _ => Vec::new(),
+                        })
+                        .collect();
+                    self.write_emphasis(&merged);
+                }
+                [node, ..] => self.write_node(node),
+                [] => unreachable!(),
+            }
+            i += run;
         }
         self.next_char = None;
     }
@@ -30,19 +54,25 @@ impl<'a> Writer<'a> {
     /// as `**b*x***` do not parse. When an emphasis is intraword right at such
     /// a boundary, neither delimiter works; `_` is kept there, matching the
     /// previous output. Such rare cases may still be rejected by Quarto 2.
-    pub(super) fn write_emphasis(&mut self, e: &crate::mdast::Emphasis) {
+    pub(super) fn write_emphasis(&mut self, children: &[crate::mdast::Node]) {
         let after = self.next_char;
         let before = self.output.chars().next_back();
         let intraword =
             before.is_some_and(char::is_alphanumeric) || after.is_some_and(char::is_alphanumeric);
-        let star_adjacent = before == Some('*') || after == Some('*');
+        let is_strong =
+            |n: Option<&crate::mdast::Node>| matches!(n, Some(crate::mdast::Node::Strong(_)));
+        // A strong child at either end would put `**` next to the `*` delimiter.
+        let star_adjacent = before == Some('*')
+            || after == Some('*')
+            || is_strong(children.first())
+            || is_strong(children.last());
         let delim = if intraword && !star_adjacent {
             '*'
         } else {
             '_'
         };
         self.output.push(delim);
-        self.write_inlines(&e.children, Some(delim));
+        self.write_inlines(children, Some(delim));
         self.output.push(delim);
         self.next_char = after;
     }

@@ -134,3 +134,48 @@ fn nested_in_intraword_star_emphasis() {
     let out = para(vec![Node::text("p"), inner, Node::text("q")]);
     assert_eq!(out, "p*a_x_*q\n");
 }
+
+#[test]
+fn adjacent_emphasis_is_merged() {
+    let out = para(vec![Node::text("a"), em("x"), em("y"), Node::text("b")]);
+    assert_eq!(out, "a*xy*b\n");
+    assert_eq!(para(vec![em("x"), em("y")]), "_xy_\n");
+    let out = para(vec![
+        Node::text("a "),
+        em("x"),
+        em("y"),
+        em("z"),
+        Node::text(" b"),
+    ]);
+    assert_eq!(out, "a _xyz_ b\n");
+    let out = para(vec![
+        Node::text("a"),
+        em("x"),
+        em("y"),
+        em("z"),
+        Node::text("b"),
+    ]);
+    assert_eq!(out, "a*xyz*b\n");
+}
+
+#[test]
+fn adjacent_emphasis_with_code_and_strong() {
+    let out = para(vec![
+        Node::text("a"),
+        Node::emphasis(vec![Node::inline_code("c")]),
+        Node::emphasis(vec![
+            Node::text("t"),
+            Node::strong(vec![Node::text("s")]),
+            Node::text("u"),
+        ]),
+        Node::text("b"),
+    ]);
+    assert_eq!(out, "a*`c`t**s**u*b\n");
+    // `*` would run into the strong delimiters, so `_` is kept.
+    let out = para(vec![
+        Node::text("a"),
+        Node::emphasis(vec![Node::strong(vec![Node::text("s")])]),
+        Node::text("b"),
+    ]);
+    assert_eq!(out, "a_**s**_b\n");
+}
