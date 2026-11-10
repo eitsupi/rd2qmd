@@ -52,11 +52,8 @@ fn emphasis_inside_strong_inside_word() {
         Node::strong(vec![em("x")]),
         Node::text("b"),
     ]);
-    // Known limitation: this output does not parse as
-    // strong(emphasis) inside a word in CommonMark (the outer `**`
-    // stays literal text and only the emphasis is recognized); pinned
-    // only to detect changes. To be replaced by a parsed-structure
-    // assertion when inline serialization is reworked.
+    // Intended strong(emphasis) is recognized by Quarto 1 and Quarto 2;
+    // strict CommonMark leaves the outer `**` literal.
     assert_eq!(out, "a**_x_**b\n");
 }
 
@@ -145,11 +142,9 @@ fn in_heading_and_list_item_and_table_cell() {
 #[test]
 fn never_adjacent_to_another_star() {
     // `**b*x***` and `***x*b**` do not parse, so `_` is used instead.
-    // Known limitation: the `_` forms below do not parse as the intended
-    // strong(text, emphasis) either: the `_` is intraword, so the inner
-    // emphasis is lost and `_` stays literal text. Pinned only to detect
-    // changes. To be replaced by a parsed-structure assertion when inline
-    // serialization is reworked.
+    // Known limitation: the intraword `_` loses the inner emphasis in Quarto 1
+    // (literal `_`) and is rejected by Quarto 2 (Q-2-5). Pinned only to detect
+    // changes; to be replaced by parsed-structure assertions.
     let out = para(vec![Node::strong(vec![Node::text("b"), em("x")])]);
     assert_eq!(out, "**b_x_**\n");
     let out = para(vec![Node::strong(vec![em("x"), Node::text("b")])]);
@@ -160,11 +155,9 @@ fn never_adjacent_to_another_star() {
 fn nested_in_intraword_star_emphasis() {
     let inner = Node::emphasis(vec![Node::text("a"), em("x")]);
     let out = para(vec![Node::text("p"), inner, Node::text("q")]);
-    // Known limitation: this output does not parse as emphasis
-    // containing nested emphasis in CommonMark (everything is literal
-    // text); pinned only to detect changes. To be replaced by a
-    // parsed-structure assertion when inline serialization is
-    // reworked.
+    // Known limitation: Quarto 1 keeps `a_x_` literal inside the outer emphasis
+    // and Quarto 2 rejects it (Q-2-12). Pinned only to detect changes; to be
+    // replaced by a parsed-structure assertion.
     assert_eq!(out, "p*a_x_*q\n");
 }
 
@@ -203,18 +196,14 @@ fn adjacent_emphasis_with_code_and_strong() {
         ]),
         Node::text("b"),
     ]);
-    // Known limitation: this output does not parse as emphasis
-    // spanning code and strong in CommonMark (the `*` delimiters stay
-    // literal text and only the strong is recognized); pinned only to
-    // detect changes. To be replaced by a parsed-structure assertion
-    // when inline serialization is reworked.
+    // Intended emphasis is recognized by Quarto 1 and Quarto 2; strict
+    // CommonMark leaves the `*` literal (opener follows a letter, precedes
+    // punctuation).
     assert_eq!(out, "a*`c`t**s**u*b\n");
     // `*` would run into the strong delimiters, so `_` is kept.
-    // Known limitation: this output does not parse as emphasis(strong) in
-    // CommonMark (the `_` next to a letter and `*` cannot open or close, so
-    // only the strong is recognized); pinned only to detect changes. To be
-    // replaced by a parsed-structure assertion when inline serialization is
-    // reworked.
+    // Known limitation in Quarto 1 only: the emphasis is lost (literal `_`).
+    // Quarto 2 parses it as intended. Pinned only to detect changes; to be
+    // replaced by a parsed-structure assertion.
     let out = para(vec![
         Node::text("a"),
         Node::emphasis(vec![Node::strong(vec![Node::text("s")])]),
