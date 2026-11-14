@@ -342,7 +342,7 @@ The Arguments section is rendered using `--arguments-format`. Rd argument descri
 | GFM / general Markdown | ❌ | ❌ | ✅ | ✅ |
 
 For q2 Arguments sections, use `list-table` or `list` to preserve block content
-without these table diagnostics. Nested `\\describe{}` lists are controlled
+without these table diagnostics. Nested `\describe{}` lists are controlled
 separately by `--describe-format`; see [Description list format](#description-list-format)
 for the combined q2 settings.
 
