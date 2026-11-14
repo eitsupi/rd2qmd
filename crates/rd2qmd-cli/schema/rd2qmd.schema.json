@@ -83,6 +83,11 @@
           "const": "pandoc-definition-list"
         },
         {
+          "description": "Quarto definition-list div - requires Quarto 1.11.7+ or q2",
+          "type": "string",
+          "const": "quarto-definition-list"
+        },
+        {
           "description": "Markdown bullet list - supports CommonMark and GFM, including nested descriptions",
           "type": "string",
           "const": "list"

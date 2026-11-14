@@ -61,12 +61,20 @@ fn equation(tag: RdTag, latex: &str) -> RdNode {
 /// Render a one-argument Arguments section in the given format and return the
 /// raw output string.
 fn render_arguments(format: ArgumentsFormat, description: Vec<RdNode>) -> String {
+    render_arguments_in(format, description, &context())
+}
+
+fn render_arguments_in(
+    format: ArgumentsFormat,
+    description: Vec<RdNode>,
+    context: &BlockConversionContext<'_>,
+) -> String {
     let document = RdDocument::new(vec![tagged(
         RdTag::Arguments,
         vec![described_item(vec![text("value")], description)],
     )]);
     let arguments: Vec<_> = document.arguments_lossy().collect();
-    let converted = convert_arguments(&arguments, format, &context());
+    let converted = convert_arguments(&arguments, format, context);
     match converted.as_slice() {
         [Node::Html(html)] => html.value.clone(),
         // Pipe tables are returned as a structured table and serialized by
@@ -76,6 +84,7 @@ fn render_arguments(format: ArgumentsFormat, description: Vec<RdNode>) -> String
             &WriterOptions {
                 frontmatter: None,
                 quarto_code_blocks: true,
+                ..Default::default()
             },
         ),
         other => panic!("expected one raw output or table node, got {other:?}"),
@@ -785,5 +794,85 @@ fn cell_grid_table_cases() {
     |          | \- b        |
     |          | 1\. c       |
     +----------+-------------+
+    ");
+}
+
+/// Cells are rendered during conversion, so a describe inside them must use
+/// the same definition list syntax as the rest of the document. Pipe-table
+/// cells flatten it as for the Pandoc form.
+#[test]
+fn cell_nested_describe_quarto() {
+    let describe = tagged(
+        RdTag::Describe,
+        vec![
+            described_item(vec![text("a")], vec![text("Use method A.")]),
+            described_item(vec![text("b")], vec![]),
+        ],
+    );
+    let context = BlockConversionContext {
+        describe_format: crate::DescribeFormat::QuartoDefinitionList,
+        ..context()
+    };
+    let output = [
+        ("pipe-table", ArgumentsFormat::PipeTable),
+        ("list-table", ArgumentsFormat::ListTable),
+        ("list", ArgumentsFormat::List),
+    ]
+    .into_iter()
+    .map(|(name, format)| {
+        let body = render_arguments_in(
+            format,
+            vec![text("Method:\n\n"), describe.clone()],
+            &context,
+        );
+        format!("=== {name} ===\n{body}")
+    })
+    .collect::<Vec<_>>()
+    .join("\n");
+    insta::assert_snapshot!(output, @"
+    === pipe-table ===
+    | Argument | Description |
+    |:---|:---|
+    | `value` | Method: <br>a: Use method A. <br>b:  |
+
+    === list-table ===
+    ::: {.list-table header-rows=1}
+
+    - - Argument
+      - Description
+
+    - - `value`
+      - Method:
+
+        ::: {.definition-list}
+
+        - a
+
+          - Use method A.
+
+        - b
+
+          - &#8203;
+
+        :::
+
+    :::
+
+    === list ===
+    - **`value`**
+
+      Method:
+
+      ::: {.definition-list}
+
+      - a
+
+        - Use method A.
+
+      - b
+
+        - &#8203;
+
+      :::
     ");
 }

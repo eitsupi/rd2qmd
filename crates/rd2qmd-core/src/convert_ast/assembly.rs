@@ -137,6 +137,7 @@ mod tests {
             &WriterOptions {
                 frontmatter: None,
                 quarto_code_blocks: options.quarto_code_blocks,
+                ..Default::default()
             },
         )
     }

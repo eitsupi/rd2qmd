@@ -1,6 +1,6 @@
 //! Block-level node writers.
 
-use super::Writer;
+use super::{DefinitionListSyntax, Writer};
 use crate::mdast::Align;
 use crate::mdast::Node;
 
@@ -242,6 +242,10 @@ impl<'a> Writer<'a> {
     }
 
     pub(super) fn write_definition_list(&mut self, dl: &crate::mdast::DefinitionList) {
+        if self.options.definition_list_syntax == DefinitionListSyntax::QuartoDiv {
+            self.write_quarto_definition_list(dl);
+            return;
+        }
         self.ensure_newline();
 
         let mut i = 0;
@@ -278,6 +282,51 @@ impl<'a> Writer<'a> {
             }
         }
 
+        self.at_line_start = true;
+    }
+
+    /// Write a definition list as a Quarto `::: {.definition-list}` div.
+    ///
+    /// The div holds a bullet list; each item is the term as a paragraph,
+    /// followed by a one-item bullet list with the term's descriptions merged.
+    /// An empty description becomes a zero-width character reference, since
+    /// Quarto needs both blocks to recognize the item. A list without terms
+    /// writes nothing.
+    fn write_quarto_definition_list(&mut self, dl: &crate::mdast::DefinitionList) {
+        let mut items = Vec::new();
+        let mut children = dl.children.iter().peekable();
+        while let Some(child) = children.next() {
+            let Node::DefinitionTerm(term) = child else {
+                continue;
+            };
+            let mut description = Vec::new();
+            while let Some(Node::DefinitionDescription(dd)) = children.peek() {
+                description.extend(dd.children.iter().cloned());
+                children.next();
+            }
+            if description.is_empty() {
+                description.push(Node::paragraph(vec![Node::html("&#8203;")]));
+            }
+            items.push(Node::list_item(vec![
+                Node::paragraph(term.children.clone()),
+                Node::list(false, vec![Node::list_item(description)]),
+            ]));
+        }
+        if items.is_empty() {
+            return;
+        }
+
+        self.ensure_newline();
+        self.output.push_str("::: {.definition-list}\n");
+        self.write_separator();
+        self.write_list(&crate::mdast::List {
+            ordered: false,
+            start: None,
+            spread: false,
+            children: items,
+        });
+        self.write_separator();
+        self.output.push_str(":::\n");
         self.at_line_start = true;
     }
 

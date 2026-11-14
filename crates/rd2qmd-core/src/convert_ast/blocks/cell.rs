@@ -5,29 +5,45 @@
 //! construct, so the nodes are prepared, rendered with
 //! [`render_blocks_fragment`], and re-indented under the construct's marker.
 
-use rd2qmd_mdast::{Node, WriterOptions, normalize_inline_boundaries, render_blocks_fragment};
+use rd2qmd_mdast::{
+    DefinitionListSyntax, Node, WriterOptions, normalize_inline_boundaries, render_blocks_fragment,
+};
 
 /// Serialize one node through the real writer.
+///
+/// Used only for nodes flattened into pipe-table cells (code, math,
+/// headings), which never contain a definition list.
 pub(super) fn node_to_markdown_string(node: &Node) -> String {
-    render_blocks_fragment(std::slice::from_ref(node), &writer_options())
+    render_blocks_fragment(
+        std::slice::from_ref(node),
+        &writer_options(DefinitionListSyntax::default()),
+    )
 }
 
-fn writer_options() -> WriterOptions {
+fn writer_options(definition_list_syntax: DefinitionListSyntax) -> WriterOptions {
     WriterOptions {
         frontmatter: None,
         // The migration context has no writer-format option yet. Preserve the
         // legacy call site's default until the document converter is wired.
         quarto_code_blocks: true,
+        definition_list_syntax,
     }
 }
 
 /// Render block nodes as a cell body whose continuation lines are indented by
 /// `indent` spaces. The first line is not indented: the caller places it after
 /// its own marker. Empty content yields an empty string.
-pub(super) fn render_cell(nodes: &[Node], indent: usize) -> String {
+///
+/// Cells are rendered during conversion, before the document writer runs, so
+/// the definition list syntax must match the one the document uses.
+pub(super) fn render_cell(
+    nodes: &[Node],
+    indent: usize,
+    definition_list_syntax: DefinitionListSyntax,
+) -> String {
     let mut nodes = normalize_inline_boundaries(nodes);
     prepare_blocks(&mut nodes, true);
-    let rendered = render_blocks_fragment(&nodes, &writer_options());
+    let rendered = render_blocks_fragment(&nodes, &writer_options(definition_list_syntax));
     indent_continuation(&rendered, indent)
 }
 

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- Add the `quarto-definition-list` description list format (`DescribeFormat::QuartoDefinitionList`), which writes Quarto's `::: {.definition-list}` div. Quarto 1.11.7+ and q2 render it as a definition list.
+  - **Breaking:** `DescribeFormat` gains the `QuartoDefinitionList` variant, and `WriterOptions` gains a `definition_list_syntax` field (`DefinitionListSyntax::Pandoc` by default). Exhaustive matches and struct literals must handle them, for example with `..Default::default()`.
+
 ### Changed
 
 - **Breaking:** Rename the default description list format to `pandoc-definition-list` (`DescribeFormat::PandocDefinitionList`), naming it after the syntax it uses.
@@ -12,6 +17,7 @@
 
 ### Fixed
 
+- A list item whose first block is a nested list now writes the nested list on the marker line (`- - a`). q2 rejected the previous form, an empty marker line followed by the list.
 - Bare brace groups in Rd text (for example `{ a, b } text`) no longer drop their content. The group is now rendered in place without the braces, as R does. Braces inside `\code{}`, `\verb{}` and `\preformatted{}` are unchanged.
 - Arguments cells that start with a code block or display equation now render validly in the `list-table` and `list` formats. Previously the `list-table` form failed to parse in Quarto 2.
 - Remove a spurious blank line before the closing fence of code blocks in `grid-table` Arguments cells.

@@ -118,6 +118,7 @@ pub(crate) fn merge_describe_format(args: &ConvertArgs, config: &Config) -> Desc
         CliDescribeFormat::PandocDefinitionList | CliDescribeFormat::DefinitionList => {
             DescribeFormat::PandocDefinitionList
         }
+        CliDescribeFormat::QuartoDefinitionList => DescribeFormat::QuartoDefinitionList,
         CliDescribeFormat::List => DescribeFormat::List,
         CliDescribeFormat::Headings => DescribeFormat::Headings,
     }

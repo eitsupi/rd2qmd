@@ -18,6 +18,7 @@ fn inline_nodes_to_markdown(nodes: &[Node]) -> String {
         &WriterOptions {
             frontmatter: None,
             quarto_code_blocks: true,
+            ..Default::default()
         },
     )
 }
@@ -29,6 +30,7 @@ fn convert_to_markdown_text(content: &[RdNode], context: &BlockConversionContext
         &WriterOptions {
             frontmatter: None,
             quarto_code_blocks: true,
+            ..Default::default()
         },
     )
 }
@@ -415,6 +417,7 @@ fn converts_tabular_multiline_ascii_equation_to_single_line_inline_code() {
         &WriterOptions {
             frontmatter: None,
             quarto_code_blocks: true,
+            ..Default::default()
         },
     );
     let row = markdown
@@ -449,6 +452,7 @@ fn converts_multiline_out_in_tabular_cell_to_one_pipe_table_row() {
         &WriterOptions {
             frontmatter: None,
             quarto_code_blocks: true,
+            ..Default::default()
         },
     );
     let rows: Vec<_> = markdown
@@ -791,6 +795,7 @@ fn pipe_table_flattens_and_escapes_nested_conditional_paragraphs() {
         &WriterOptions {
             frontmatter: None,
             quarto_code_blocks: true,
+            ..Default::default()
         },
     );
     let row_line = markdown
@@ -839,6 +844,7 @@ fn pipe_table_collapses_multiline_argument_names_through_real_writer() {
         &WriterOptions {
             frontmatter: None,
             quarto_code_blocks: true,
+            ..Default::default()
         },
     );
 
@@ -1023,6 +1029,7 @@ fn pipe_table_preserves_describe_tabular_and_preformatted_content() {
         &WriterOptions {
             frontmatter: None,
             quarto_code_blocks: true,
+            ..Default::default()
         },
     );
     let row = markdown
@@ -1064,6 +1071,7 @@ fn pipe_table_preserves_both_paragraphs_of_a_multi_paragraph_list_item() {
         &WriterOptions {
             frontmatter: None,
             quarto_code_blocks: true,
+            ..Default::default()
         },
     );
     let row = markdown
@@ -1175,6 +1183,7 @@ fn pipe_table_nested_tabular_pipe_is_not_double_escaped() {
         &WriterOptions {
             frontmatter: None,
             quarto_code_blocks: true,
+            ..Default::default()
         },
     );
     let row = markdown
@@ -1242,6 +1251,7 @@ fn pipe_table_tabular_nested_in_describe_pipe_is_not_double_escaped() {
         &WriterOptions {
             frontmatter: None,
             quarto_code_blocks: true,
+            ..Default::default()
         },
     );
     let row = markdown
@@ -1281,6 +1291,7 @@ fn pipe_table_preformatted_pipe_preserves_backslash() {
         &WriterOptions {
             frontmatter: None,
             quarto_code_blocks: true,
+            ..Default::default()
         },
     );
 
@@ -1305,6 +1316,7 @@ fn pipe_table_math_pipe_preserves_backslash() {
         &WriterOptions {
             frontmatter: None,
             quarto_code_blocks: true,
+            ..Default::default()
         },
     );
 

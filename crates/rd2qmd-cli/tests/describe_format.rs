@@ -245,7 +245,12 @@ fn describe_format_snapshots() {
         include_str!("fixtures/describe_code_blocks.Rd"),
     )
     .unwrap();
-    for format in ["pandoc-definition-list", "list", "headings"] {
+    for format in [
+        "pandoc-definition-list",
+        "quarto-definition-list",
+        "list",
+        "headings",
+    ] {
         for extension in ["md", "qmd"] {
             let filename = format!("output.{extension}");
             run_cli(
