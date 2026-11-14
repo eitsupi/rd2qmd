@@ -8,6 +8,8 @@ use serde::Serialize;
 mod block;
 mod inline;
 #[cfg(test)]
+mod structure;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod tests_boundary;
@@ -17,6 +19,8 @@ mod tests_dl_list;
 mod tests_emphasis;
 #[cfg(test)]
 mod tests_fragment;
+#[cfg(test)]
+mod tests_structure;
 
 /// Options for the QMD writer
 #[derive(Debug, Clone, Default)]
