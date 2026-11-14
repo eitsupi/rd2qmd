@@ -109,13 +109,15 @@ impl<'a> Writer<'a> {
                             // they stay inside the list item.
                             let prefix = if i > 0 {
                                 item_indent_str.as_str()
-                            } else if !flow || matches!(item_child, Node::List(_)) {
-                                // A nested list, and in descriptions any block, starts
-                                // on the line after the marker.
+                            } else if !flow {
+                                // In descriptions any block starts on the line after
+                                // the marker.
                                 self.write_terminator();
                                 item_indent_str.as_str()
                             } else {
-                                // The marker is the first line's prefix.
+                                // The marker is the first line's prefix, also for a
+                                // nested list (`- - a`): q2 rejects an empty marker
+                                // line followed by the list.
                                 ""
                             };
                             self.write_nested_block(prefix, item_indent, |w| {

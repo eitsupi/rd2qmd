@@ -337,6 +337,20 @@ fn opaque_children_inside_containers() {
             "- \n- b\n",
         ),
         (
+            "nested list as first block of an item",
+            vec![Node::list(
+                false,
+                vec![
+                    item(vec![Node::list(
+                        false,
+                        vec![item(vec![para("a")]), item(vec![para("b")])],
+                    )]),
+                    item(vec![para("c")]),
+                ],
+            )],
+            "- - a\n  - b\n- c\n",
+        ),
+        (
             "empty nested list item, then item",
             vec![Node::list(
                 false,
