@@ -46,8 +46,8 @@ pub enum DefinitionListSyntax {
     #[default]
     Pandoc,
     /// Quarto's `::: {.definition-list}` div. It holds a bullet list whose
-    /// items are a term followed by a one-item bullet list with the
-    /// description. All descriptions of a term are merged into that item.
+    /// items are a term followed by a bullet list with one item per
+    /// description.
     QuartoDiv,
 }
 

@@ -74,15 +74,25 @@ fn quarto_definition_lists() {
             vec![Node::definition_list(vec![term("T")])],
             "::: {.definition-list}\n\n- T\n\n  - &#8203;\n\n:::\n",
         ),
-        // The Quarto form holds one description per term.
+        // Each description is its own nested item, which Quarto and q2
+        // render as separate `<dd>` elements.
         (
-            "two descriptions are merged",
+            "two descriptions",
             vec![Node::definition_list(vec![
                 term("T"),
                 def(vec![para("D1")]),
                 def(vec![para("D2")]),
             ])],
-            "::: {.definition-list}\n\n- T\n\n  - D1\n\n    D2\n\n:::\n",
+            "::: {.definition-list}\n\n- T\n\n  - D1\n  - D2\n\n:::\n",
+        ),
+        (
+            "empty description among others",
+            vec![Node::definition_list(vec![
+                term("T"),
+                def(vec![]),
+                def(vec![para("D2"), para("D3")]),
+            ])],
+            "::: {.definition-list}\n\n- T\n\n  - &#8203;\n\n  - D2\n\n    D3\n\n:::\n",
         ),
         (
             "nested definition list",

@@ -288,8 +288,8 @@ impl<'a> Writer<'a> {
     /// Write a definition list as a Quarto `::: {.definition-list}` div.
     ///
     /// The div holds a bullet list; each item is the term as a paragraph,
-    /// followed by a one-item bullet list with the term's descriptions merged.
-    /// An empty description becomes a zero-width character reference, since
+    /// followed by a bullet list with one item per description. An empty or
+    /// missing description becomes a zero-width character reference, since
     /// Quarto needs both blocks to recognize the item. A list without terms
     /// writes nothing.
     fn write_quarto_definition_list(&mut self, dl: &crate::mdast::DefinitionList) {
@@ -299,17 +299,23 @@ impl<'a> Writer<'a> {
             let Node::DefinitionTerm(term) = child else {
                 continue;
             };
-            let mut description = Vec::new();
+            let placeholder = || vec![Node::paragraph(vec![Node::html("&#8203;")])];
+            let mut descriptions = Vec::new();
             while let Some(Node::DefinitionDescription(dd)) = children.peek() {
-                description.extend(dd.children.iter().cloned());
+                let blocks = if dd.children.is_empty() {
+                    placeholder()
+                } else {
+                    dd.children.clone()
+                };
+                descriptions.push(Node::list_item(blocks));
                 children.next();
             }
-            if description.is_empty() {
-                description.push(Node::paragraph(vec![Node::html("&#8203;")]));
+            if descriptions.is_empty() {
+                descriptions.push(Node::list_item(placeholder()));
             }
             items.push(Node::list_item(vec![
                 Node::paragraph(term.children.clone()),
-                Node::list(false, vec![Node::list_item(description)]),
+                Node::list(false, descriptions),
             ]));
         }
         if items.is_empty() {
