@@ -621,16 +621,37 @@ fn describe_definition_list_with_only_a_list() {
 }
 }";
     let output = convert_core_as(rd, DescribeFormat::DefinitionList);
-    let mut depth_in_definition = 0;
-    let mut items = Vec::new();
+    // Text of each term, and of the list items in its definition.
+    let mut groups: Vec<(String, Vec<String>)> = Vec::new();
+    let mut in_term = false;
+    let mut in_item = false;
     for event in Parser::new_ext(&output, Options::ENABLE_DEFINITION_LIST) {
         match event {
             Event::Start(Tag::CodeBlock(_)) => panic!("unexpected code block in {output:?}"),
-            Event::Start(Tag::DefinitionListDefinition) => depth_in_definition += 1,
-            Event::End(TagEnd::DefinitionListDefinition) => depth_in_definition -= 1,
-            Event::Text(text) if depth_in_definition > 0 => items.push(text.trim().to_owned()),
+            Event::Start(Tag::DefinitionListTitle) => {
+                groups.push((String::new(), Vec::new()));
+                in_term = true;
+            }
+            Event::End(TagEnd::DefinitionListTitle) => in_term = false,
+            Event::Start(Tag::Item) => {
+                let (_, items) = groups.last_mut().expect("item inside a definition");
+                items.push(String::new());
+                in_item = true;
+            }
+            Event::End(TagEnd::Item) => in_item = false,
+            // Text before the first term is the section heading.
+            Event::Text(text) if !groups.is_empty() => {
+                let (term, items) = groups.last_mut().unwrap();
+                if in_term {
+                    term.push_str(&text);
+                } else if in_item {
+                    items.last_mut().unwrap().push_str(text.trim());
+                }
+            }
             _ => {}
         }
     }
-    assert_eq!(items, ["one", "two", "three", "four"], "{output:?}");
+    let expected = [("a", ["one", "two"]), ("b", ["three", "four"])]
+        .map(|(term, items)| (term.to_owned(), items.map(str::to_owned).to_vec()));
+    assert_eq!(groups, expected, "{output:?}");
 }

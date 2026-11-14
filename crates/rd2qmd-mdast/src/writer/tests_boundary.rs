@@ -337,6 +337,35 @@ fn opaque_children_inside_containers() {
             "- \n- b\n",
         ),
         (
+            "empty nested list item, then item",
+            vec![Node::list(
+                false,
+                vec![item(vec![Node::list(false, vec![])]), item(vec![para("b")])],
+            )],
+            "- \n- b\n",
+        ),
+        (
+            "empty table after paragraph in description",
+            vec![Node::definition_list(vec![
+                term("T"),
+                def(vec![para("D"), Node::table(vec![], vec![])]),
+            ])],
+            "T\n:   D\n\n",
+        ),
+        // The separator is written before the empty list is known to be
+        // empty, which leaves two blank lines. Harmless to parsers, since
+        // the definition is already loose.
+        (
+            "paragraph and empty list description, then term",
+            vec![Node::definition_list(vec![
+                term("T1"),
+                def(vec![para("D1"), Node::list(false, vec![])]),
+                term("T2"),
+                def(vec![para("D2")]),
+            ])],
+            "T1\n:   D1\n\n\nT2\n:   D2\n",
+        ),
+        (
             "html description without newline, then term",
             vec![Node::definition_list(vec![
                 term("T1"),
