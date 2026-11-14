@@ -39,7 +39,6 @@ The second value.
   #> [1] 3
   ```
 
-
 - Advanced usage returns invisibly.
 
 **Ordered examples**
@@ -50,7 +49,6 @@ The second value.
    compute(1, 2)
    #> [1] 3
    ```
-
 
 2. Advanced usage returns invisibly.
 

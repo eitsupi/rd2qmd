@@ -63,7 +63,7 @@ impl<'a> Writer<'a> {
                 }
             });
         let mut num = l.start.unwrap_or(1);
-        for child in &l.children {
+        for (item_index, child) in l.children.iter().enumerate() {
             if let Node::ListItem(li) = child {
                 self.output.push_str(&" ".repeat(base_indent));
                 // Build the marker first so item_indent matches the actual marker width.
@@ -81,11 +81,13 @@ impl<'a> Writer<'a> {
                 let item_indent_str = " ".repeat(item_indent);
 
                 for (i, item_child) in li.children.iter().enumerate() {
+                    if i > 0 {
+                        // Blocks after the first are separated by a blank line.
+                        self.write_separator();
+                    }
                     match item_child {
                         Node::Paragraph(p) => {
                             if i > 0 {
-                                // Subsequent paragraphs in a loose item need a blank line
-                                self.output.push_str("\n\n");
                                 self.output.push_str(&item_indent_str);
                             }
                             // Indent lines after a hard break under the item so they
@@ -96,55 +98,41 @@ impl<'a> Writer<'a> {
                             let start = self.output.len();
                             self.write_inlines(&p.children, None);
                             self.reindent_since(start, item_indent);
+                            self.write_terminator();
                         }
                         Node::List(nested) if flow => {
-                            // Nested list: write with increased indent. Do not pre-indent
-                            // here; the recursive call already emits the indent per item.
-                            self.output.push('\n');
-                            if is_loose {
-                                self.output.push('\n');
+                            if i == 0 {
+                                // End the marker line; the nested list starts
+                                // on the next one.
+                                self.write_terminator();
                             }
+                            // The recursive call emits the indent per item.
                             self.write_list_impl(nested, item_indent, ctx);
-                            continue; // The nested list already ends its own lines.
                         }
                         _ => {
                             // Block children (code fences, tables, and in descriptions also
                             // nested lists) have every continuation line re-indented to
                             // `item_indent` so they stay inside the list item.
-                            if flow {
-                                if i > 0 {
-                                    self.output.push_str("\n\n");
-                                    self.output.push_str(&item_indent_str);
-                                }
-                            } else {
-                                // In descriptions the block always starts on its own line,
-                                // separated from preceding content by a blank line.
-                                self.output.push('\n');
-                                if i > 0 {
-                                    self.output.push('\n');
-                                }
+                            if i > 0 {
+                                self.output.push_str(&item_indent_str);
+                            } else if !flow {
+                                // In descriptions the block always starts on its own line.
+                                self.write_terminator();
                                 self.output.push_str(&item_indent_str);
                             }
                             self.write_reindented_block(item_child, item_indent);
+                            self.close_opaque_block();
                         }
                     }
                 }
-                match ctx {
-                    ListContext::Flow => {
-                        self.output.push('\n');
-                        if is_loose {
-                            self.output.push('\n');
-                        }
-                    }
-                    ListContext::Description => {
-                        // Block children (e.g. a code fence) already end with their own
-                        // newline; avoid stacking a second one, which would become a
-                        // spurious blank line once write_definition_list adds its
-                        // own separator newline.
-                        if !self.output.ends_with('\n') {
-                            self.output.push('\n');
-                        }
-                    }
+                if li.children.is_empty() {
+                    self.write_terminator();
+                }
+                // Every item child ends with its own terminator. Items of a loose
+                // list are separated by a blank line; lists inside definition
+                // descriptions are never loose.
+                if is_loose && item_index + 1 < l.children.len() {
+                    self.write_separator();
                 }
             }
         }
@@ -255,88 +243,102 @@ impl<'a> Writer<'a> {
         self.ensure_newline();
 
         let mut i = 0;
+        let mut first_group = true;
         while i < dl.children.len() {
             if let Node::DefinitionTerm(dt) = &dl.children[i] {
-                // Write term
+                // Term groups are separated by a blank line.
+                if !first_group {
+                    self.write_separator();
+                }
+                first_group = false;
+
                 self.write_inlines(&dt.children, None);
-                self.output.push('\n');
+                self.write_terminator();
 
                 // Write description(s)
                 i += 1;
+                let mut after_block_description = false;
                 while i < dl.children.len() {
                     if let Node::DefinitionDescription(dd) = &dl.children[i] {
-                        // Check if description contains block elements
-                        let has_block_elements = dd.children.len() > 1
-                            || dd.children.iter().any(|c| {
-                                matches!(
-                                    c,
-                                    Node::List(_)
-                                        | Node::Code(_)
-                                        | Node::Table(_)
-                                        | Node::Blockquote(_)
-                                        | Node::Math(_)
-                                        | Node::DefinitionList(_)
-                                )
-                            });
-
-                        if has_block_elements {
-                            // Block elements need special handling with indentation
-                            // Pandoc definition lists require blank line before nested blocks
-                            // All content after first paragraph must be indented by 4 spaces
-                            self.output.push_str(":   ");
-                            let mut after_first = false;
-                            for child in &dd.children {
-                                match child {
-                                    Node::Paragraph(p) => {
-                                        if after_first {
-                                            // Subsequent paragraphs need indentation
-                                            self.output.push_str("    ");
-                                        }
-                                        self.write_inlines(&p.children, None);
-                                        self.output.push_str("\n\n");
-                                        after_first = true;
-                                    }
-                                    Node::List(l) => {
-                                        // List items indented by 4 spaces
-                                        self.write_list_impl(l, 4, ListContext::Description);
-                                        self.output.push('\n');
-                                        after_first = true;
-                                    }
-                                    _ => {
-                                        if after_first {
-                                            self.output.push_str("    ");
-                                        }
-                                        self.write_reindented_block(child, 4);
-                                        self.output.push('\n');
-                                        after_first = true;
-                                    }
-                                }
-                            }
-                        } else {
-                            // Simple inline content
-                            self.output.push_str(":   ");
-                            for child in &dd.children {
-                                match child {
-                                    Node::Paragraph(p) => {
-                                        self.write_inlines(&p.children, None);
-                                    }
-                                    _ => self.write_node(child),
-                                }
-                            }
-                            self.output.push('\n');
+                        // A description that follows a multi-block one is
+                        // separated from it by a blank line.
+                        if after_block_description {
+                            self.write_separator();
                         }
+                        after_block_description = self.write_definition_description(dd);
                         i += 1;
                     } else {
                         break;
                     }
                 }
-                self.output.push('\n');
             } else {
                 i += 1;
             }
         }
 
         self.at_line_start = true;
+    }
+
+    /// Write one `:   ` description, ending with its terminator. Returns
+    /// whether it was written in the multi-block form.
+    fn write_definition_description(&mut self, dd: &crate::mdast::DefinitionDescription) -> bool {
+        let has_block_elements = dd.children.len() > 1
+            || dd.children.iter().any(|c| {
+                matches!(
+                    c,
+                    Node::List(_)
+                        | Node::Code(_)
+                        | Node::Table(_)
+                        | Node::Blockquote(_)
+                        | Node::Math(_)
+                        | Node::DefinitionList(_)
+                )
+            });
+
+        self.output.push_str(":   ");
+        if !has_block_elements {
+            // Simple inline content
+            for child in &dd.children {
+                match child {
+                    Node::Paragraph(p) => self.write_inlines(&p.children, None),
+                    _ => self.write_node(child),
+                }
+            }
+            // Paragraph text needs its terminator; a raw HTML child may
+            // already end with one.
+            self.close_opaque_block();
+            return false;
+        }
+
+        // Pandoc definition lists require a blank line before nested blocks,
+        // and all content after the first block must be indented by 4 spaces.
+        for (j, child) in dd.children.iter().enumerate() {
+            if j > 0 {
+                self.write_separator();
+            }
+            match child {
+                Node::Paragraph(p) => {
+                    if j > 0 {
+                        self.output.push_str("    ");
+                    }
+                    self.write_inlines(&p.children, None);
+                    self.write_terminator();
+                }
+                Node::List(l) => {
+                    // The list indents each of its items by 4 spaces itself.
+                    self.write_list_impl(l, 4, ListContext::Description);
+                    self.close_opaque_block();
+                }
+                _ => {
+                    if j > 0 {
+                        self.output.push_str("    ");
+                    }
+                    self.write_reindented_block(child, 4);
+                    self.close_opaque_block();
+                }
+            }
+        }
+        true
     }
 
     /// Indent every non-empty line after the first of `self.output[start..]`

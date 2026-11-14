@@ -93,24 +93,10 @@ para "B"
 "#,
             None,
         ),
-        // The blank line after the table makes pulldown-cmark read the list as
-        // loose, while Pandoc keeps it tight. Expected to become tight in both
-        // once each block ends with exactly one newline.
         (
             "tight list of table items",
             vec![bullets(vec![vec![tbl()], vec![para("c")]]), para("B")],
             r#"
-list loose
-  item
-    table
-      row "a"
-      row "b"
-  item
-    para "c"
-para "B"
-"#,
-            Some(
-                r#"
 list tight
   item
     table
@@ -120,7 +106,7 @@ list tight
     plain "c"
 para "B"
 "#,
-            ),
+            None,
         ),
         (
             "loose list",
@@ -485,9 +471,6 @@ para "B"
 "#,
             None,
         ),
-        // The blank lines after the definition list make pulldown-cmark read the
-        // list as loose, while Pandoc keeps it tight. Expected to become tight in
-        // both once each block ends with exactly one newline.
         (
             "dl in list item",
             vec![
@@ -498,18 +481,6 @@ para "B"
                 para("B"),
             ],
             r#"
-list loose
-  item
-    deflist
-      term "T"
-      def
-        plain "D"
-  item
-    para "c"
-para "B"
-"#,
-            Some(
-                r#"
 list tight
   item
     deflist
@@ -520,7 +491,7 @@ list tight
     plain "c"
 para "B"
 "#,
-            ),
+            None,
         ),
         (
             "table, para",
@@ -549,20 +520,25 @@ para "B"
 #[test]
 fn block_structure_of_writer_output() {
     let require_pandoc = std::env::var_os("RD2QMD_REQUIRE_PANDOC").is_some();
+    // Report every mismatch at once: a writer change usually moves several
+    // cases together.
+    let mut failures = Vec::new();
     for (label, nodes, cmark, pandoc) in cases() {
         let md = render(nodes);
         let cmark = cmark.trim_start_matches('\n');
-        assert_eq!(
-            cmark_blocks(&md),
-            cmark,
-            "pulldown-cmark tree for {label}: {md:?}"
-        );
+        let tree = cmark_blocks(&md);
+        if tree != cmark {
+            failures.push(format!("pulldown-cmark tree for {label}: {md:?}\n{tree}"));
+        }
         match pandoc_blocks(&md) {
             Some(tree) => {
                 let pandoc = pandoc.map_or(cmark, |p| p.trim_start_matches('\n'));
-                assert_eq!(tree, pandoc, "Pandoc tree for {label}: {md:?}");
+                if tree != pandoc {
+                    failures.push(format!("Pandoc tree for {label}: {md:?}\n{tree}"));
+                }
             }
             None => assert!(!require_pandoc, "pandoc is required but not found"),
         }
     }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
