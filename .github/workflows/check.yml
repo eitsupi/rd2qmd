@@ -100,7 +100,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Cache Rust
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # Pandoc is a second oracle for the writer's block structure tests.
+      - uses: r-lib/actions/setup-pandoc@f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05 # v2.14.0
+        with:
+          pandoc-version: "3.7.0.2"
       - name: Run tests
+        env:
+          RD2QMD_REQUIRE_PANDOC: "1"
         run: >
           cargo test
           --all-targets
