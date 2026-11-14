@@ -87,7 +87,7 @@ rd2qmd convert man/ -o docs/ -j4
 | `--no-frontmatter` | Disable YAML frontmatter; use this for a visible body `# Title` in Markdown consumers that do not render YAML titles |
 | `--no-pagetitle` | Skip pkgdown-style `pagetitle` metadata (`"<title> — <name>"`) |
 | `--quarto-code-blocks <BOOL>` | Use `{r}` code blocks (auto-set based on format) |
-| `--describe-format <FORMAT>` | Description list format: `pandoc-definition-list` (default), `quarto-definition-list` (Quarto 1.11.7+ / q2), `list`, or `headings` (CommonMark/GFM) |
+| `--describe-format <FORMAT>` | Description list format: `pandoc-definition-list` (default; unsupported by q2), `quarto-definition-list` (Quarto 1.11.7+ / q2), `list`, or `headings` (CommonMark/GFM) |
 | `--arguments-format <FORMAT>` | Arguments format: `list-table` (default), `grid-table`, `pipe-table`, or `list` |
 | `--input-format <FORMAT>` | Input format: `rd` (default) or `ast` (see [AST JSON I/O](#ast-json-io)) |
 | `-v, --verbose` | Verbose output |
@@ -337,9 +337,14 @@ The Arguments section is rendered using `--arguments-format`. Rd argument descri
 | | `list-table` (default) | `grid-table` | `pipe-table` | `list` |
 |---|---|---|---|---|
 | Quarto 1.9+ | ✅ | ✅ | ✅ | ✅ |
-| Quarto 2 (q2) | ✅ | ❌ | ✅ | ✅ |
+| Quarto 2 (q2) | ✅ | ❌ (`Q-2-39`) | ⚠️ (`Q-2-9` for `<br>`) | ✅ |
 | Plain Pandoc / Quarto < 1.9 | ❌ | ✅ | ✅ | ✅ |
 | GFM / general Markdown | ❌ | ❌ | ✅ | ✅ |
+
+For q2 Arguments sections, use `list-table` or `list` to preserve block content
+without these table diagnostics. Nested `\describe{}` lists are controlled
+separately by `--describe-format`; see [Description list format](#description-list-format)
+for the combined q2 settings.
 
 **`list-table`** (default) — Quarto native syntax, supports full block elements. Recommended for Quarto 1.9+ and q2 workflows:
 
@@ -361,7 +366,7 @@ The Arguments section is rendered using `--arguments-format`. Rd argument descri
 :::
 ```
 
-**`grid-table`** — Pandoc Grid Table syntax, supports block elements. Works with Quarto 1.x and plain Pandoc, but not supported in q2:
+**`grid-table`** — Pandoc Grid Table syntax, supports block elements. Works with Quarto 1.x and plain Pandoc, but rejected by q2 with error `Q-2-39`:
 
 ```markdown
 +----------+-------------------------------------+
@@ -376,7 +381,7 @@ The Arguments section is rendered using `--arguments-format`. Rd argument descri
 +----------+-------------------------------------+
 ```
 
-**`pipe-table`** — Standard GFM pipe table. Broadest rendering compatibility (GitHub, most Markdown renderers), but block elements are flattened with `<br>`:
+**`pipe-table`** — Standard GFM pipe table. Broadest rendering compatibility (GitHub, most Markdown renderers), but block elements are flattened with `<br>`. In q2, these HTML breaks cause warning `Q-2-9` (inline-only cells without `<br>` avoid this warning):
 
 ```markdown
 | Argument | Description |
@@ -407,7 +412,10 @@ including ggplot2's `Coord` and `Facet`. Use `--describe-format` to select their
 representation, including nested descriptions:
 
 - `pandoc-definition-list` (default): Pandoc definition lists. Requires a
-  renderer with Pandoc's definition-list support. The former name
+  renderer with Pandoc's definition-list support, such as Quarto 1; q2 does
+  not support this syntax: it can warn with `Q-2-54` and render definitions
+  as literal text. For q2 definition lists, use `quarto-definition-list`.
+  The former name
   `definition-list` still selects this format, with a deprecation warning.
   It will select the Quarto `.definition-list` format in a future release, so
   use `pandoc-definition-list` to keep the current output.
@@ -433,6 +441,13 @@ and bullet lists so the body stays in its item. In `headings` format, an empty
 heading is retained to separate the description from the preceding entry.
 
 `--arguments-format` controls the top-level `\arguments{}` section independently.
+For q2, use `quarto-definition-list` together with the default `list-table`
+Arguments format, including for descriptions nested inside Arguments cells:
+
+```sh
+rd2qmd convert man/ -o docs/ --describe-format quarto-definition-list
+```
+
 For a Markdown viewer without definition-list or Quarto extensions, use both:
 
 ```sh

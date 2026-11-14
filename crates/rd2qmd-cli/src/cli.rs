@@ -203,10 +203,12 @@ pub(crate) struct ConvertArgs {
 
     /// Output format for the Arguments section: list-table (Quarto list-table, default), grid-table
     /// (Pandoc grid table), pipe-table (GFM pipe table, inline only), or list (Markdown loose list).
+    /// For q2, use list-table or list: grid-table causes error Q-2-39, and pipe-table
+    /// causes warning Q-2-9 when flattened block content contains <br>.
     #[arg(long, value_enum)]
     pub(crate) arguments_format: Option<CliArgumentsFormat>,
 
-    /// Output format for \describe lists, including nested descriptions: pandoc-definition-list (default), quarto-definition-list (Quarto 1.11.7+ / q2), list, or headings (CommonMark/GFM). Independent of --arguments-format
+    /// Output format for \describe lists, including nested descriptions: pandoc-definition-list (default; not supported by q2), quarto-definition-list (Quarto 1.11.7+ / q2), list, or headings (CommonMark/GFM). Independent of --arguments-format
     #[arg(long, value_enum)]
     pub(crate) describe_format: Option<CliDescribeFormat>,
 
