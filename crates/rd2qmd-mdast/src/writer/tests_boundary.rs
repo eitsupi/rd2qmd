@@ -346,6 +346,17 @@ fn opaque_children_inside_containers() {
             ])],
             "T1\n:   <br>\n\nT2\n:   D2\n",
         ),
+        // Descriptions hold blocks. Inline nodes placed directly in one (only
+        // possible through AST input) are each written as their own block,
+        // as in list items.
+        (
+            "inline siblings in description",
+            vec![Node::definition_list(vec![
+                term("T"),
+                def(vec![Node::text("a"), Node::inline_code("b")]),
+            ])],
+            "T\n:   a\n\n    `b`\n",
+        ),
         (
             "empty list description, then term",
             vec![Node::definition_list(vec![

@@ -31,6 +31,8 @@
 //!   def
 //!     plain "D"
 //! code "x"
+//! table
+//!   row ["a", "b"]
 //! ```
 //!
 //! `plain` is text directly inside a container; `para` is a paragraph.
@@ -66,6 +68,20 @@ pub(super) fn cmark_blocks(markdown: &str) -> String {
     for event in Parser::new_ext(markdown, options) {
         match event {
             Event::Start(tag) => {
+                // Inline tags never change the block tree; their text stays
+                // in the enclosing block's buffer.
+                if matches!(
+                    tag,
+                    Tag::Emphasis
+                        | Tag::Strong
+                        | Tag::Strikethrough
+                        | Tag::Superscript
+                        | Tag::Subscript
+                        | Tag::Link { .. }
+                        | Tag::Image { .. }
+                ) {
+                    continue;
+                }
                 // Text directly inside a list item or definition becomes a
                 // `plain` block when another block starts after it.
                 flush_plain(&mut out, &mut text, stack.len());
@@ -110,14 +126,6 @@ pub(super) fn cmark_blocks(markdown: &str) -> String {
                         text = Some(String::new());
                     }
                     Tag::Table(_) => open(&mut out, &mut stack, Kind::Other, "table"),
-                    // Inline tags never change the block tree.
-                    Tag::Emphasis
-                    | Tag::Strong
-                    | Tag::Strikethrough
-                    | Tag::Superscript
-                    | Tag::Subscript
-                    | Tag::Link { .. }
-                    | Tag::Image { .. } => {}
                     other => panic!("unexpected block {other:?} in {markdown:?}"),
                 }
             }
@@ -136,7 +144,7 @@ pub(super) fn cmark_blocks(markdown: &str) -> String {
                     }
                 }
                 TagEnd::TableHead | TagEnd::TableRow => {
-                    let row = cells.take().unwrap_or_default().join(" | ");
+                    let row = cells.take().unwrap_or_default();
                     line(&mut out, stack.len(), &format!("row {row:?}"));
                 }
                 TagEnd::Item | TagEnd::DefinitionListDefinition => {
@@ -302,7 +310,7 @@ fn pandoc_block(out: &mut String, depth: usize, block: &Value) {
                             .join(" ")
                     })
                     .collect();
-                line(out, depth + 1, &format!("row {:?}", cells.join(" | ")));
+                line(out, depth + 1, &format!("row {cells:?}"));
             }
         }
         "Div" => {
@@ -368,4 +376,36 @@ fn inlines(value: &Value) -> String {
         }
     }
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn inline_markup_keeps_its_text() {
+        let expected = "list tight\n  item\n    plain \"a b c\"\n";
+        assert_eq!(cmark_blocks("- a *b* c\n"), expected);
+        assert_eq!(cmark_blocks("- a [b](u) c\n"), expected);
+        if let Some(tree) = pandoc_blocks("- a *b* c\n") {
+            assert_eq!(tree, expected);
+        }
+    }
+
+    #[test]
+    fn table_rows_keep_cell_boundaries() {
+        let one_cell = "| a \\| b |\n|---|\n| c |\n";
+        let two_cells = "| a | b |\n|---|---|\n| c | d |\n";
+        assert_eq!(
+            cmark_blocks(one_cell),
+            "table\n  row [\"a | b\"]\n  row [\"c\"]\n"
+        );
+        assert_eq!(
+            cmark_blocks(two_cells),
+            "table\n  row [\"a\", \"b\"]\n  row [\"c\", \"d\"]\n"
+        );
+        if let Some(tree) = pandoc_blocks(two_cells) {
+            assert_eq!(tree, cmark_blocks(two_cells));
+        }
+    }
 }

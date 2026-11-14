@@ -100,8 +100,8 @@ para "B"
 list tight
   item
     table
-      row "a"
-      row "b"
+      row ["a"]
+      row ["b"]
   item
     plain "c"
 para "B"
@@ -498,8 +498,8 @@ para "B"
             vec![tbl(), para("B")],
             r#"
 table
-  row "a"
-  row "b"
+  row ["a"]
+  row ["b"]
 para "B"
 "#,
             None,
