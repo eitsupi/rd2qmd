@@ -232,3 +232,86 @@ fn inert_nodes_at_top_level_render_nothing() {
         assert_eq!(render(vec![node]), "", "output for {label}");
     }
 }
+
+/// Boundaries between the term groups of one definition list, and between
+/// descriptions of one term.
+#[test]
+fn definition_list_term_boundaries() {
+    let term = |t: &str| Node::definition_term(vec![Node::text(t)]);
+    let def = Node::definition_description;
+    let two_terms = |first: Vec<Node>| {
+        vec![
+            Node::definition_list(vec![
+                term("T1"),
+                def(first),
+                term("T2"),
+                def(vec![para("D2")]),
+            ]),
+            para("B"),
+        ]
+    };
+    let cases: Vec<(&str, Vec<Node>, &str)> = vec![
+        (
+            "paragraph, then term",
+            two_terms(vec![para("D1")]),
+            "T1\n:   D1\n\nT2\n:   D2\n\nB\n",
+        ),
+        // Current behavior (two blank lines before the next term); expected
+        // to change when the block terminator contract is introduced.
+        (
+            "code, then term",
+            two_terms(vec![Node::code(None, "x")]),
+            "T1\n:   ```\n    x\n    ```\n\n\nT2\n:   D2\n\nB\n",
+        ),
+        // Current behavior; expected to change when the block terminator
+        // contract is introduced.
+        (
+            "paragraph and code, then term",
+            two_terms(vec![para("D1"), Node::code(None, "x")]),
+            "T1\n:   D1\n\n    ```\n    x\n    ```\n\n\nT2\n:   D2\n\nB\n",
+        ),
+        // Current behavior; expected to change when the block terminator
+        // contract is introduced.
+        (
+            "paragraph and list, then term",
+            two_terms(vec![para("D1"), tight(para("a"))]),
+            "T1\n:   D1\n\n    - a\n\n\nT2\n:   D2\n\nB\n",
+        ),
+        // Current behavior; expected to change when the block terminator
+        // contract is introduced.
+        (
+            "paragraph and nested definition list, then term",
+            two_terms(vec![para("D1"), dl(vec![para("E")])]),
+            "T1\n:   D1\n\n    T\n    :   E\n\n\n\nT2\n:   D2\n\nB\n",
+        ),
+        (
+            "two simple descriptions",
+            vec![
+                Node::definition_list(vec![
+                    term("T"),
+                    def(vec![para("D1")]),
+                    def(vec![para("D2")]),
+                ]),
+                para("B"),
+            ],
+            "T\n:   D1\n:   D2\n\nB\n",
+        ),
+        // Current behavior; expected to change when the block terminator
+        // contract is introduced.
+        (
+            "code description, then simple description",
+            vec![
+                Node::definition_list(vec![
+                    term("T"),
+                    def(vec![Node::code(None, "x")]),
+                    def(vec![para("D2")]),
+                ]),
+                para("B"),
+            ],
+            "T\n:   ```\n    x\n    ```\n\n:   D2\n\nB\n",
+        ),
+    ];
+    for (label, nodes, expected) in cases {
+        assert_eq!(render(nodes), expected, "output for {label}");
+    }
+}
