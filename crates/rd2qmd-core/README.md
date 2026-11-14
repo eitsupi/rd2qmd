@@ -49,8 +49,8 @@ let qmd = mdast_to_qmd(&mdast, &WriterOptions::default());
 
 `DescribeFormat` controls `\describe{}` independently of `ArgumentsFormat`, which
 controls the top-level `\arguments{}` section. The default is
-`DescribeFormat::DefinitionList` for Pandoc-compatible renderers. For CommonMark
-or GFM consumers, select ordinary bullet lists:
+`DescribeFormat::PandocDefinitionList` for Pandoc-compatible renderers. For
+CommonMark or GFM consumers, select ordinary bullet lists:
 
 ```rust
 use rd2qmd_core::{ArgumentsFormat, DescribeFormat, RdConvertOptions};

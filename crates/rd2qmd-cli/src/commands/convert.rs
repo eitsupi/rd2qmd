@@ -16,9 +16,9 @@ use rd2qmd_package::{
 use super::display_diagnostic;
 use crate::cli::{ConvertArgs, ExternalLinkOptions, InputFormat, OutputFormat};
 use crate::config_merge::{
-    load_config, merge_arguments_format, merge_describe_format, merge_external_link_options,
-    merge_external_link_url, merge_format, merge_frontmatter, merge_pagetitle,
-    merge_unqualified_link_url,
+    describe_format_deprecation, load_config, merge_arguments_format, merge_describe_format,
+    merge_external_link_options, merge_external_link_url, merge_format, merge_frontmatter,
+    merge_pagetitle, merge_unqualified_link_url,
 };
 
 /// Run the convert subcommand: convert Rd files to Markdown
@@ -69,6 +69,11 @@ pub(crate) fn run_convert_command(args: &ConvertArgs, verbose: bool, quiet: bool
     // Convert list formats: explicit CLI > Config > Default
     let arguments_format = merge_arguments_format(args, &config);
     let describe_format = merge_describe_format(args, &config);
+    if let Some(warning) = describe_format_deprecation(args, &config)
+        && !quiet
+    {
+        eprintln!("Warning: {warning}");
+    }
 
     // include_internal: CLI > Config > false (skip internal by default)
     let include_internal = if args.include_internal {

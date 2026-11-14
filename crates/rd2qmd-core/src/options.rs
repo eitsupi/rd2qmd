@@ -43,9 +43,10 @@ pub enum ArgumentsFormat {
 /// Format for Rd description lists (`\describe{}`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum DescribeFormat {
-    /// Pandoc definition list, requiring a definition-list extension.
+    /// Pandoc definition list (`Term` / `:   Description`), requiring
+    /// Pandoc's `definition_lists` extension.
     #[default]
-    DefinitionList,
+    PandocDefinitionList,
     /// CommonMark-compatible bullet list with emphasized terms.
     List,
     /// Terms become headings below their enclosing section; beyond H6, use lists.

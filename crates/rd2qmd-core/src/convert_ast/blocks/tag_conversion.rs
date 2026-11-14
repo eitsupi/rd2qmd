@@ -96,7 +96,7 @@ pub(super) fn convert_block(
                 let label = inline::convert_inline_nodes_ref(item.label_ref(), &context.inline);
                 let body = super::convert_block_content_ref(item.body_ref(), &body_context);
                 match format {
-                    crate::DescribeFormat::DefinitionList => {
+                    crate::DescribeFormat::PandocDefinitionList => {
                         children.push(Node::definition_term(label));
                         children.push(Node::definition_description(body));
                     }
@@ -115,7 +115,9 @@ pub(super) fn convert_block(
             }
             match format {
                 crate::DescribeFormat::Headings => children,
-                crate::DescribeFormat::DefinitionList => vec![Node::definition_list(children)],
+                crate::DescribeFormat::PandocDefinitionList => {
+                    vec![Node::definition_list(children)]
+                }
                 crate::DescribeFormat::List => vec![Node::list(false, children)],
             }
         }

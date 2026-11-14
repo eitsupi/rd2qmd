@@ -222,17 +222,16 @@ impl Drop for Scratch {
     }
 }
 
-fn run_cli(cwd: &Path, args: &[&str]) {
+/// Run the CLI and return its stderr.
+fn run_cli(cwd: &Path, args: &[&str]) -> String {
     let result = Command::new(env!("CARGO_BIN_EXE_rd2qmd"))
         .current_dir(cwd)
         .args(args)
         .output()
         .unwrap();
-    assert!(
-        result.status.success(),
-        "{}",
-        String::from_utf8_lossy(&result.stderr)
-    );
+    let stderr = String::from_utf8_lossy(&result.stderr).into_owned();
+    assert!(result.status.success(), "{stderr}");
+    stderr
 }
 
 /// Render the same ggproto-style fixture through the CLI in every describe format.
@@ -246,7 +245,7 @@ fn describe_format_snapshots() {
         include_str!("fixtures/describe_code_blocks.Rd"),
     )
     .unwrap();
-    for format in ["definition-list", "list", "headings"] {
+    for format in ["pandoc-definition-list", "list", "headings"] {
         for extension in ["md", "qmd"] {
             let filename = format!("output.{extension}");
             run_cli(
@@ -376,7 +375,7 @@ fn describe_cli_config_precedence_and_rd_ast_directory_routes() {
                 "convert",
                 "rd/minimal.Rd",
                 "--describe-format",
-                "definition-list",
+                "pandoc-definition-list",
                 "-o",
                 "definition.md",
             ],
@@ -401,7 +400,7 @@ fn describe_cli_config_precedence_and_rd_ast_directory_routes() {
 
         fs::write(
             root.join("_rd2qmd.toml"),
-            "[output]\ndescribe_format = 'definition-list'\n",
+            "[output]\ndescribe_format = 'pandoc-definition-list'\n",
         )
         .unwrap();
         run_cli(
@@ -545,7 +544,7 @@ Second paragraph.
         ArgumentsFormat::List,
     ] {
         for describe_format in [
-            DescribeFormat::DefinitionList,
+            DescribeFormat::PandocDefinitionList,
             DescribeFormat::List,
             DescribeFormat::Headings,
         ] {
@@ -597,7 +596,7 @@ Second paragraph.
                     }
                 }
                 assert!(link && code, "{output}");
-                if describe_format != DescribeFormat::DefinitionList {
+                if describe_format != DescribeFormat::PandocDefinitionList {
                     assert_eq!(strong, 2, "{output}");
                 }
                 if describe_format == DescribeFormat::Headings {
@@ -620,7 +619,7 @@ fn describe_definition_list_with_only_a_list() {
 \item{b}{\enumerate{\item three \item four}}
 }
 }";
-    let output = convert_core_as(rd, DescribeFormat::DefinitionList);
+    let output = convert_core_as(rd, DescribeFormat::PandocDefinitionList);
     // Text of each term, and of the list items in its definition.
     let mut groups: Vec<(String, Vec<String>)> = Vec::new();
     let mut in_term = false;
@@ -654,4 +653,61 @@ fn describe_definition_list_with_only_a_list() {
     let expected = [("a", ["one", "two"]), ("b", ["three", "four"])]
         .map(|(term, items)| (term.to_owned(), items.map(str::to_owned).to_vec()));
     assert_eq!(groups, expected, "{output:?}");
+}
+
+/// The former name `definition-list` still selects the Pandoc format, from
+/// the command line and from the config file, with a deprecation warning.
+#[test]
+fn describe_format_deprecated_name() {
+    let scratch = Scratch::new();
+    let root = &scratch.0;
+    fs::write(root.join("minimal.Rd"), MINIMAL).unwrap();
+    let convert = |extra: &[&str], output: &str| {
+        let mut args = vec!["convert", "minimal.Rd", "--no-frontmatter", "-o", output];
+        args.extend_from_slice(extra);
+        let stderr = run_cli(root, &args);
+        (fs::read_to_string(root.join(output)).unwrap(), stderr)
+    };
+    let warning = "describe format 'definition-list' is deprecated and will select 'quarto-definition-list' in a future release; use 'pandoc-definition-list' to keep the current output";
+
+    let (expected, stderr) = convert(
+        &["--no-config", "--describe-format", "pandoc-definition-list"],
+        "new.md",
+    );
+    assert!(!stderr.contains("deprecated"), "{stderr}");
+
+    let (output, stderr) = convert(
+        &["--no-config", "--describe-format", "definition-list"],
+        "cli.md",
+    );
+    assert_eq!(output, expected);
+    assert!(stderr.contains(warning), "{stderr}");
+
+    let (_, stderr) = convert(
+        &[
+            "--no-config",
+            "--describe-format",
+            "definition-list",
+            "--quiet",
+        ],
+        "quiet.md",
+    );
+    assert!(!stderr.contains("deprecated"), "{stderr}");
+
+    fs::write(
+        root.join("_rd2qmd.toml"),
+        "[output]\ndescribe_format = 'definition-list'\n",
+    )
+    .unwrap();
+    let (output, stderr) = convert(&[], "config.md");
+    assert_eq!(output, expected);
+    assert!(stderr.contains(warning), "{stderr}");
+
+    // An explicit current name on the command line overrides the config
+    // and silences the warning.
+    let (_, stderr) = convert(
+        &["--describe-format", "pandoc-definition-list"],
+        "override.md",
+    );
+    assert!(!stderr.contains("deprecated"), "{stderr}");
 }
