@@ -12,6 +12,7 @@ keywords.workspace = true
 categories = ["text-processing"]
 
 [dependencies]
+saphyr = { workspace = true }
 serde = { workspace = true }
 
 [dev-dependencies]

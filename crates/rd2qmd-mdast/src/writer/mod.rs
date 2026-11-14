@@ -179,62 +179,8 @@ impl<'a> Writer<'a> {
     }
 
     fn write_frontmatter(&mut self, fm: &Frontmatter) {
-        self.output.push_str("---\n");
-        if let Some(title) = &fm.title {
-            self.output
-                .push_str(&format!(r#"title: "{}""#, escape_yaml_string(title)));
-            self.output.push('\n');
-        }
-        if let Some(pagetitle) = &fm.pagetitle {
-            self.output.push_str(&format!(
-                r#"pagetitle: "{}""#,
-                escape_yaml_string(pagetitle)
-            ));
-            self.output.push('\n');
-        }
-        if let Some(format) = &fm.format {
-            self.output.push_str(&format!("format: {}\n", format));
-        }
-        // Write Rd metadata fields
-        // TODO: Add configuration to control which metadata fields are output
-        if let Some(metadata) = &fm.metadata {
-            if let Some(lifecycle) = &metadata.lifecycle {
-                self.output.push_str(&format!("lifecycle: {}\n", lifecycle));
-            }
-            if !metadata.aliases.is_empty() {
-                self.output.push_str("aliases:\n");
-                for alias in &metadata.aliases {
-                    self.output
-                        .push_str(&format!(r#"  - "{}""#, escape_yaml_string(alias)));
-                    self.output.push('\n');
-                }
-            }
-            if !metadata.keywords.is_empty() {
-                self.output.push_str("keywords:\n");
-                for keyword in &metadata.keywords {
-                    self.output
-                        .push_str(&format!(r#"  - "{}""#, escape_yaml_string(keyword)));
-                    self.output.push('\n');
-                }
-            }
-            if !metadata.concepts.is_empty() {
-                self.output.push_str("concepts:\n");
-                for concept in &metadata.concepts {
-                    self.output
-                        .push_str(&format!(r#"  - "{}""#, escape_yaml_string(concept)));
-                    self.output.push('\n');
-                }
-            }
-            if !metadata.source_files.is_empty() {
-                self.output.push_str("source-files:\n");
-                for source_file in &metadata.source_files {
-                    self.output
-                        .push_str(&format!(r#"  - "{}""#, escape_yaml_string(source_file)));
-                    self.output.push('\n');
-                }
-            }
-        }
-        self.output.push_str("---\n\n");
+        self.output.push_str(&frontmatter_yaml(fm));
+        self.output.push('\n');
     }
 
     fn write_node(&mut self, node: &Node) {
@@ -320,6 +266,74 @@ impl<'a> Writer<'a> {
     }
 }
 
-fn escape_yaml_string(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('"', "\\\"")
+/// Render frontmatter as a YAML block between `---` lines.
+///
+/// The YAML is written by saphyr's emitter, with every string value double
+/// quoted and escaped, so it is valid for any input. Fields keep a fixed
+/// order and absent fields are left out.
+fn frontmatter_yaml(fm: &Frontmatter) -> String {
+    use saphyr::{Mapping, Scalar, Yaml, YamlEmitter};
+    use std::borrow::Cow;
+
+    fn string(value: &str) -> Yaml<'_> {
+        Yaml::Value(Scalar::String(Cow::Borrowed(value)))
+    }
+    fn strings(values: &[String]) -> Yaml<'_> {
+        Yaml::Sequence(values.iter().map(|v| string(v)).collect())
+    }
+
+    // Titles are prose that Rd sources wrap across lines; the breaks carry
+    // no meaning.
+    let title = fm.title.as_deref().map(single_line);
+    let pagetitle = fm.pagetitle.as_deref().map(single_line);
+
+    let mut map = Mapping::new();
+    let mut insert = |key: &'static str, value| {
+        map.insert(string(key), value);
+    };
+    if let Some(title) = &title {
+        insert("title", string(title));
+    }
+    if let Some(pagetitle) = &pagetitle {
+        insert("pagetitle", string(pagetitle));
+    }
+    if let Some(format) = &fm.format {
+        insert("format", string(format));
+    }
+    // TODO: Add configuration to control which metadata fields are output
+    if let Some(metadata) = &fm.metadata {
+        if let Some(lifecycle) = &metadata.lifecycle {
+            insert("lifecycle", string(lifecycle));
+        }
+        for (key, values) in [
+            ("aliases", &metadata.aliases),
+            ("keywords", &metadata.keywords),
+            ("concepts", &metadata.concepts),
+            ("source-files", &metadata.source_files),
+        ] {
+            if !values.is_empty() {
+                insert(key, strings(values));
+            }
+        }
+    }
+
+    if map.is_empty() {
+        return "---\n---\n".to_owned();
+    }
+    let mut out = String::new();
+    let mut emitter = YamlEmitter::new(&mut out);
+    emitter.quoted_value(true);
+    emitter
+        .dump(&Yaml::Mapping(map))
+        .expect("emitting YAML into a String cannot fail");
+    // The emitter starts the document with `---` and leaves the last line
+    // open.
+    out.push_str("\n---\n");
+    out
+}
+
+/// Collapse runs of ASCII whitespace, including line breaks, into single
+/// spaces. Other whitespace, such as a no-break space, is kept.
+fn single_line(s: &str) -> String {
+    s.split_ascii_whitespace().collect::<Vec<_>>().join(" ")
 }

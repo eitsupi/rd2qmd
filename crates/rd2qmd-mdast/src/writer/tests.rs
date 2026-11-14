@@ -775,7 +775,7 @@ fn test_frontmatter() {
     let qmd = mdast_to_qmd(&root, &opts);
     assert!(qmd.starts_with("---\n"));
     assert!(qmd.contains(r#"title: "My Document""#));
-    assert!(qmd.contains("format: html"));
+    assert!(qmd.contains(r#"format: "html""#));
 }
 
 #[test]
@@ -833,7 +833,7 @@ fn test_frontmatter_with_metadata() {
     let qmd = mdast_to_qmd(&root, &opts);
     assert!(qmd.starts_with("---\n"));
     assert!(qmd.contains(r#"title: "My Function""#));
-    assert!(qmd.contains("lifecycle: deprecated"));
+    assert!(qmd.contains(r#"lifecycle: "deprecated""#));
     assert!(qmd.contains("aliases:"));
     assert!(qmd.contains(r#"  - "my_func""#));
     assert!(qmd.contains(r#"  - "MyFunc""#));
@@ -863,7 +863,7 @@ fn test_frontmatter_metadata_empty_vectors_omitted() {
         ..Default::default()
     };
     let qmd = mdast_to_qmd(&root, &opts);
-    assert!(qmd.contains("lifecycle: stable"));
+    assert!(qmd.contains(r#"lifecycle: "stable""#));
     // Empty vectors should not appear
     assert!(!qmd.contains("aliases:"));
     assert!(!qmd.contains("keywords:"));
@@ -896,4 +896,70 @@ fn test_frontmatter_with_source_files() {
     assert!(qmd.contains("source-files:\n"));
     assert!(qmd.contains(r#"  - "R/coord-map.R""#));
     assert!(qmd.contains(r#"  - "R/coord-quickmap.R""#));
+}
+
+/// Parse the YAML frontmatter of `qmd` with saphyr, the parser family q2
+/// uses, and return the string at `key`, or at `key[index]` for a sequence.
+fn frontmatter_value(qmd: &str, key: &str, index: Option<usize>) -> Result<String, String> {
+    use saphyr::{LoadableYamlNode, Yaml};
+    let yaml = qmd
+        .strip_prefix("---\n")
+        .and_then(|rest| rest.split_once("\n---\n"))
+        .map(|(yaml, _)| yaml)
+        .expect("frontmatter block");
+    let docs = Yaml::load_from_str(yaml).map_err(|e| e.to_string())?;
+    let value = match index {
+        Some(i) => &docs[0][key][i],
+        None => &docs[0][key],
+    };
+    value
+        .as_str()
+        .map(str::to_owned)
+        .ok_or_else(|| format!("no string at {key}: {value:?}"))
+}
+
+/// Frontmatter is valid YAML for any input, and every value reads back as
+/// written. Titles wrapped in the Rd source become one line.
+#[test]
+fn test_frontmatter_is_valid_yaml() {
+    // The former hand-written output for a wrapped title: the continuation
+    // line starts in column 0, which YAML 1.2 forbids and q2 rejects.
+    assert!(frontmatter_value("---\ntitle: \"a\nb\"\n---\n", "title", None).is_err());
+
+    let aliases = vec![
+        "tab\there".to_string(),
+        "line\nbreak\u{7}".to_string(),
+        "quote \" and \\ backslash: # [x]".to_string(),
+    ];
+    let root = Root::new(vec![Node::paragraph(vec![Node::text("Content")])]);
+    let opts = WriterOptions {
+        frontmatter: Some(Frontmatter {
+            title: Some("Return the k smallest\nelements of the by\n  column(s)".to_string()),
+            pagetitle: Some("Return the k smallest\nelements \u{a0}\u{2014} f".to_string()),
+            format: Some("html: {x}\n- y".to_string()),
+            metadata: Some(RdMetadata {
+                lifecycle: Some("a: b".to_string()),
+                aliases: aliases.clone(),
+                ..Default::default()
+            }),
+        }),
+        ..Default::default()
+    };
+    let qmd = mdast_to_qmd(&root, &opts);
+    assert!(qmd.contains("title: \"Return the k smallest elements of the by column(s)\"\n"));
+    let value = |key, index| frontmatter_value(&qmd, key, index).unwrap();
+    assert_eq!(
+        value("title", None),
+        "Return the k smallest elements of the by column(s)"
+    );
+    // Only ASCII whitespace is collapsed; the no-break space stays.
+    assert_eq!(
+        value("pagetitle", None),
+        "Return the k smallest elements \u{a0}\u{2014} f"
+    );
+    assert_eq!(value("format", None), "html: {x}\n- y");
+    assert_eq!(value("lifecycle", None), "a: b");
+    for (i, alias) in aliases.iter().enumerate() {
+        assert_eq!(&value("aliases", Some(i)), alias);
+    }
 }
