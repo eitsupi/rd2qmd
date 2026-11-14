@@ -341,7 +341,10 @@ The Arguments section is rendered using `--arguments-format`. Rd argument descri
 | Plain Pandoc / Quarto < 1.9 | ❌ | ✅ | ✅ | ✅ |
 | GFM / general Markdown | ❌ | ❌ | ✅ | ✅ |
 
-For q2, use `list-table` or `list` to preserve block content without these diagnostics.
+For q2 Arguments sections, use `list-table` or `list` to preserve block content
+without these table diagnostics. Nested `\\describe{}` lists are controlled
+separately by `--describe-format`; see [Description list format](#description-list-format)
+for the combined q2 settings.
 
 **`list-table`** (default) — Quarto native syntax, supports full block elements. Recommended for Quarto 1.9+ and q2 workflows:
 
@@ -410,7 +413,8 @@ representation, including nested descriptions:
 
 - `pandoc-definition-list` (default): Pandoc definition lists. Requires a
   renderer with Pandoc's definition-list support, such as Quarto 1; q2 does
-  not support this syntax. For q2 definition lists, use `quarto-definition-list`.
+  not support this syntax: it can warn with `Q-2-54` and render definitions
+  as literal text. For q2 definition lists, use `quarto-definition-list`.
   The former name
   `definition-list` still selects this format, with a deprecation warning.
   It will select the Quarto `.definition-list` format in a future release, so
@@ -437,6 +441,13 @@ and bullet lists so the body stays in its item. In `headings` format, an empty
 heading is retained to separate the description from the preceding entry.
 
 `--arguments-format` controls the top-level `\arguments{}` section independently.
+For q2, use `quarto-definition-list` together with the default `list-table`
+Arguments format, including for descriptions nested inside Arguments cells:
+
+```sh
+rd2qmd convert man/ -o docs/ --describe-format quarto-definition-list
+```
+
 For a Markdown viewer without definition-list or Quarto extensions, use both:
 
 ```sh
