@@ -17,7 +17,9 @@ mod source_parse;
 pub use ast_io::{AST_FORMAT_VERSION, AstIoError, RdAstEnvelope};
 pub use options::{ArgumentsFormat, DescribeFormat, RdToMdastOptions};
 pub use rd_ast::{RdDocument, RdNode};
-pub use rd2qmd_mdast::{Frontmatter, RdMetadata, WriterOptions, mdast_to_qmd};
+pub use rd2qmd_mdast::{
+    DefinitionListSyntax, Frontmatter, RdMetadata, WriterOptions, mdast_to_qmd,
+};
 
 /// Frontmatter output options.
 #[derive(Debug, Clone, Default)]
@@ -217,6 +219,7 @@ pub fn convert_rd_document(doc: &RdDocument, options: &RdConvertOptions) -> Stri
             metadata: Some(metadata),
         }),
         quarto_code_blocks: options.code.quarto_code_blocks,
+        definition_list_syntax: options.describe_format.definition_list_syntax(),
     };
     mdast_to_qmd(&mdast, &writer_options)
 }

@@ -87,7 +87,7 @@ rd2qmd convert man/ -o docs/ -j4
 | `--no-frontmatter` | Disable YAML frontmatter; use this for a visible body `# Title` in Markdown consumers that do not render YAML titles |
 | `--no-pagetitle` | Skip pkgdown-style `pagetitle` metadata (`"<title> — <name>"`) |
 | `--quarto-code-blocks <BOOL>` | Use `{r}` code blocks (auto-set based on format) |
-| `--describe-format <FORMAT>` | Description list format: `pandoc-definition-list` (default), `list`, or `headings` (CommonMark/GFM) |
+| `--describe-format <FORMAT>` | Description list format: `pandoc-definition-list` (default), `quarto-definition-list` (Quarto 1.11.7+ / q2), `list`, or `headings` (CommonMark/GFM) |
 | `--arguments-format <FORMAT>` | Arguments format: `list-table` (default), `grid-table`, `pipe-table`, or `list` |
 | `--input-format <FORMAT>` | Input format: `rd` (default) or `ast` (see [AST JSON I/O](#ast-json-io)) |
 | `-v, --verbose` | Verbose output |
@@ -411,6 +411,11 @@ representation, including nested descriptions:
   `definition-list` still selects this format, with a deprecation warning.
   It will select the Quarto `.definition-list` format in a future release, so
   use `pandoc-definition-list` to keep the current output.
+- `quarto-definition-list`: Quarto's `::: {.definition-list}` div holding a
+  bullet list, which Quarto 1.11.7+ and q2 render as a definition list. Each
+  item is the term followed by a one-item bullet list with its description;
+  an empty description becomes a zero-width space (`&#8203;`). Older Quarto
+  versions show it as a nested bullet list.
 - `list`: ordinary Markdown bullet lists with bold terms. Preserves paragraphs,
   inline formatting, links, code examples, and nested lists in CommonMark/GFM.
 - `headings`: terms become headings one level below their enclosing section

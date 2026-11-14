@@ -187,7 +187,11 @@ fn convert_arguments_grid(
         let term_text = argument_name(argument, context);
         let arg_text = rd2qmd_mdast::format_inline_code(term_text.trim(), false);
         let desc_nodes = convert_block_content_ref(argument.description_ref(), context);
-        let desc_text = render_cell(&desc_nodes, 0);
+        let desc_text = render_cell(
+            &desc_nodes,
+            0,
+            context.describe_format.definition_list_syntax(),
+        );
         builder.push_record([arg_text, desc_text]);
     }
 
@@ -220,7 +224,11 @@ fn convert_arguments_list_table(
             let term_text = argument_name(argument, context);
             let arg_text = rd2qmd_mdast::format_inline_code(term_text.trim(), false);
             let desc_nodes = convert_block_content_ref(argument.description_ref(), context);
-            let desc_text = render_cell(&desc_nodes, 4);
+            let desc_text = render_cell(
+                &desc_nodes,
+                4,
+                context.describe_format.definition_list_syntax(),
+            );
             (arg_text, desc_text)
         })
         .collect();
@@ -258,7 +266,11 @@ fn convert_arguments_list(
             let term_text = argument_name(argument, context);
             let arg_code = rd2qmd_mdast::format_inline_code(term_text.trim(), false);
             let desc_nodes = convert_block_content_ref(argument.description_ref(), context);
-            let desc_text = render_cell(&desc_nodes, 2);
+            let desc_text = render_cell(
+                &desc_nodes,
+                2,
+                context.describe_format.definition_list_syntax(),
+            );
             (arg_code, desc_text)
         })
         .collect();

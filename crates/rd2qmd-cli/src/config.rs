@@ -34,6 +34,8 @@ pub enum DescribeFormat {
     /// Pandoc definition list (default) - requires definition-list support
     #[default]
     PandocDefinitionList,
+    /// Quarto definition-list div - requires Quarto 1.11.7+ or q2
+    QuartoDefinitionList,
     /// Markdown bullet list - supports CommonMark and GFM, including nested descriptions
     List,
     /// Terms become headings below their enclosing section; beyond H6, use bullet lists
@@ -479,6 +481,7 @@ mod describe_format_tests {
     fn describe_only_config_survives_serialization() {
         for format in [
             DescribeFormat::PandocDefinitionList,
+            DescribeFormat::QuartoDefinitionList,
             DescribeFormat::List,
             DescribeFormat::Headings,
         ] {

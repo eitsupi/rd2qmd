@@ -32,6 +32,7 @@ fn ignores_frontmatter() {
             ..Default::default()
         }),
         quarto_code_blocks: false,
+        ..Default::default()
     };
     let out = render_blocks_fragment(&[Node::paragraph(vec![Node::text("a")])], &options);
     assert_eq!(out, "a");
@@ -46,6 +47,7 @@ fn honors_quarto_code_blocks_and_empty_input() {
     let on = WriterOptions {
         frontmatter: None,
         quarto_code_blocks: true,
+        ..Default::default()
     };
     assert_eq!(
         render_blocks_fragment(&[code.clone()], &on),

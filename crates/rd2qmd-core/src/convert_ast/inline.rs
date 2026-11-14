@@ -582,6 +582,7 @@ mod tests {
             &WriterOptions {
                 frontmatter: None,
                 quarto_code_blocks: false,
+                ..Default::default()
             },
         )
     }

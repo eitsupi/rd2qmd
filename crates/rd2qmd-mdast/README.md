@@ -46,7 +46,7 @@ It does **not** implement:
 
 | Node Type | Description | Output |
 |-----------|-------------|--------|
-| `DefinitionList`, `DefinitionTerm`, `DefinitionDescription` | Definition lists | Pandoc `:   ` syntax |
+| `DefinitionList`, `DefinitionTerm`, `DefinitionDescription` | Definition lists | Pandoc `:   ` syntax, or a Quarto `::: {.definition-list}` div with `WriterOptions::definition_list_syntax` |
 | `Math`, `InlineMath` | LaTeX math | `$$...$$` / `$...$` |
 
 ## Usage
@@ -92,6 +92,7 @@ let options = WriterOptions {
     }),
     // Use {r} for executable R code blocks (requires meta: "executable")
     quarto_code_blocks: true,
+    ..Default::default()
 };
 ```
 

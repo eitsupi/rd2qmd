@@ -430,6 +430,7 @@ pub(crate) fn convert_single_file(
                     None
                 },
                 quarto_code_blocks: options.quarto_code_blocks,
+                definition_list_syntax: options.describe_format.definition_list_syntax(),
             };
 
             // Convert to QMD string

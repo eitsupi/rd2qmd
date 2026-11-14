@@ -206,7 +206,7 @@ pub(crate) struct ConvertArgs {
     #[arg(long, value_enum)]
     pub(crate) arguments_format: Option<CliArgumentsFormat>,
 
-    /// Output format for \describe lists, including nested descriptions: pandoc-definition-list (default), list, or headings (CommonMark/GFM). Independent of --arguments-format
+    /// Output format for \describe lists, including nested descriptions: pandoc-definition-list (default), quarto-definition-list (Quarto 1.11.7+ / q2), list, or headings (CommonMark/GFM). Independent of --arguments-format
     #[arg(long, value_enum)]
     pub(crate) describe_format: Option<CliDescribeFormat>,
 

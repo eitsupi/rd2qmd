@@ -47,11 +47,26 @@ pub enum DescribeFormat {
     /// Pandoc's `definition_lists` extension.
     #[default]
     PandocDefinitionList,
+    /// Quarto `::: {.definition-list}` div holding a bullet list, rendered as
+    /// a definition list by Quarto 1.11.7+ and q2.
+    QuartoDefinitionList,
     /// CommonMark-compatible bullet list with emphasized terms.
     List,
     /// Terms become headings below their enclosing section; beyond H6, use lists.
     /// Arguments pipe-table cells also fall back to lists, flattened with `<br>`.
     Headings,
+}
+
+impl DescribeFormat {
+    /// Writer syntax for the definition lists this format produces.
+    pub fn definition_list_syntax(self) -> rd2qmd_mdast::DefinitionListSyntax {
+        match self {
+            Self::QuartoDefinitionList => rd2qmd_mdast::DefinitionListSyntax::QuartoDiv,
+            Self::PandocDefinitionList | Self::List | Self::Headings => {
+                rd2qmd_mdast::DefinitionListSyntax::Pandoc
+            }
+        }
+    }
 }
 
 /// Options for converting an Rd document to mdast.

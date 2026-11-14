@@ -20,6 +20,8 @@ mod tests_emphasis;
 #[cfg(test)]
 mod tests_fragment;
 #[cfg(test)]
+mod tests_quarto_dl;
+#[cfg(test)]
 mod tests_structure;
 
 /// Options for the QMD writer
@@ -29,6 +31,24 @@ pub struct WriterOptions {
     pub frontmatter: Option<Frontmatter>,
     /// Use {r} instead of r for R code blocks
     pub quarto_code_blocks: bool,
+    /// Syntax for [`Node::DefinitionList`]
+    pub definition_list_syntax: DefinitionListSyntax,
+}
+
+/// Markdown syntax used to write a definition list.
+///
+/// Both forms carry the same structure; they differ in which renderers
+/// understand them.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum DefinitionListSyntax {
+    /// Pandoc's `definition_lists` extension: the term on its own line, then
+    /// each description after a `:   ` marker.
+    #[default]
+    Pandoc,
+    /// Quarto's `::: {.definition-list}` div. It holds a bullet list whose
+    /// items are a term followed by a bullet list with one item per
+    /// description.
+    QuartoDiv,
 }
 
 /// YAML frontmatter content

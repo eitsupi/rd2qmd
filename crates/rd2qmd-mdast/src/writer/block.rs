@@ -1,6 +1,6 @@
 //! Block-level node writers.
 
-use super::Writer;
+use super::{DefinitionListSyntax, Writer};
 use crate::mdast::Align;
 use crate::mdast::Node;
 
@@ -109,13 +109,15 @@ impl<'a> Writer<'a> {
                             // they stay inside the list item.
                             let prefix = if i > 0 {
                                 item_indent_str.as_str()
-                            } else if !flow || matches!(item_child, Node::List(_)) {
-                                // A nested list, and in descriptions any block, starts
-                                // on the line after the marker.
+                            } else if !flow {
+                                // In descriptions any block starts on the line after
+                                // the marker.
                                 self.write_terminator();
                                 item_indent_str.as_str()
                             } else {
-                                // The marker is the first line's prefix.
+                                // The marker is the first line's prefix, also for a
+                                // nested list (`- - a`): q2 rejects an empty marker
+                                // line followed by the list.
                                 ""
                             };
                             self.write_nested_block(prefix, item_indent, |w| {
@@ -240,6 +242,10 @@ impl<'a> Writer<'a> {
     }
 
     pub(super) fn write_definition_list(&mut self, dl: &crate::mdast::DefinitionList) {
+        if self.options.definition_list_syntax == DefinitionListSyntax::QuartoDiv {
+            self.write_quarto_definition_list(dl);
+            return;
+        }
         self.ensure_newline();
 
         let mut i = 0;
@@ -276,6 +282,57 @@ impl<'a> Writer<'a> {
             }
         }
 
+        self.at_line_start = true;
+    }
+
+    /// Write a definition list as a Quarto `::: {.definition-list}` div.
+    ///
+    /// The div holds a bullet list; each item is the term as a paragraph,
+    /// followed by a bullet list with one item per description. An empty or
+    /// missing description becomes a zero-width character reference, since
+    /// Quarto needs both blocks to recognize the item. A list without terms
+    /// writes nothing.
+    fn write_quarto_definition_list(&mut self, dl: &crate::mdast::DefinitionList) {
+        let mut items = Vec::new();
+        let mut children = dl.children.iter().peekable();
+        while let Some(child) = children.next() {
+            let Node::DefinitionTerm(term) = child else {
+                continue;
+            };
+            let placeholder = || vec![Node::paragraph(vec![Node::html("&#8203;")])];
+            let mut descriptions = Vec::new();
+            while let Some(Node::DefinitionDescription(dd)) = children.peek() {
+                let blocks = if dd.children.is_empty() {
+                    placeholder()
+                } else {
+                    dd.children.clone()
+                };
+                descriptions.push(Node::list_item(blocks));
+                children.next();
+            }
+            if descriptions.is_empty() {
+                descriptions.push(Node::list_item(placeholder()));
+            }
+            items.push(Node::list_item(vec![
+                Node::paragraph(term.children.clone()),
+                Node::list(false, descriptions),
+            ]));
+        }
+        if items.is_empty() {
+            return;
+        }
+
+        self.ensure_newline();
+        self.output.push_str("::: {.definition-list}\n");
+        self.write_separator();
+        self.write_list(&crate::mdast::List {
+            ordered: false,
+            start: None,
+            spread: false,
+            children: items,
+        });
+        self.write_separator();
+        self.output.push_str(":::\n");
         self.at_line_start = true;
     }
 
