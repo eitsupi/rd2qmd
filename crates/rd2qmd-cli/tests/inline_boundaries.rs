@@ -35,7 +35,7 @@ fn whitespace_across_description_and_argument_formats() {
         ArgumentsFormat::GridTable,
     ] {
         for describe_format in [
-            DescribeFormat::DefinitionList,
+            DescribeFormat::PandocDefinitionList,
             DescribeFormat::List,
             DescribeFormat::Headings,
         ] {
@@ -283,7 +283,7 @@ fn empty_labels_remain_in_list_items() {
 
 #[test]
 fn empty_labels_remain_in_definition_descriptions() {
-    let output = convert(EMPTY_LABELS, DescribeFormat::DefinitionList);
+    let output = convert(EMPTY_LABELS, DescribeFormat::PandocDefinitionList);
     insta::assert_snapshot!(structure(&output, Options::ENABLE_DEFINITION_LIST), @r#"
     + Heading { level: H1, id: None, classes: [], attrs: [] }
       Text("Labels")

@@ -111,17 +111,31 @@ pub(crate) fn merge_arguments_format(args: &ConvertArgs, config: &Config) -> Arg
     }
 }
 
-/// Merge describe format: explicit CLI > config > default (definition-list).
+/// Merge describe format: explicit CLI > config > default (pandoc-definition-list).
 pub(crate) fn merge_describe_format(args: &ConvertArgs, config: &Config) -> DescribeFormat {
-    match args
-        .describe_format
-        .or(config.output.describe_format)
-        .unwrap_or_default()
-    {
-        CliDescribeFormat::DefinitionList => DescribeFormat::DefinitionList,
+    #[allow(deprecated)]
+    match selected_describe_format(args, config) {
+        CliDescribeFormat::PandocDefinitionList | CliDescribeFormat::DefinitionList => {
+            DescribeFormat::PandocDefinitionList
+        }
         CliDescribeFormat::List => DescribeFormat::List,
         CliDescribeFormat::Headings => DescribeFormat::Headings,
     }
+}
+
+/// A warning when the selected describe format uses a deprecated name.
+pub(crate) fn describe_format_deprecation(args: &ConvertArgs, config: &Config) -> Option<String> {
+    #[allow(deprecated)]
+    let deprecated = selected_describe_format(args, config) == CliDescribeFormat::DefinitionList;
+    deprecated.then(|| {
+        "describe format 'definition-list' is deprecated; use 'pandoc-definition-list'".to_owned()
+    })
+}
+
+fn selected_describe_format(args: &ConvertArgs, config: &Config) -> CliDescribeFormat {
+    args.describe_format
+        .or(config.output.describe_format)
+        .unwrap_or_default()
 }
 
 /// Merge external link options

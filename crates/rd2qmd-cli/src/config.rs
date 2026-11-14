@@ -33,11 +33,15 @@ pub enum ArgumentsFormat {
 pub enum DescribeFormat {
     /// Pandoc definition list (default) - requires definition-list support
     #[default]
-    DefinitionList,
+    PandocDefinitionList,
     /// Markdown bullet list - supports CommonMark and GFM, including nested descriptions
     List,
     /// Terms become headings below their enclosing section; beyond H6, use bullet lists
     Headings,
+    /// Deprecated: former name of pandoc-definition-list
+    #[value(hide = true)]
+    #[deprecated(note = "renamed to `PandocDefinitionList`")]
+    DefinitionList,
 }
 
 /// Default configuration file name (following Quarto's `_quarto.yml` convention)
@@ -80,7 +84,7 @@ pub struct OutputConfig {
     /// Output format for Arguments section (default: list-table)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub arguments_format: Option<ArgumentsFormat>,
-    /// Output format for description lists (default: definition-list)
+    /// Output format for description lists (default: pandoc-definition-list)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub describe_format: Option<DescribeFormat>,
     /// Include topics with \keyword{internal} (default: false)
@@ -235,7 +239,7 @@ impl Config {
                 frontmatter: Some(true),
                 pagetitle: Some(true),
                 arguments_format: Some(ArgumentsFormat::ListTable),
-                describe_format: Some(DescribeFormat::DefinitionList),
+                describe_format: Some(DescribeFormat::PandocDefinitionList),
                 include_internal: Some(false),
                 prefer_ascii_math: None, // enable for renderers without math support
             },
@@ -474,7 +478,7 @@ mod describe_format_tests {
     #[test]
     fn describe_only_config_survives_serialization() {
         for format in [
-            DescribeFormat::DefinitionList,
+            DescribeFormat::PandocDefinitionList,
             DescribeFormat::List,
             DescribeFormat::Headings,
         ] {

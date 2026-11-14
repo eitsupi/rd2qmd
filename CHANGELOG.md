@@ -4,6 +4,9 @@
 
 ### Changed
 
+- **Breaking:** Rename the default description list format to `pandoc-definition-list` (`DescribeFormat::PandocDefinitionList`), naming it after the syntax it uses.
+  - Rust API: `DescribeFormat::DefinitionList` is removed; use `DescribeFormat::PandocDefinitionList`.
+  - The former CLI and config value `definition-list` still selects the same format and prints a deprecation warning. The JSON schema marks it as deprecated.
 - Render Arguments cells in the `list-table`, `list` and `grid-table` formats with the same writer as the rest of the document, instead of a separate serializer.
   - Emphasis now uses `_x_`, and links whose text equals their URL use autolinks (`<url>`).
 

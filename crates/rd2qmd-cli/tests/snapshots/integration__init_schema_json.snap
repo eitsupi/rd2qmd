@@ -84,7 +84,7 @@ expression: schema
         {
           "description": "Pandoc definition list (default) - requires definition-list support",
           "type": "string",
-          "const": "definition-list"
+          "const": "pandoc-definition-list"
         },
         {
           "description": "Markdown bullet list - supports CommonMark and GFM, including nested descriptions",
@@ -95,6 +95,12 @@ expression: schema
           "description": "Terms become headings below their enclosing section; beyond H6, use bullet lists",
           "type": "string",
           "const": "headings"
+        },
+        {
+          "description": "Deprecated: former name of pandoc-definition-list",
+          "type": "string",
+          "const": "definition-list",
+          "deprecated": true
         }
       ]
     },
@@ -181,7 +187,7 @@ expression: schema
           ]
         },
         "describe_format": {
-          "description": "Output format for description lists (default: definition-list)",
+          "description": "Output format for description lists (default: pandoc-definition-list)",
           "anyOf": [
             {
               "$ref": "#/$defs/DescribeFormat"

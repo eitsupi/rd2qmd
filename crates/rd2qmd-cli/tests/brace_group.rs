@@ -47,7 +47,7 @@ fn group_in_arguments_item() {
 fn group_in_describe_item_and_label() {
     let input = "\\name{t}\\title{T}\\details{\\describe{\\item{{lab}}{{ body } text}}}";
     for format in [
-        DescribeFormat::DefinitionList,
+        DescribeFormat::PandocDefinitionList,
         DescribeFormat::List,
         DescribeFormat::Headings,
     ] {

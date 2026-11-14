@@ -87,7 +87,7 @@ rd2qmd convert man/ -o docs/ -j4
 | `--no-frontmatter` | Disable YAML frontmatter; use this for a visible body `# Title` in Markdown consumers that do not render YAML titles |
 | `--no-pagetitle` | Skip pkgdown-style `pagetitle` metadata (`"<title> — <name>"`) |
 | `--quarto-code-blocks <BOOL>` | Use `{r}` code blocks (auto-set based on format) |
-| `--describe-format <FORMAT>` | Description list format: `definition-list` (default, Pandoc), `list`, or `headings` (CommonMark/GFM) |
+| `--describe-format <FORMAT>` | Description list format: `pandoc-definition-list` (default), `list`, or `headings` (CommonMark/GFM) |
 | `--arguments-format <FORMAT>` | Arguments format: `list-table` (default), `grid-table`, `pipe-table`, or `list` |
 | `--input-format <FORMAT>` | Input format: `rd` (default) or `ast` (see [AST JSON I/O](#ast-json-io)) |
 | `-v, --verbose` | Verbose output |
@@ -406,8 +406,9 @@ Rd `\describe{}` lists appear in glossaries and in ggproto/R6 method documentati
 including ggplot2's `Coord` and `Facet`. Use `--describe-format` to select their
 representation, including nested descriptions:
 
-- `definition-list` (default): Pandoc definition lists. Requires a renderer with
-  definition-list support.
+- `pandoc-definition-list` (default): Pandoc definition lists. Requires a
+  renderer with Pandoc's definition-list support. The former name
+  `definition-list` is still accepted, with a deprecation warning.
 - `list`: ordinary Markdown bullet lists with bold terms. Preserves paragraphs,
   inline formatting, links, code examples, and nested lists in CommonMark/GFM.
 - `headings`: terms become headings one level below their enclosing section
@@ -436,7 +437,7 @@ Selecting `-f md` alone does not change these list-format defaults. Other Rd
 constructs, such as tables and math, may still require renderer-specific options.
 
 The configuration file supports the same setting, with explicit CLI values
-(including `--describe-format definition-list`) taking precedence:
+(including `--describe-format pandoc-definition-list`) taking precedence:
 
 ```toml
 [output]
