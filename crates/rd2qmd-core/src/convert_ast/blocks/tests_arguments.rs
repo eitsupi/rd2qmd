@@ -326,7 +326,6 @@ fn cell_nested_itemize_and_enumerate() {
           1. inner one
           2. inner two
 
-
         - outer two
 
     :::
@@ -340,7 +339,6 @@ fn cell_nested_itemize_and_enumerate() {
 
         1. inner one
         2. inner two
-
 
       - outer two
     ");

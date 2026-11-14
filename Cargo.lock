@@ -1233,6 +1233,7 @@ name = "rd2qmd-mdast"
 version = "0.6.0"
 dependencies = [
  "insta",
+ "pulldown-cmark",
  "serde",
  "serde_json",
 ]

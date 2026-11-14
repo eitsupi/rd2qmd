@@ -8,6 +8,8 @@ use serde::Serialize;
 mod block;
 mod inline;
 #[cfg(test)]
+mod structure;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod tests_boundary;
@@ -17,6 +19,8 @@ mod tests_dl_list;
 mod tests_emphasis;
 #[cfg(test)]
 mod tests_fragment;
+#[cfg(test)]
+mod tests_structure;
 
 /// Options for the QMD writer
 #[derive(Debug, Clone, Default)]
@@ -252,6 +256,39 @@ impl<'a> Writer<'a> {
         if !self.at_line_start && !self.output.is_empty() {
             self.output.push('\n');
             self.at_line_start = true;
+        }
+    }
+
+    /// End the current line of a block fragment.
+    ///
+    /// Every non-empty block fragment ends with exactly one newline. Block
+    /// writers that own their last line (headings, code fences, ...) write
+    /// it themselves; containers call this after writing inline content
+    /// that does not, such as a paragraph inside a list item.
+    fn write_terminator(&mut self) {
+        self.output.push('\n');
+        self.at_line_start = true;
+    }
+
+    /// Write the blank line that separates two sibling blocks inside a
+    /// container. The previous sibling must already be terminated.
+    fn write_separator(&mut self) {
+        debug_assert!(
+            self.output.ends_with('\n'),
+            "separator after an unterminated block: {:?}",
+            self.output
+        );
+        self.output.push('\n');
+        self.at_line_start = true;
+    }
+
+    /// End the current line after a child whose output is not covered by the
+    /// terminator contract: raw HTML is written verbatim and may lack a final
+    /// newline, and an empty table or list writes nothing at all. A no-op
+    /// after any other block.
+    fn close_opaque_block(&mut self) {
+        if !self.output.ends_with('\n') {
+            self.write_terminator();
         }
     }
 

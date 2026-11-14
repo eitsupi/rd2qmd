@@ -13,6 +13,8 @@
 - Arguments cells that start with a code block or display equation now render validly in the `list-table` and `list` formats. Previously the `list-table` form failed to parse in Quarto 2.
 - Remove a spurious blank line before the closing fence of code blocks in `grid-table` Arguments cells.
 - Indent lines after a hard line break (`\cr`) inside a list item under the item, so they stay inside it instead of relying on lazy continuation.
+- Remove extra blank lines after lists, definition lists, and code blocks inside list items and definition descriptions. Every block now ends with a single newline, and sibling blocks are separated by exactly one blank line.
+  - A tight list whose item holds a table or a definition list is no longer read as loose by CommonMark parsers.
 - Emphasis directly inside a word (for example `before\emph{em}after`) is no longer lost in common cases. It is now written with `*` where `_` would not be recognized as an emphasis delimiter. Some nested combinations (such as emphasis inside a word at the edge of strong text) are still not recognized.
 
 ## [0.6.0] - 2026-10-03

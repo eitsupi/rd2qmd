@@ -60,56 +60,42 @@ fn trailing_newlines_per_standalone_block() {
         ("html 2 newlines", Node::html("<br>\n\n"), "<br>\n\n", 2),
         ("html 3 newlines", Node::html("<br>\n\n\n"), "<br>\n\n\n", 3),
         ("tight list, paragraph item", tight(para("a")), "- a\n", 1),
-        // Current behavior; expected to change when the block terminator
-        // contract is introduced.
         (
             "tight list, code item",
             tight(Node::code(None, "x")),
-            "- ```\n  x\n  ```\n\n",
-            2,
+            "- ```\n  x\n  ```\n",
+            1,
         ),
-        // Current behavior (trailing blank line); expected to change when the
-        // block terminator contract is introduced.
         (
             "tight list, table item",
             tight(tbl()),
-            "- | a |\n  |----|\n  | b |\n\n",
-            2,
+            "- | a |\n  |----|\n  | b |\n",
+            1,
         ),
-        // Current behavior (trailing blank line); expected to change when the
-        // block terminator contract is introduced.
         (
             "tight list, math item",
             tight(Node::math("x")),
-            "- $$\n  x\n  $$\n\n",
-            2,
+            "- $$\n  x\n  $$\n",
+            1,
         ),
-        // Current behavior (trailing blank line); expected to change when the
-        // block terminator contract is introduced.
-        ("loose list", loose, "- a\n\n  b\n\n", 2),
-        // Current behavior (trailing blank line); expected to change when the
-        // block terminator contract is introduced.
+        ("loose list", loose, "- a\n\n  b\n", 1),
         (
             "definition list, simplest",
             dl(vec![para("D")]),
-            "T\n:   D\n\n",
-            2,
+            "T\n:   D\n",
+            1,
         ),
-        // Current behavior; expected to change when the block terminator
-        // contract is introduced.
         (
             "definition list, code description",
             dl(vec![Node::code(None, "x")]),
-            "T\n:   ```\n    x\n    ```\n\n\n",
-            3,
+            "T\n:   ```\n    x\n    ```\n",
+            1,
         ),
-        // Current behavior (trailing blank line); expected to change when the
-        // block terminator contract is introduced.
         (
             "definition list, nested definition list",
             dl(vec![dl(vec![para("D")])]),
-            "T\n:   T\n    :   D\n\n\n\n",
-            4,
+            "T\n:   T\n    :   D\n",
+            1,
         ),
     ];
     for (label, node, expected, count) in cases {
@@ -145,12 +131,12 @@ fn sibling_separation_at_root() {
         (
             "paragraph, definition list",
             vec![para("B"), dl(vec![para("D")])],
-            "B\n\nT\n:   D\n\n",
+            "B\n\nT\n:   D\n",
         ),
         (
             "definition list, definition list",
             vec![dl(vec![para("D")]), dl(vec![para("E")])],
-            "T\n:   D\n\nT\n:   E\n\n",
+            "T\n:   D\n\nT\n:   E\n",
         ),
         (
             "code, paragraph",
@@ -230,5 +216,167 @@ fn inert_nodes_at_top_level_render_nothing() {
     ];
     for (label, node) in cases {
         assert_eq!(render(vec![node]), "", "output for {label}");
+    }
+}
+
+/// Boundaries between the term groups of one definition list, and between
+/// descriptions of one term.
+#[test]
+fn definition_list_term_boundaries() {
+    let term = |t: &str| Node::definition_term(vec![Node::text(t)]);
+    let def = Node::definition_description;
+    let two_terms = |first: Vec<Node>| {
+        vec![
+            Node::definition_list(vec![
+                term("T1"),
+                def(first),
+                term("T2"),
+                def(vec![para("D2")]),
+            ]),
+            para("B"),
+        ]
+    };
+    let cases: Vec<(&str, Vec<Node>, &str)> = vec![
+        (
+            "paragraph, then term",
+            two_terms(vec![para("D1")]),
+            "T1\n:   D1\n\nT2\n:   D2\n\nB\n",
+        ),
+        (
+            "code, then term",
+            two_terms(vec![Node::code(None, "x")]),
+            "T1\n:   ```\n    x\n    ```\n\nT2\n:   D2\n\nB\n",
+        ),
+        (
+            "paragraph and code, then term",
+            two_terms(vec![para("D1"), Node::code(None, "x")]),
+            "T1\n:   D1\n\n    ```\n    x\n    ```\n\nT2\n:   D2\n\nB\n",
+        ),
+        (
+            "paragraph and list, then term",
+            two_terms(vec![para("D1"), tight(para("a"))]),
+            "T1\n:   D1\n\n    - a\n\nT2\n:   D2\n\nB\n",
+        ),
+        (
+            "paragraph and nested definition list, then term",
+            two_terms(vec![para("D1"), dl(vec![para("E")])]),
+            "T1\n:   D1\n\n    T\n    :   E\n\nT2\n:   D2\n\nB\n",
+        ),
+        (
+            "two simple descriptions",
+            vec![
+                Node::definition_list(vec![
+                    term("T"),
+                    def(vec![para("D1")]),
+                    def(vec![para("D2")]),
+                ]),
+                para("B"),
+            ],
+            "T\n:   D1\n:   D2\n\nB\n",
+        ),
+        (
+            "code description, then simple description",
+            vec![
+                Node::definition_list(vec![
+                    term("T"),
+                    def(vec![Node::code(None, "x")]),
+                    def(vec![para("D2")]),
+                ]),
+                para("B"),
+            ],
+            "T\n:   ```\n    x\n    ```\n\n:   D2\n\nB\n",
+        ),
+    ];
+    for (label, nodes, expected) in cases {
+        assert_eq!(render(nodes), expected, "output for {label}");
+    }
+}
+
+/// Children outside the terminator contract (raw HTML without a final
+/// newline, empty tables and lists, empty items) still leave the line closed,
+/// so the next sibling starts on its own line.
+#[test]
+fn opaque_children_inside_containers() {
+    let term = |t: &str| Node::definition_term(vec![Node::text(t)]);
+    let def = Node::definition_description;
+    let item = Node::list_item;
+    let cases: Vec<(&str, Vec<Node>, &str)> = vec![
+        (
+            "html item without newline, then item",
+            vec![Node::list(
+                false,
+                vec![item(vec![Node::html("<br>")]), item(vec![para("b")])],
+            )],
+            "- <br>\n- b\n",
+        ),
+        (
+            "html after paragraph in loose item",
+            vec![Node::list(
+                false,
+                vec![
+                    item(vec![para("a"), Node::html("<br>")]),
+                    item(vec![para("b")]),
+                ],
+            )],
+            "- a\n\n  <br>\n\n- b\n",
+        ),
+        (
+            "empty item, then item",
+            vec![Node::list(false, vec![item(vec![]), item(vec![para("b")])])],
+            "- \n- b\n",
+        ),
+        (
+            "empty table item, then item",
+            vec![Node::list(
+                false,
+                vec![
+                    item(vec![Node::table(vec![], vec![])]),
+                    item(vec![para("b")]),
+                ],
+            )],
+            "- \n- b\n",
+        ),
+        (
+            "html description without newline, then term",
+            vec![Node::definition_list(vec![
+                term("T1"),
+                def(vec![Node::html("<br>")]),
+                term("T2"),
+                def(vec![para("D2")]),
+            ])],
+            "T1\n:   <br>\n\nT2\n:   D2\n",
+        ),
+        // Descriptions hold blocks. Inline nodes placed directly in one (only
+        // possible through AST input) are each written as their own block,
+        // as in list items.
+        (
+            "inline siblings in description",
+            vec![Node::definition_list(vec![
+                term("T"),
+                def(vec![Node::text("a"), Node::inline_code("b")]),
+            ])],
+            "T\n:   a\n\n    `b`\n",
+        ),
+        (
+            "empty list description, then term",
+            vec![Node::definition_list(vec![
+                term("T1"),
+                def(vec![Node::list(false, vec![])]),
+                term("T2"),
+                def(vec![para("D2")]),
+            ])],
+            "T1\n:   \n\nT2\n:   D2\n",
+        ),
+        (
+            "html after paragraph in description",
+            vec![Node::definition_list(vec![
+                term("T"),
+                def(vec![para("D"), Node::html("<br>")]),
+            ])],
+            "T\n:   D\n\n    <br>\n",
+        ),
+    ];
+    for (label, nodes, expected) in cases {
+        assert_eq!(render(nodes), expected, "output for {label}");
     }
 }

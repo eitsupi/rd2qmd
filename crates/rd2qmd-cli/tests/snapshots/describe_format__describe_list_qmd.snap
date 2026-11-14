@@ -20,7 +20,6 @@ Demonstrates the Pandoc definition-list writer's handling of multi-line block ch
   combine(a, b)
   ```
 
-
   **Arguments**
 
   - **`a`**
@@ -31,8 +30,6 @@ Demonstrates the Pandoc definition-list writer's handling of multi-line block ch
 
     The second value.
 
-
-
   **Examples**
 
   - Basic usage:
@@ -42,10 +39,7 @@ Demonstrates the Pandoc definition-list writer's handling of multi-line block ch
     #> [1] 3
     ```
 
-
   - Advanced usage returns invisibly.
-
-
 
   **Ordered examples**
 
@@ -56,9 +50,6 @@ Demonstrates the Pandoc definition-list writer's handling of multi-line block ch
      #> [1] 3
      ```
 
-
   2. Advanced usage returns invisibly.
-
-
 
   That covers the `compute()` method.

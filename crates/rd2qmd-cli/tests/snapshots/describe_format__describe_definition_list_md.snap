@@ -27,7 +27,6 @@ Demonstrates the Pandoc definition-list writer's handling of multi-line block ch
     `b`
     :   The second value.
 
-
     **Examples**
 
     - Basic usage:
