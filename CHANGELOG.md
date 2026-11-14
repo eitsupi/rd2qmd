@@ -2,32 +2,37 @@
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-14
+
 ### Added
 
-- Add the `quarto-definition-list` description list format (`DescribeFormat::QuartoDefinitionList`), which writes Quarto's `::: {.definition-list}` div. Quarto 1.11.7+ and q2 render it as a definition list.
+- Add the `quarto-definition-list` description list format (`DescribeFormat::QuartoDefinitionList`), which writes Quarto's `::: {.definition-list}` div. Quarto 1.11.7+ and q2 render it as a definition list. (#114)
   - **Breaking:** `DescribeFormat` gains the `QuartoDefinitionList` variant, and `WriterOptions` gains a `definition_list_syntax` field (`DefinitionListSyntax::Pandoc` by default). Exhaustive matches and struct literals must handle them, for example with `..Default::default()`.
+
+- Expose `rd2qmd_mdast::render_blocks_fragment` to render isolated blocks without frontmatter or surrounding whitespace. (#109)
 
 ### Changed
 
-- **Breaking:** Rename the default description list format to `pandoc-definition-list` (`DescribeFormat::PandocDefinitionList`), naming it after the syntax it uses.
+- **Breaking:** Rename the default description list format to `pandoc-definition-list` (`DescribeFormat::PandocDefinitionList`), naming it after the syntax it uses. (#113)
   - Rust API: `DescribeFormat::DefinitionList` is removed; use `DescribeFormat::PandocDefinitionList`.
   - The former CLI and config value `definition-list` still selects the same format and prints a deprecation warning. The JSON schema marks it as deprecated. In a future release, `definition-list` will select the Quarto `.definition-list` format instead; use `pandoc-definition-list` to keep the current output.
-- Render Arguments cells in the `list-table`, `list` and `grid-table` formats with the same writer as the rest of the document, instead of a separate serializer.
-  - Emphasis now uses `_x_`, and links whose text equals their URL use autolinks (`<url>`).
+- Arguments cells in the `list-table`, `list` and `grid-table` formats now use the same Markdown conventions as the rest of the document, including `_x_` emphasis and autolinks (`<url>`) when link text equals its URL. (#109)
+- CLI help and README now explain q2/Quarto compatibility for Arguments and description-list formats, including q2 diagnostics and the recommended combination of `list-table` and `quarto-definition-list`. (#116)
 
 ### Fixed
 
-- Frontmatter is now always valid YAML: it is written with a YAML emitter that quotes and escapes every value. Titles wrapped across lines in the Rd source are written on one line. Previously the continuation line of a wrapped `title` or `pagetitle` started in column 0, which YAML 1.2 forbids; q2 rejected such pages, while Quarto 1 accepted them.
+- Write frontmatter with a YAML emitter that quotes and escapes every value. Titles wrapped across lines in the Rd source are written on one line. Previously the continuation line of a wrapped `title` or `pagetitle` started in column 0, which YAML 1.2 forbids; q2 rejected such pages, while Quarto 1 accepted them. (#115)
   - `lifecycle` and `format` values are now double-quoted like the other fields (for example `lifecycle: "deprecated"`). The YAML value is unchanged.
-- A list item whose first block is a nested list now writes the nested list on the marker line (`- - a`). q2 rejected the previous form, an empty marker line followed by the list.
-- Bare brace groups in Rd text (for example `{ a, b } text`) no longer drop their content. The group is now rendered in place without the braces, as R does. Braces inside `\code{}`, `\verb{}` and `\preformatted{}` are unchanged.
-- Arguments cells that start with a code block or display equation now render validly in the `list-table` and `list` formats. Previously the `list-table` form failed to parse in Quarto 2.
-- Remove a spurious blank line before the closing fence of code blocks in `grid-table` Arguments cells.
-- Indent lines after a hard line break (`\cr`) inside a list item under the item, so they stay inside it instead of relying on lazy continuation.
-- A `\describe{}` item whose description is only a list (for example `\item{a}{\itemize{...}}`) no longer turns the first list item into an indented code block in the definition-list format.
-- Remove extra blank lines after lists, definition lists, and code blocks inside list items and definition descriptions. Every block now ends with a single newline, and sibling blocks are separated by exactly one blank line.
+- A list item whose first block is a nested list now writes the nested list on the marker line (`- - a`). q2 rejected the previous form, an empty marker line followed by the list. (#114)
+- Bare brace groups in Rd text (for example `{ a, b } text`) no longer drop their content. The group is now rendered in place without the braces, as R does. Braces inside `\code{}`, `\verb{}` and `\preformatted{}` are unchanged. (#110)
+- Correct block rendering in Arguments cells. (#109)
+  - Cells that start with a code block or display equation now render validly in the `list-table` and `list` formats. Previously the `list-table` form failed to parse in q2.
+  - Remove a spurious blank line before the closing fence of code blocks in `grid-table` cells.
+- Indent lines after a hard line break (`\cr`) inside a list item under the item, so they stay inside it instead of relying on lazy continuation. (#109)
+- A `\describe{}` item whose description is only a list (for example `\item{a}{\itemize{...}}`) no longer turns the first list item into an indented code block in the Pandoc definition-list format. (#112)
+- Remove extra blank lines after lists, definition lists, and code blocks inside list items and definition descriptions. (#111)
   - A tight list whose item holds a table or a definition list is no longer read as loose by CommonMark parsers.
-- Emphasis directly inside a word (for example `before\emph{em}after`) is no longer lost in common cases. It is now written with `*` where `_` would not be recognized as an emphasis delimiter. Some nested combinations (such as emphasis inside a word at the edge of strong text) are still not recognized.
+- Emphasis directly inside a word (for example `before\emph{em}after`) is no longer lost in common cases. It is now written with `*` where `_` would not be recognized as an emphasis delimiter. Some nested combinations (such as emphasis inside a word at the edge of strong text) are still not recognized. (#109)
 
 ## [0.6.0] - 2026-10-03
 
