@@ -607,3 +607,51 @@ Second paragraph.
         }
     }
 }
+
+/// A description holding only a list keeps every item in that list. The
+/// first item used to be indented past the `:   ` marker and read as an
+/// indented code block.
+#[test]
+fn describe_definition_list_with_only_a_list() {
+    let rd = r"\name{x}\title{X}
+\description{
+\describe{
+\item{a}{\itemize{\item one \item two}}
+\item{b}{\enumerate{\item three \item four}}
+}
+}";
+    let output = convert_core_as(rd, DescribeFormat::DefinitionList);
+    // Text of each term, and of the list items in its definition.
+    let mut groups: Vec<(String, Vec<String>)> = Vec::new();
+    let mut in_term = false;
+    let mut in_item = false;
+    for event in Parser::new_ext(&output, Options::ENABLE_DEFINITION_LIST) {
+        match event {
+            Event::Start(Tag::CodeBlock(_)) => panic!("unexpected code block in {output:?}"),
+            Event::Start(Tag::DefinitionListTitle) => {
+                groups.push((String::new(), Vec::new()));
+                in_term = true;
+            }
+            Event::End(TagEnd::DefinitionListTitle) => in_term = false,
+            Event::Start(Tag::Item) => {
+                let (_, items) = groups.last_mut().expect("item inside a definition");
+                items.push(String::new());
+                in_item = true;
+            }
+            Event::End(TagEnd::Item) => in_item = false,
+            // Text before the first term is the section heading.
+            Event::Text(text) if !groups.is_empty() => {
+                let (term, items) = groups.last_mut().unwrap();
+                if in_term {
+                    term.push_str(&text);
+                } else if in_item {
+                    items.last_mut().unwrap().push_str(text.trim());
+                }
+            }
+            _ => {}
+        }
+    }
+    let expected = [("a", ["one", "two"]), ("b", ["three", "four"])]
+        .map(|(term, items)| (term.to_owned(), items.map(str::to_owned).to_vec()));
+    assert_eq!(groups, expected, "{output:?}");
+}

@@ -240,8 +240,6 @@ para "B"
 "#,
             None,
         ),
-        // Known bug: the first item is indented too far and becomes an indented
-        // code block.
         (
             "dl list only",
             vec![
@@ -255,24 +253,60 @@ para "B"
 deflist
   term "T"
   def
-    code "  - a\n"
     list tight
+      item
+        plain "a"
       item
         plain "b"
 para "B"
 "#,
-            Some(
-                r#"
+            None,
+        ),
+        (
+            "dl ordered list with wide numbers only",
+            vec![
+                Node::definition_list(vec![
+                    term("T"),
+                    def(vec![Node::ordered_list_from(
+                        9,
+                        items(vec![vec![para("a")], vec![para("b")]]),
+                    )]),
+                ]),
+                para("B"),
+            ],
+            r#"
 deflist
   term "T"
   def
-    code "- a\n"
-    list tight
+    list ordered 9 tight
+      item
+        plain "a"
       item
         plain "b"
 para "B"
 "#,
-            ),
+            None,
+        ),
+        (
+            "dl list then paragraph",
+            vec![
+                Node::definition_list(vec![
+                    term("T"),
+                    def(vec![bullets(vec![vec![para("a")]]), para("P")]),
+                ]),
+                para("B"),
+            ],
+            r#"
+deflist
+  term "T"
+  def
+    list tight
+      item
+        plain "a"
+    para "P"
+para "B"
+"#,
+            None,
         ),
         (
             "dl para then list",

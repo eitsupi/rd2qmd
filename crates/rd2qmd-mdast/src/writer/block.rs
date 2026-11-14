@@ -40,13 +40,17 @@ impl<'a> Writer<'a> {
     }
 
     pub(super) fn write_list(&mut self, l: &crate::mdast::List) {
-        self.write_list_impl(l, 0, ListContext::Flow);
+        self.write_list_impl(l, ListContext::Flow);
     }
 
     /// Single list renderer shared by document-flow lists and lists inside
     /// definition descriptions. The two contexts intentionally differ in a few
     /// places; see [`ListContext`].
-    fn write_list_impl(&mut self, l: &crate::mdast::List, base_indent: usize, ctx: ListContext) {
+    ///
+    /// Like every other block, the list is written from the current column
+    /// with no indent of its own. A container that nests it writes the prefix
+    /// of the first line and re-indents the rest.
+    fn write_list_impl(&mut self, l: &crate::mdast::List, ctx: ListContext) {
         let flow = ctx == ListContext::Flow;
         if flow {
             self.ensure_newline();
@@ -65,7 +69,6 @@ impl<'a> Writer<'a> {
         let mut num = l.start.unwrap_or(1);
         for (item_index, child) in l.children.iter().enumerate() {
             if let Node::ListItem(li) = child {
-                self.output.push_str(&" ".repeat(base_indent));
                 // Build the marker first so item_indent matches the actual marker width.
                 // "- " is always 2 chars, but "10. " is 4 — a fixed +2 would mis-indent
                 // continuation lines for ordered lists with wide numbers.
@@ -77,7 +80,7 @@ impl<'a> Writer<'a> {
                     "- ".to_string()
                 };
                 self.output.push_str(&marker);
-                let item_indent = base_indent + marker.len();
+                let item_indent = marker.len();
                 let item_indent_str = " ".repeat(item_indent);
 
                 for (i, item_child) in li.children.iter().enumerate() {
@@ -100,27 +103,24 @@ impl<'a> Writer<'a> {
                             self.reindent_since(start, item_indent);
                             self.write_terminator();
                         }
-                        Node::List(nested) if flow => {
-                            if i == 0 {
-                                // End the marker line; the nested list starts
-                                // on the next one.
-                                self.write_terminator();
-                            }
-                            // The recursive call emits the indent per item.
-                            self.write_list_impl(nested, item_indent, ctx);
-                        }
                         _ => {
-                            // Block children (code fences, tables, and in descriptions also
-                            // nested lists) have every continuation line re-indented to
-                            // `item_indent` so they stay inside the list item.
-                            if i > 0 {
-                                self.output.push_str(&item_indent_str);
-                            } else if !flow {
-                                // In descriptions the block always starts on its own line.
+                            // Block children (code fences, tables, nested lists) have
+                            // every continuation line re-indented to `item_indent` so
+                            // they stay inside the list item.
+                            let prefix = if i > 0 {
+                                item_indent_str.as_str()
+                            } else if !flow || matches!(item_child, Node::List(_)) {
+                                // A nested list, and in descriptions any block, starts
+                                // on the line after the marker.
                                 self.write_terminator();
-                                self.output.push_str(&item_indent_str);
-                            }
-                            self.write_reindented_block(item_child, item_indent);
+                                item_indent_str.as_str()
+                            } else {
+                                // The marker is the first line's prefix.
+                                ""
+                            };
+                            self.write_nested_block(prefix, item_indent, |w| {
+                                w.write_node(item_child)
+                            });
                             self.close_opaque_block();
                         }
                     }
@@ -324,16 +324,13 @@ impl<'a> Writer<'a> {
                     self.write_inlines(&p.children, None);
                     self.write_terminator();
                 }
-                Node::List(l) => {
-                    // The list indents each of its items by 4 spaces itself.
-                    self.write_list_impl(l, 4, ListContext::Description);
-                    self.close_opaque_block();
-                }
                 _ => {
-                    if j > 0 {
-                        self.output.push_str("    ");
-                    }
-                    self.write_reindented_block(child, 4);
+                    // The `:   ` marker is the first block's prefix.
+                    let prefix = if j > 0 { "    " } else { "" };
+                    self.write_nested_block(prefix, 4, |w| match child {
+                        Node::List(l) => w.write_list_impl(l, ListContext::Description),
+                        _ => w.write_node(child),
+                    });
                     self.close_opaque_block();
                 }
             }
@@ -361,15 +358,23 @@ impl<'a> Writer<'a> {
         }
     }
 
-    /// Render `node`, then re-indent every line after the first by `indent`
-    /// spaces. Used to keep multi-line block children (code fences, nested
-    /// lists, tables, ...) properly indented when nested inside a definition
-    /// description or a list item. The caller is responsible for indenting
-    /// the first line before calling this.
-    fn write_reindented_block(&mut self, node: &Node, indent: usize) {
+    /// Write a block nested inside a list item or definition description:
+    /// `prefix` starts its first line, and every later line is re-indented by
+    /// `indent` spaces so the block stays inside its container.
+    ///
+    /// When the block writes nothing (an empty table or list, empty raw
+    /// HTML), the prefix is dropped as well, so no whitespace-only line is
+    /// left behind.
+    fn write_nested_block(&mut self, prefix: &str, indent: usize, write: impl FnOnce(&mut Self)) {
         let start = self.output.len();
-        self.write_node(node);
-        self.reindent_since(start, indent);
+        self.output.push_str(prefix);
+        let body = self.output.len();
+        write(self);
+        if self.output.len() == body {
+            self.output.truncate(start);
+        } else {
+            self.reindent_since(body, indent);
+        }
     }
 }
 
@@ -377,12 +382,11 @@ impl<'a> Writer<'a> {
 /// their differing output is preserved on purpose for now.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ListContext {
-    /// Top level or inside another list item: supports loose lists, recurses
-    /// into nested lists directly, and always terminates items with a newline.
+    /// Top level or inside another list item: supports loose lists, and a
+    /// block child other than a nested list starts on the marker line.
     Flow,
-    /// Inside a definition description: never loose, nested lists are rendered
-    /// as ordinary re-indented blocks, and no extra newline follows an item
-    /// that already ends with one.
+    /// Inside a definition description: never loose, and every block child
+    /// starts on the line after the marker.
     Description,
 }
 
