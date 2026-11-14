@@ -128,7 +128,7 @@ pub(crate) fn describe_format_deprecation(args: &ConvertArgs, config: &Config) -
     #[allow(deprecated)]
     let deprecated = selected_describe_format(args, config) == CliDescribeFormat::DefinitionList;
     deprecated.then(|| {
-        "describe format 'definition-list' is deprecated; use 'pandoc-definition-list'".to_owned()
+        "describe format 'definition-list' is deprecated and will select 'quarto-definition-list' in a future release; use 'pandoc-definition-list' to keep the current output".to_owned()
     })
 }
 

@@ -93,7 +93,7 @@
           "const": "headings"
         },
         {
-          "description": "Deprecated: former name of pandoc-definition-list",
+          "description": "Deprecated: currently selects pandoc-definition-list; will become an alias of quarto-definition-list",
           "type": "string",
           "const": "definition-list",
           "deprecated": true

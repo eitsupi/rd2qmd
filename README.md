@@ -408,7 +408,9 @@ representation, including nested descriptions:
 
 - `pandoc-definition-list` (default): Pandoc definition lists. Requires a
   renderer with Pandoc's definition-list support. The former name
-  `definition-list` is still accepted, with a deprecation warning.
+  `definition-list` still selects this format, with a deprecation warning.
+  It will select the Quarto `.definition-list` format in a future release, so
+  use `pandoc-definition-list` to keep the current output.
 - `list`: ordinary Markdown bullet lists with bold terms. Preserves paragraphs,
   inline formatting, links, code examples, and nested lists in CommonMark/GFM.
 - `headings`: terms become headings one level below their enclosing section

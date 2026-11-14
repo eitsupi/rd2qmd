@@ -668,7 +668,7 @@ fn describe_format_deprecated_name() {
         let stderr = run_cli(root, &args);
         (fs::read_to_string(root.join(output)).unwrap(), stderr)
     };
-    let warning = "describe format 'definition-list' is deprecated; use 'pandoc-definition-list'";
+    let warning = "describe format 'definition-list' is deprecated and will select 'quarto-definition-list' in a future release; use 'pandoc-definition-list' to keep the current output";
 
     let (expected, stderr) = convert(
         &["--no-config", "--describe-format", "pandoc-definition-list"],

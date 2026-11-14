@@ -38,7 +38,7 @@ pub enum DescribeFormat {
     List,
     /// Terms become headings below their enclosing section; beyond H6, use bullet lists
     Headings,
-    /// Deprecated: former name of pandoc-definition-list
+    /// Deprecated: currently selects pandoc-definition-list; will become an alias of quarto-definition-list
     #[value(hide = true)]
     #[deprecated(note = "renamed to `PandocDefinitionList`")]
     DefinitionList,
