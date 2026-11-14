@@ -897,3 +897,55 @@ fn test_frontmatter_with_source_files() {
     assert!(qmd.contains(r#"  - "R/coord-map.R""#));
     assert!(qmd.contains(r#"  - "R/coord-quickmap.R""#));
 }
+
+/// Parse the YAML frontmatter of `qmd` with saphyr, the parser family q2
+/// uses, and return the value of `key`.
+fn frontmatter_value(qmd: &str, key: &str) -> Result<String, String> {
+    use saphyr::{LoadableYamlNode, Yaml};
+    let yaml = qmd
+        .strip_prefix("---\n")
+        .and_then(|rest| rest.split_once("\n---\n"))
+        .map(|(yaml, _)| yaml)
+        .expect("frontmatter block");
+    let docs = Yaml::load_from_str(yaml).map_err(|e| e.to_string())?;
+    let value = &docs[0][key];
+    value
+        .as_str()
+        .map(str::to_owned)
+        .ok_or_else(|| format!("no string at {key}: {value:?}"))
+}
+
+/// A raw line break in a double-quoted scalar needs its continuation line
+/// indented. Titles wrapped in the Rd source become one line instead.
+#[test]
+fn test_frontmatter_multiline_title_is_valid_yaml() {
+    // The previous output: the continuation line starts in column 0, which
+    // YAML 1.2 forbids and q2 rejects.
+    assert!(frontmatter_value("---\ntitle: \"a\nb\"\n---\n", "title").is_err());
+
+    let root = Root::new(vec![Node::paragraph(vec![Node::text("Content")])]);
+    let opts = WriterOptions {
+        frontmatter: Some(Frontmatter {
+            title: Some("Return the k smallest\nelements of the by\n  column(s)".to_string()),
+            pagetitle: Some("Return the k smallest\nelements — f".to_string()),
+            format: None,
+            metadata: Some(RdMetadata {
+                aliases: vec!["tab\there".to_string(), "line\nbreak\u{7}".to_string()],
+                ..Default::default()
+            }),
+        }),
+        ..Default::default()
+    };
+    let qmd = mdast_to_qmd(&root, &opts);
+    assert!(qmd.contains("title: \"Return the k smallest elements of the by column(s)\"\n"));
+    assert!(qmd.contains("pagetitle: \"Return the k smallest elements — f\"\n"));
+    assert!(qmd.contains("  - \"tab\\there\"\n  - \"line\\nbreak\\u0007\"\n"));
+    assert_eq!(
+        frontmatter_value(&qmd, "title").unwrap(),
+        "Return the k smallest elements of the by column(s)"
+    );
+    assert_eq!(
+        frontmatter_value(&qmd, "pagetitle").unwrap(),
+        "Return the k smallest elements — f"
+    );
+}

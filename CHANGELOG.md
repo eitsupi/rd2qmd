@@ -17,6 +17,7 @@
 
 ### Fixed
 
+- Frontmatter values are now always valid YAML. Titles wrapped across lines in the Rd source are written on one line, and control characters such as line breaks in other values are escaped. Previously the continuation line of a wrapped `title` or `pagetitle` started in column 0, which YAML 1.2 forbids; q2 rejected such pages, while Quarto 1 accepted them.
 - A list item whose first block is a nested list now writes the nested list on the marker line (`- - a`). q2 rejected the previous form, an empty marker line followed by the list.
 - Bare brace groups in Rd text (for example `{ a, b } text`) no longer drop their content. The group is now rendered in place without the braces, as R does. Braces inside `\code{}`, `\verb{}` and `\preformatted{}` are unchanged.
 - Arguments cells that start with a code block or display equation now render validly in the `list-table` and `list` formats. Previously the `list-table` form failed to parse in Quarto 2.

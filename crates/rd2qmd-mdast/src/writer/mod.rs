@@ -181,14 +181,16 @@ impl<'a> Writer<'a> {
     fn write_frontmatter(&mut self, fm: &Frontmatter) {
         self.output.push_str("---\n");
         if let Some(title) = &fm.title {
-            self.output
-                .push_str(&format!(r#"title: "{}""#, escape_yaml_string(title)));
+            self.output.push_str(&format!(
+                r#"title: "{}""#,
+                escape_yaml_string(&single_line(title))
+            ));
             self.output.push('\n');
         }
         if let Some(pagetitle) = &fm.pagetitle {
             self.output.push_str(&format!(
                 r#"pagetitle: "{}""#,
-                escape_yaml_string(pagetitle)
+                escape_yaml_string(&single_line(pagetitle))
             ));
             self.output.push('\n');
         }
@@ -320,6 +322,32 @@ impl<'a> Writer<'a> {
     }
 }
 
+/// Escape a value for a double-quoted YAML scalar.
+///
+/// Control characters, including line breaks, use escape sequences, so the
+/// scalar always stays on one physical line. A raw line break would need its
+/// continuation line indented, which some parsers (q2) enforce and others do
+/// not.
 fn escape_yaml_string(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('"', "\\\"")
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c.is_control() => out.push_str(&format!("\\u{:04X}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// Collapse whitespace runs, including line breaks, into single spaces.
+///
+/// Titles are prose that Rd sources wrap across lines; the breaks carry no
+/// meaning.
+fn single_line(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
