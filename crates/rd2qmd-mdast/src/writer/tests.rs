@@ -446,8 +446,8 @@ fn test_ordered_list_loose_continuation_indent() {
 
 #[test]
 fn test_nested_list_not_double_indented() {
-    // Nested item indent must be exactly item_indent (2 for "- "),
-    // not 2 * item_indent (from pre-indent + recursive base_indent).
+    // Nested item indent must be exactly item_indent (2 for "- "), not
+    // applied twice by both the container and the nested list.
     let root = Root::new(vec![Node::list(
         false,
         vec![Node::list_item(vec![

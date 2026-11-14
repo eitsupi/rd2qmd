@@ -40,13 +40,17 @@ impl<'a> Writer<'a> {
     }
 
     pub(super) fn write_list(&mut self, l: &crate::mdast::List) {
-        self.write_list_impl(l, 0, ListContext::Flow);
+        self.write_list_impl(l, ListContext::Flow);
     }
 
     /// Single list renderer shared by document-flow lists and lists inside
     /// definition descriptions. The two contexts intentionally differ in a few
     /// places; see [`ListContext`].
-    fn write_list_impl(&mut self, l: &crate::mdast::List, base_indent: usize, ctx: ListContext) {
+    ///
+    /// Like every other block, the list is written from the current column
+    /// with no indent of its own. A container that nests it writes the prefix
+    /// of the first line and re-indents the rest.
+    fn write_list_impl(&mut self, l: &crate::mdast::List, ctx: ListContext) {
         let flow = ctx == ListContext::Flow;
         if flow {
             self.ensure_newline();
@@ -65,7 +69,6 @@ impl<'a> Writer<'a> {
         let mut num = l.start.unwrap_or(1);
         for (item_index, child) in l.children.iter().enumerate() {
             if let Node::ListItem(li) = child {
-                self.output.push_str(&" ".repeat(base_indent));
                 // Build the marker first so item_indent matches the actual marker width.
                 // "- " is always 2 chars, but "10. " is 4 — a fixed +2 would mis-indent
                 // continuation lines for ordered lists with wide numbers.
@@ -77,7 +80,7 @@ impl<'a> Writer<'a> {
                     "- ".to_string()
                 };
                 self.output.push_str(&marker);
-                let item_indent = base_indent + marker.len();
+                let item_indent = marker.len();
                 let item_indent_str = " ".repeat(item_indent);
 
                 for (i, item_child) in li.children.iter().enumerate() {
@@ -100,23 +103,15 @@ impl<'a> Writer<'a> {
                             self.reindent_since(start, item_indent);
                             self.write_terminator();
                         }
-                        Node::List(nested) if flow => {
-                            if i == 0 {
-                                // End the marker line; the nested list starts
-                                // on the next one.
-                                self.write_terminator();
-                            }
-                            // The recursive call emits the indent per item.
-                            self.write_list_impl(nested, item_indent, ctx);
-                        }
                         _ => {
-                            // Block children (code fences, tables, and in descriptions also
-                            // nested lists) have every continuation line re-indented to
-                            // `item_indent` so they stay inside the list item.
+                            // Block children (code fences, tables, nested lists) have
+                            // every continuation line re-indented to `item_indent` so
+                            // they stay inside the list item.
                             if i > 0 {
                                 self.output.push_str(&item_indent_str);
-                            } else if !flow {
-                                // In descriptions the block always starts on its own line.
+                            } else if !flow || matches!(item_child, Node::List(_)) {
+                                // A nested list, and in descriptions any block, starts
+                                // on the line after the marker.
                                 self.write_terminator();
                                 self.output.push_str(&item_indent_str);
                             }
@@ -324,16 +319,16 @@ impl<'a> Writer<'a> {
                     self.write_inlines(&p.children, None);
                     self.write_terminator();
                 }
-                Node::List(l) => {
-                    // The list indents each of its items by 4 spaces itself.
-                    self.write_list_impl(l, 4, ListContext::Description);
-                    self.close_opaque_block();
-                }
                 _ => {
                     if j > 0 {
                         self.output.push_str("    ");
                     }
-                    self.write_reindented_block(child, 4);
+                    let start = self.output.len();
+                    match child {
+                        Node::List(l) => self.write_list_impl(l, ListContext::Description),
+                        _ => self.write_node(child),
+                    }
+                    self.reindent_since(start, 4);
                     self.close_opaque_block();
                 }
             }

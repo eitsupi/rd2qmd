@@ -1,6 +1,6 @@
 //! Pins how lists nested inside definition descriptions are rendered. These
 //! differ from top-level lists: no list inside a description is ever loose.
-//! Some outputs (e.g. the 8-space first item) are quirks pinned as-is.
+//! Some outputs are quirks pinned as-is.
 use super::*;
 use crate::mdast::*;
 
@@ -33,7 +33,7 @@ fn lists_inside_definition_descriptions() {
         (
             "tight list",
             vec![bullets(vec![item(vec![para("a")]), item(vec![para("b")])])],
-            "T\n:       - a\n    - b\n",
+            "T\n:   - a\n    - b\n",
         ),
         (
             "multi-block item stays tight",
@@ -41,7 +41,7 @@ fn lists_inside_definition_descriptions() {
                 item(vec![para("a"), para("b")]),
                 item(vec![para("c")]),
             ])],
-            "T\n:       - a\n\n      b\n    - c\n",
+            "T\n:   - a\n\n      b\n    - c\n",
         ),
         (
             "ordered list with wide numbers",
@@ -53,7 +53,7 @@ fn lists_inside_definition_descriptions() {
                     item(vec![para("d")]),
                 ],
             )],
-            "T\n:       9. a\n    10. b\n\n        c\n    11. d\n",
+            "T\n:   9. a\n    10. b\n\n        c\n    11. d\n",
         ),
         (
             "nested list",
@@ -61,7 +61,7 @@ fn lists_inside_definition_descriptions() {
                 item(vec![para("a"), bullets(vec![item(vec![para("b")])])]),
                 item(vec![para("c")]),
             ])],
-            "T\n:       - a\n\n      - b\n    - c\n",
+            "T\n:   - a\n\n      - b\n    - c\n",
         ),
         (
             "nested list in wide ordered item",
@@ -72,7 +72,7 @@ fn lists_inside_definition_descriptions() {
                     bullets(vec![item(vec![para("b")]), item(vec![para("c")])]),
                 ])],
             )],
-            "T\n:       10. a\n\n        - b\n        - c\n",
+            "T\n:   10. a\n\n        - b\n        - c\n",
         ),
         (
             "item with code",
@@ -80,7 +80,7 @@ fn lists_inside_definition_descriptions() {
                 item(vec![para("a"), Node::code(None, "x\ny")]),
                 item(vec![para("b")]),
             ])],
-            "T\n:       - a\n\n      ```\n      x\n      y\n      ```\n    - b\n",
+            "T\n:   - a\n\n      ```\n      x\n      y\n      ```\n    - b\n",
         ),
         (
             "item starting with code",
@@ -88,7 +88,7 @@ fn lists_inside_definition_descriptions() {
                 item(vec![Node::code(None, "x")]),
                 item(vec![para("b")]),
             ])],
-            "T\n:       - \n      ```\n      x\n      ```\n    - b\n",
+            "T\n:   - \n      ```\n      x\n      ```\n    - b\n",
         ),
         (
             "paragraph then list",
@@ -98,12 +98,12 @@ fn lists_inside_definition_descriptions() {
         (
             "list then paragraph",
             vec![bullets(vec![item(vec![para("a")])]), para("P")],
-            "T\n:       - a\n\n    P\n",
+            "T\n:   - a\n\n    P\n",
         ),
         (
             "list then code",
             vec![bullets(vec![item(vec![para("a")])]), Node::code(None, "x")],
-            "T\n:       - a\n\n    ```\n    x\n    ```\n",
+            "T\n:   - a\n\n    ```\n    x\n    ```\n",
         ),
         (
             "two lists",
@@ -111,7 +111,7 @@ fn lists_inside_definition_descriptions() {
                 bullets(vec![item(vec![para("a")])]),
                 Node::list(true, vec![item(vec![para("b")])]),
             ],
-            "T\n:       - a\n\n    1. b\n",
+            "T\n:   - a\n\n    1. b\n",
         ),
     ];
     for (label, desc, expected) in cases {

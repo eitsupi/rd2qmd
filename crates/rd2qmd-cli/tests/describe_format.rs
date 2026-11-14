@@ -607,3 +607,30 @@ Second paragraph.
         }
     }
 }
+
+/// A description holding only a list keeps every item in that list. The
+/// first item used to be indented past the `:   ` marker and read as an
+/// indented code block.
+#[test]
+fn describe_definition_list_with_only_a_list() {
+    let rd = r"\name{x}\title{X}
+\description{
+\describe{
+\item{a}{\itemize{\item one \item two}}
+\item{b}{\enumerate{\item three \item four}}
+}
+}";
+    let output = convert_core_as(rd, DescribeFormat::DefinitionList);
+    let mut depth_in_definition = 0;
+    let mut items = Vec::new();
+    for event in Parser::new_ext(&output, Options::ENABLE_DEFINITION_LIST) {
+        match event {
+            Event::Start(Tag::CodeBlock(_)) => panic!("unexpected code block in {output:?}"),
+            Event::Start(Tag::DefinitionListDefinition) => depth_in_definition += 1,
+            Event::End(TagEnd::DefinitionListDefinition) => depth_in_definition -= 1,
+            Event::Text(text) if depth_in_definition > 0 => items.push(text.trim().to_owned()),
+            _ => {}
+        }
+    }
+    assert_eq!(items, ["one", "two", "three", "four"], "{output:?}");
+}
